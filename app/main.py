@@ -311,31 +311,31 @@ def admin_review_get(request: Request, client: str, period: str, message: str = 
         # No build has happened yet — send them back to upload.
         return RedirectResponse(f"/admin/upload?client={client}", status_code=302)
 
-    actions = json.loads(row["actions_json"]) if row.get("actions_json") else _blank_actions()
-    notes = json.loads(row["notes_json"]) if row.get("notes_json") else {}
+    from app.reports.builder import build_context, _env
 
-    # Pad the recommendation buckets to fixed slots for the form.
-    lean = (actions.get("lean_into") or [])[:3] + [{"action": "", "why": ""}] * 3
-    invest = (actions.get("investigate") or [])[:3] + [{"action": "", "why": ""}] * 3
+    # Assemble the real report context, then flip it into editable mode so the
+    # comment boxes render exactly where they appear in the finished report.
+    context = build_context(client, period)
+
+    actions = context["commentary"].get("actions") or _blank_actions()
+    lean = (actions.get("lean_into") or []) + [{"action": "", "why": ""}] * 3
+    invest = (actions.get("investigate") or []) + [{"action": "", "why": ""}] * 3
     fix = actions.get("fix_urgently") or {"action": "", "why": ""}
 
     html_path = settings.reports_out_dir / client / f"{period}.html"
     preview_url = f"/c/{client}/{period}" if html_path.exists() else None
 
-    return _render(
-        "admin/review.html",
-        client_slug=client,
-        period=period,
-        headline=row.get("headline") or "Performance Report",
-        standfirst=row.get("standfirst") or "",
-        notes=notes,
-        note_sections=REVIEW_NOTE_SECTIONS,
-        lean=lean[:3],
-        invest=invest[:3],
-        fix=fix,
-        preview_url=preview_url,
-        message=message,
-    )
+    context.update({
+        "editable": True,
+        "edit_lean": lean[:3],
+        "edit_invest": invest[:3],
+        "edit_fix": fix,
+        "preview_url": preview_url,
+        "message": message,
+    })
+
+    html = _env().get_template("report.html").render(**context)
+    return HTMLResponse(html)
 
 
 @app.post("/admin/review")

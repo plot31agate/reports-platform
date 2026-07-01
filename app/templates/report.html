@@ -2,10 +2,29 @@
 {% block title %}{{ client.display_name }} — {{ period_display }} Report{% endblock %}
 {% block body %}
 {% macro note(key) %}
-{% if commentary and commentary.notes and commentary.notes.get(key) %}
+{% if editable %}
+<div class="section__note section__note--edit">
+  <span class="edit-tag">Section note</span>
+  <textarea name="note_{{ key }}" rows="2" placeholder="Optional note that appears here in the report. Leave blank to omit.">{{ (commentary.notes.get(key) if commentary and commentary.notes else '') or '' }}</textarea>
+</div>
+{% elif commentary and commentary.notes and commentary.notes.get(key) %}
 <div class="section__note">{{ commentary.notes.get(key) }}</div>
 {% endif %}
 {% endmacro %}
+
+{% if editable %}
+<div class="edit-bar">
+  <div class="edit-bar__label">Editing {{ client.display_name }} · {{ period_display }} — comments show where they will appear</div>
+  <div class="edit-bar__actions">
+    {% if preview_url %}<a class="btn btn--secondary" href="{{ preview_url }}" target="_blank">Open published</a>{% endif %}
+    <button type="submit" form="review-form" class="btn">Save and regenerate</button>
+  </div>
+</div>
+{% if message %}<div class="edit-message">{{ message }}</div>{% endif %}
+<form method="post" action="/admin/review" id="review-form">
+<input type="hidden" name="client_slug" value="{{ client_slug }}">
+<input type="hidden" name="period" value="{{ period }}">
+{% endif %}
 
 {# ================== TOP BAR ================== #}
 <div class="topbar">
@@ -31,6 +50,10 @@
     </g>
   </svg>
   <div class="hero__label">{{ period_display | upper }}</div>
+  {% if editable %}
+  <span class="edit-tag edit-tag--hero">Headline</span>
+  <input class="hero__title-input" name="headline" value="{{ commentary.headline }}" placeholder="Performance Report">
+  {% else %}
   <h1 class="hero__title">
     {%- if commentary and commentary.headline and commentary.headline != "Performance Report" -%}
       {{ commentary.headline }}
@@ -38,8 +61,12 @@
       Performance<br>Report
     {%- endif -%}
   </h1>
+  {% endif %}
   <div class="hero__brandline">{{ client.tagline }}</div>
-  {% if commentary and commentary.standfirst %}
+  {% if editable %}
+  <span class="edit-tag edit-tag--hero">Standfirst</span>
+  <textarea class="hero__standfirst-input" name="standfirst" rows="2" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
+  {% elif commentary and commentary.standfirst %}
   <p class="hero__standfirst">{{ commentary.standfirst }}</p>
   {% endif %}
 </div>
@@ -114,8 +141,14 @@
         <div class="rows">
           {% for m in data.mentions.data.mentions[:6] %}
           <div class="rows__row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+            {% if m.url %}
+            <a href="{{ m.url }}" class="mention-link" target="_blank" rel="noopener">{{ m.title }}</a>
+            {% else %}
             <span style="font-weight:600;font-size:13px;">{{ m.title }}</span>
-            <span style="font-size:11px;color:#666;">{{ m.source }} · {{ m.date }}</span>
+            {% endif %}
+            <span style="font-size:11px;color:#666;">
+              {{ m.source }} · {{ m.date }}{% if m.url %} · <a href="{{ m.url }}" class="mention-link mention-link--muted" target="_blank" rel="noopener">read</a>{% endif %}
+            </span>
           </div>
           {% endfor %}
         </div>
@@ -454,7 +487,38 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Next month's actions</h2>
   </div>
-  {% if actions.configured and actions.content %}
+  {% if editable %}
+    <div class="subhead">Lean into</div>
+    {% for item in edit_lean %}
+    <div class="rec-slot">
+      <span class="rec-slot__num">{{ loop.index }}</span>
+      <div class="rec-slot__fields">
+        <input type="text" name="lean_into_{{ loop.index0 }}_action" placeholder="Action — what to do" value="{{ item.action }}">
+        <input type="text" name="lean_into_{{ loop.index0 }}_why" placeholder="Why — the reason it matters" value="{{ item.why }}">
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="subhead">Investigate</div>
+    {% for item in edit_invest %}
+    <div class="rec-slot">
+      <span class="rec-slot__num">{{ loop.index }}</span>
+      <div class="rec-slot__fields">
+        <input type="text" name="investigate_{{ loop.index0 }}_action" placeholder="Action — what to do" value="{{ item.action }}">
+        <input type="text" name="investigate_{{ loop.index0 }}_why" placeholder="Why — the reason it matters" value="{{ item.why }}">
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="subhead subhead--fix">Fix urgently</div>
+    <div class="rec-slot">
+      <span class="rec-slot__num">!</span>
+      <div class="rec-slot__fields">
+        <input type="text" name="fix_0_action" placeholder="Action — what to do" value="{{ edit_fix.action }}">
+        <input type="text" name="fix_0_why" placeholder="Why — the reason it matters" value="{{ edit_fix.why }}">
+      </div>
+    </div>
+  {% elif actions.configured and actions.content %}
     <div class="subhead">Lean into</div>
     {% for item in actions.content.lean_into or [] %}
     <div class="action-item">
@@ -484,6 +548,10 @@
     <p style="color:#aaa;font-style:italic;">Not enough data to synthesise actions.</p>
   {% endif %}
 </div>
+
+{% if editable %}
+</form>
+{% endif %}
 
 {# ================== FOOTER ================== #}
 <div class="footer">

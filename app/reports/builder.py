@@ -25,8 +25,11 @@ def _env() -> Environment:
     return env
 
 
-def build_report(client_slug: str, period: str) -> dict:
-    """Build the report for one client+period. Returns dict with paths and report id."""
+def build_context(client_slug: str, period: str) -> dict:
+    """Assemble the full render context for a report (parse, sentiment, synthesis, commentary).
+
+    Shared by build_report (writes HTML + PDF) and the review screen (renders editable).
+    """
     client_config = get_client(client_slug)
 
     data_dir = settings.data_dir / client_slug / period
@@ -54,9 +57,9 @@ def build_report(client_slug: str, period: str) -> dict:
     if commentary.get("actions"):
         actions = {"configured": True, "content": commentary["actions"]}
 
-    # 4. Render HTML
-    context = {
+    return {
         "client": client_config,
+        "client_slug": client_slug,
         "period": period,
         "period_display": _period_display(period),
         "generated_at": datetime.utcnow().strftime("%d %b %Y"),
@@ -66,7 +69,13 @@ def build_report(client_slug: str, period: str) -> dict:
         "actions": actions,
         "commentary": commentary,
         "technical_seo": _build_technical_seo(parsed, period),
+        "editable": False,
     }
+
+
+def build_report(client_slug: str, period: str) -> dict:
+    """Build the report for one client+period. Returns dict with paths and report id."""
+    context = build_context(client_slug, period)
 
     env = _env()
     html = env.get_template("report.html").render(**context)
