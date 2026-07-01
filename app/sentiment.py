@@ -101,13 +101,16 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
     if not client:
         return {"configured": False, "content": None}
 
+    def _d(key):
+        return (report_data.get(key) or {}).get("data")
+
     summary = json.dumps({
-        "coverage": report_data.get("mentions", {}).get("data", {}).get("total"),
+        "coverage": (_d("mentions") or {}).get("total"),
         "sentiment": report_data.get("sentiment", {}),
-        "backlinks": report_data.get("ahrefs_backlinks", {}).get("data"),
-        "traffic": report_data.get("ga4_export", {}).get("data"),
-        "search_console": report_data.get("search_console", {}).get("data"),
-        "linkedin": report_data.get("linkedin_company", {}).get("data"),
+        "backlinks": _d("ahrefs_backlinks"),
+        "traffic": _d("ga4_export"),
+        "search_console": _d("search_console"),
+        "linkedin": _d("linkedin_company"),
     }, default=str, indent=2)
 
     prompt = f"""You are a senior PR and growth advisor for {client_config['display_name']}, {client_config.get('sentiment_context', '').split('.')[0]}.

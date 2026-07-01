@@ -22,7 +22,7 @@ def parse_search_console(path: Path) -> dict:
     )
     avg_position = _avg_num(df, position_col)
 
-    query_col = _find_col(df, ["Query", "Queries"])
+    query_col = _find_col(df, ["Top queries", "Query", "Queries"])
     top_queries = []
     if query_col and clicks_col:
         sub = df[[query_col, clicks_col]].dropna().copy()
@@ -33,12 +33,24 @@ def parse_search_console(path: Path) -> dict:
             for _, r in top.iterrows()
         ]
 
+    page_col = _find_col(df, ["Top pages", "Page", "Pages"])
+    top_pages = []
+    if page_col and clicks_col:
+        sub = df[[page_col, clicks_col]].dropna().copy()
+        sub[clicks_col] = sub[clicks_col].astype(str).str.replace(",", "").astype(float)
+        top = sub[sub[clicks_col] > 0].sort_values(clicks_col, ascending=False).head(10)
+        top_pages = [
+            {"page": str(r[page_col]).replace("https://sportingtech.com", ""), "clicks": int(r[clicks_col])}
+            for _, r in top.iterrows()
+        ]
+
     return {
         "clicks": total_clicks,
         "impressions": total_impressions,
         "avg_ctr": avg_ctr,
         "avg_position": round(avg_position, 1) if avg_position else None,
         "top_queries": top_queries,
+        "top_pages": top_pages,
     }
 
 

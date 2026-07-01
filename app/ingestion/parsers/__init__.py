@@ -11,15 +11,21 @@ from app.ingestion.parsers.ga4 import parse_ga4
 from app.ingestion.parsers.search_console import parse_search_console
 from app.ingestion.parsers.linkedin import parse_linkedin
 from app.ingestion.parsers.mentions import parse_mentions
+from app.ingestion.parsers.technical_seo import (
+    parse_technical_seo_metrics,
+    parse_technical_seo_register,
+)
 
 
 PARSER_MAP = {
-    "ahrefs_backlinks":     ("Ahrefs backlinks",     parse_ahrefs),
-    "similarweb_traffic":   ("Similarweb traffic",   parse_similarweb),
-    "ga4_export":           ("GA4 export",           parse_ga4),
-    "search_console":       ("Search Console",       parse_search_console),
-    "linkedin_company":     ("LinkedIn (company)",   parse_linkedin),
-    "mentions":             ("Media mentions",       parse_mentions),
+    "ahrefs_backlinks":        ("Ahrefs backlinks",            parse_ahrefs),
+    "similarweb_traffic":      ("Similarweb traffic",          parse_similarweb),
+    "ga4_export":              ("GA4 export",                  parse_ga4),
+    "search_console":          ("Search Console",              parse_search_console),
+    "linkedin_company":        ("LinkedIn (company)",          parse_linkedin),
+    "mentions":                ("Media mentions",              parse_mentions),
+    "technical_seo_metrics":   ("Technical SEO metrics",       parse_technical_seo_metrics),
+    "technical_seo_register":  ("Technical SEO issue register",parse_technical_seo_register),
 }
 
 

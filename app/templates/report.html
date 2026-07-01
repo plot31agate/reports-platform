@@ -317,6 +317,114 @@
   {% endif %}
 </div>
 
+{# ================== TECHNICAL SEO & SITE HEALTH ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Technical SEO &amp; Site Health</h2>
+  </div>
+  {% if technical_seo %}
+    {% set tseo = technical_seo %}
+    {% set cur = tseo.current %}
+
+    {# Baseline banner — no delta chips on the first month #}
+    {% if tseo.is_baseline %}
+    <div class="tseo-baseline">
+      Baseline established {{ cur.month }} — delta tracking will begin next month.
+      {% if cur.note %} {{ cur.note }}{% endif %}
+    </div>
+    {% endif %}
+
+    {# Top KPI row — health score + domain rating #}
+    <div class="tseo-kpi-row">
+      <div class="tseo-kpi">
+        <div class="tseo-kpi__label">Site health score</div>
+        <div class="tseo-kpi__value">
+          {{ cur.health_score }}<span class="tseo-kpi__unit">/100</span>
+          {% if not tseo.is_baseline and tseo.health_delta is not none %}
+            {% if tseo.health_delta > 0 %}
+              <span class="tseo-chip tseo-chip--up">+{{ tseo.health_delta }}</span>
+            {% elif tseo.health_delta < 0 %}
+              <span class="tseo-chip tseo-chip--down">{{ tseo.health_delta }}</span>
+            {% else %}
+              <span class="tseo-chip tseo-chip--flat">±0</span>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="tseo-kpi">
+        <div class="tseo-kpi__label">Domain Rating (Ahrefs)</div>
+        <div class="tseo-kpi__value">
+          {{ cur.domain_rating }}
+          {% if not tseo.is_baseline and tseo.dr_delta is not none %}
+            {% if tseo.dr_delta > 0 %}
+              <span class="tseo-chip tseo-chip--up">+{{ tseo.dr_delta }}</span>
+            {% elif tseo.dr_delta < 0 %}
+              <span class="tseo-chip tseo-chip--down">{{ tseo.dr_delta }}</span>
+            {% else %}
+              <span class="tseo-chip tseo-chip--flat">±0</span>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="tseo-kpi">
+        <div class="tseo-kpi__label">Open issues</div>
+        <div class="tseo-kpi__value">{{ cur.total_open }}</div>
+        <div class="tseo-kpi__sub">
+          <span class="tseo-sev tseo-sev--high">{{ cur.high_open }}H</span>
+          <span class="tseo-sev tseo-sev--medium">{{ cur.medium_open }}M</span>
+          <span class="tseo-sev tseo-sev--low">{{ cur.low_open }}L</span>
+        </div>
+      </div>
+      <div class="tseo-kpi">
+        <div class="tseo-kpi__label">Activity this month</div>
+        <div class="tseo-kpi__value" style="font-size:18px;line-height:1.4;">
+          <span style="color:var(--accent-strong);">{{ cur.resolved_this_month }} resolved</span><br>
+          <span style="color:var(--grey-600);font-size:14px;">{{ cur.new_this_month }} new · {{ cur.confirmed }} Confirmed · {{ cur.verify }} Verify · {{ cur.action }} Action</span>
+        </div>
+      </div>
+    </div>
+
+    {# Issue register — High + Medium in full, Low summarised #}
+    {% if tseo.high_med_issues %}
+    <div class="section__subhead" style="margin-top:24px;">Open issues — High &amp; Medium priority</div>
+    <table class="tseo-table">
+      <thead>
+        <tr>
+          <th style="width:60px;">ID</th>
+          <th style="width:80px;">Severity</th>
+          <th style="width:100px;">Category</th>
+          <th>Finding</th>
+          <th style="width:180px;">Recommendation</th>
+          <th style="width:60px;">Effort</th>
+          <th style="width:80px;">Owner</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in tseo.high_med_issues %}
+        <tr class="tseo-table__row">
+          <td class="tseo-table__id">{{ issue.issue_id }}</td>
+          <td><span class="tseo-sev tseo-sev--{{ issue.severity | lower }}">{{ issue.severity }}</span></td>
+          <td style="font-size:11px;color:var(--grey-600);">{{ issue.category }}</td>
+          <td style="font-size:12px;">{{ issue.finding }}</td>
+          <td style="font-size:11px;color:var(--grey-600);">{{ issue.recommendation }}</td>
+          <td style="text-align:center;font-size:12px;font-weight:700;">{{ issue.effort }}</td>
+          <td style="font-size:11px;color:var(--grey-600);">{{ issue.owner }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if tseo.low_count > 0 %}
+    <div class="tseo-low-summary">+{{ tseo.low_count }} low-severity issue{{ 's' if tseo.low_count != 1 else '' }} tracked — detail available on request.</div>
+    {% endif %}
+
+  {% else %}
+    <p class="muted">No technical SEO data uploaded for this period. Upload <code>technical_seo_metrics.csv</code> and <code>technical_seo_register.csv</code>.</p>
+  {% endif %}
+</div>
+
 {# ================== 8. NEXT MONTH'S ACTIONS ================== #}
 <div class="actions-block">
   <div class="section__header">

@@ -425,6 +425,116 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 16px;
 }
 
+/* -------- Technical SEO section -------- */
+.tseo-baseline {
+  background: var(--grey-100);
+  border-left: 3px solid var(--accent);
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--grey-600);
+  font-style: italic;
+  margin-bottom: 20px;
+  border-radius: 0 4px 4px 0;
+}
+
+.tseo-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.tseo-kpi {
+  background: var(--grey-100);
+  border-radius: 6px;
+  padding: 14px 16px;
+  border-top: 3px solid var(--accent);
+}
+.tseo-kpi__label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--grey-600);
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.tseo-kpi__value {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--black);
+  line-height: 1.1;
+}
+.tseo-kpi__unit { font-size: 14px; color: var(--grey-600); font-weight: 600; }
+.tseo-kpi__sub { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* delta chips */
+.tseo-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.tseo-chip--up   { background: #E0F7EF; color: var(--accent-strong); }
+.tseo-chip--down { background: #FEE7E4; color: var(--negative); }
+.tseo-chip--flat { background: var(--grey-200); color: var(--grey-600); }
+
+/* severity badges */
+.tseo-sev {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  display: inline-block;
+}
+.tseo-sev--high   { background: #FEE7E4; color: var(--negative); }
+.tseo-sev--medium { background: #FFF3E0; color: #B45309; }
+.tseo-sev--low    { background: var(--grey-200); color: var(--grey-600); }
+
+/* issues table */
+.tseo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.tseo-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grey-600);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--grey-200);
+}
+.tseo-table__row {
+  border-bottom: 0.5px solid var(--grey-200);
+  page-break-inside: avoid;
+}
+.tseo-table__row:last-child { border-bottom: none; }
+.tseo-table td {
+  padding: 9px 10px;
+  vertical-align: top;
+  line-height: 1.4;
+}
+.tseo-table__id { font-weight: 700; color: var(--grey-600); font-size: 11px; }
+
+.tseo-low-summary {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--grey-600);
+  font-style: italic;
+  padding: 6px 12px;
+  background: var(--grey-100);
+  border-radius: 4px;
+  display: inline-block;
+}
+
 /* -------- Print (PDF export) -------- */
 @media print {
   .topbar__actions, .footer__actions { display: none; }

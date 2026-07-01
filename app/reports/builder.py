@@ -56,6 +56,7 @@ def build_report(client_slug: str, period: str) -> dict:
         "data": parsed,
         "sentiment": sentiment,
         "actions": actions,
+        "technical_seo": _build_technical_seo(parsed, period),
     }
 
     env = _env()
@@ -80,6 +81,55 @@ def build_report(client_slug: str, period: str) -> dict:
         "pdf_path": str(pdf_path),
         "period": period,
         "client_slug": client_slug,
+    }
+
+
+def _build_technical_seo(parsed: dict, period: str) -> dict | None:
+    """Combine metrics + register into a single context dict with delta logic."""
+    metrics_rows = (parsed.get("technical_seo_metrics") or {}).get("data") or []
+    register_rows = (parsed.get("technical_seo_register") or {}).get("data") or []
+
+    if not metrics_rows:
+        return None
+
+    current = next((r for r in metrics_rows if r["month"] == period), None)
+    if not current:
+        return None
+
+    earliest = min(r["month"] for r in metrics_rows)
+    is_baseline = (period == earliest)
+
+    prior_candidates = [r for r in metrics_rows if r["month"] < period]
+    prior = max(prior_candidates, key=lambda r: r["month"]) if prior_candidates else None
+
+    health_delta = None
+    dr_delta = None
+    if prior and not is_baseline:
+        health_delta = current["health_score"] - prior["health_score"]
+        dr_delta = current["domain_rating"] - prior["domain_rating"]
+
+    # Open issues = no resolved_month set
+    open_issues = [i for i in register_rows if not i.get("resolved_month")]
+
+    sev_order = {"High": 0, "Medium": 1, "Low": 2}
+    stat_order = {"Confirmed": 0, "Verify": 1, "Action": 2}
+    open_issues.sort(key=lambda i: (
+        sev_order.get(i.get("severity", "Low"), 2),
+        stat_order.get(i.get("status", "Action"), 2),
+    ))
+
+    high_med = [i for i in open_issues if i.get("severity") in ("High", "Medium")]
+    low = [i for i in open_issues if i.get("severity") == "Low"]
+
+    return {
+        "current": current,
+        "is_baseline": is_baseline,
+        "health_delta": health_delta,
+        "dr_delta": dr_delta,
+        "open_issues": open_issues,
+        "high_med_issues": high_med,
+        "low_issues": low,
+        "low_count": len(low),
     }
 
 
