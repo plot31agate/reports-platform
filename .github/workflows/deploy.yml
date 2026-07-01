@@ -21,7 +21,10 @@ jobs:
           protocol: ftps
           port: 21
           local-dir: ./
-          server-dir: /home/wwwdfootdigi/apps/reporting/
+          server-dir: ./
+          log-level: minimal
+          security: loose
+          timeout: 60000
           exclude: |
             **/.git*
             **/.git*/**
