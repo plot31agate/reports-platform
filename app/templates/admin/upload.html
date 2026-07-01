@@ -1,41 +1,31 @@
-{% extends "base.html" %}
+{% extends "admin/_shell.html" %}
 {% block title %}Upload data — Admin{% endblock %}
-{% block body %}
-<div class="topbar">
-  <div class="topbar__brand">
-    <span>DIGITAL <span class="accent">FOOTPRINTS</span></span>
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">Upload data</h1>
+    <div class="page-head__sub">Drop each export onto its card. It parses on drop and confirms what was read before you build.</div>
   </div>
-  <div class="topbar__breadcrumbs">ADMIN · UPLOAD</div>
-  <div class="topbar__actions">
-    <a class="topbar__link" href="/admin">← Dashboard</a>
+  <a class="button button--ghost" href="/admin">← Dashboard</a>
+</div>
+
+<div class="upload-controls">
+  <div class="field" style="margin:0;min-width:220px;">
+    <label>Client</label>
+    <select id="client-slug">
+      {% for c in clients %}
+      <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field" style="margin:0;min-width:150px;">
+    <label>Period (YYYY-MM)</label>
+    <input type="text" id="period" value="{{ default_period }}" placeholder="2026-07">
   </div>
 </div>
 
-<div class="admin-shell">
-  <div class="admin-container" style="max-width:1040px;">
-
-    <div class="admin-card" style="margin-bottom:24px;">
-      <div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;">
-        <div class="form-row" style="margin:0;flex:0 0 220px;">
-          <label>Client</label>
-          <select id="client-slug" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;">
-            {% for c in clients %}
-            <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="form-row" style="margin:0;flex:0 0 160px;">
-          <label>Period (YYYY-MM)</label>
-          <input id="period" value="{{ default_period }}" placeholder="2026-07"
-            style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;">
-        </div>
-        <div style="font-size:12px;color:var(--grey-600);padding-bottom:2px;flex:1;min-width:220px;">
-          Drop a file onto its source card below. It parses immediately and confirms what was read before you build.
-        </div>
-      </div>
-    </div>
-
-    <div class="source-grid">
+<div class="source-grid">
       {% for src in source_defs %}
       <div class="source-card" id="card-{{ src.key }}" data-source-key="{{ src.key }}">
         <div class="source-card__header">
@@ -53,16 +43,13 @@
       {% endfor %}
     </div>
 
-    <div class="upload-actions">
-      <form method="post" action="/admin/build-report" id="build-form">
-        <input type="hidden" name="client_slug" id="build-client">
-        <input type="hidden" name="period" id="build-period">
-        <button type="button" class="btn btn--secondary" onclick="saveOnly()">Save uploads</button>
-        <button type="button" class="btn" onclick="buildReport()">Build report</button>
-      </form>
-    </div>
-
-  </div>
+<div class="upload-actions">
+  <form method="post" action="/admin/build-report" id="build-form">
+    <input type="hidden" name="client_slug" id="build-client">
+    <input type="hidden" name="period" id="build-period">
+    <button type="button" class="button button--ghost" onclick="saveOnly()">Save uploads</button>
+    <button type="button" class="button button--primary" onclick="buildReport()">Build report</button>
+  </form>
 </div>
 
 <script>

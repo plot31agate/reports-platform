@@ -302,10 +302,13 @@ async def admin_new_client_post(request: Request):
 def admin_upload_get(request: Request, client: str = None):
     _require_admin_or_redirect(request)
     default_period = datetime.utcnow().strftime("%Y-%m")
+    clients = list_clients()
     return _render(
         "admin/upload.html",
-        clients=list_clients(),
-        selected_client=client or "sportingtech",
+        active="upload",
+        nav_clients=clients,
+        clients=clients,
+        selected_client=client or (clients[0]["slug"] if clients else "sportingtech"),
         default_period=default_period,
         source_defs=SOURCE_DEFS,
     )
