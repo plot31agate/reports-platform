@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS uploads (
     summary_json TEXT,
     UNIQUE(client_slug, period, source_key)
 );
+
+CREATE TABLE IF NOT EXISTS report_commentary (
+    client_slug  TEXT NOT NULL,
+    period       TEXT NOT NULL,
+    headline     TEXT,
+    standfirst   TEXT,
+    notes_json   TEXT,
+    actions_json TEXT,
+    updated_at   TEXT NOT NULL,
+    UNIQUE(client_slug, period)
+);
 """
 
 
@@ -160,6 +171,28 @@ def list_uploads(client_slug, period):
             (client_slug, period)
         ).fetchall()
         return {r["source_key"]: dict(r) for r in rows}
+
+
+def get_commentary(client_slug: str, period: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM report_commentary WHERE client_slug=? AND period=?",
+            (client_slug, period),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def upsert_commentary(client_slug, period, headline, standfirst, notes_json, actions_json):
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO report_commentary (client_slug, period, headline, standfirst, notes_json, actions_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(client_slug, period) DO UPDATE SET
+                headline=excluded.headline, standfirst=excluded.standfirst,
+                notes_json=excluded.notes_json, actions_json=excluded.actions_json,
+                updated_at=excluded.updated_at
+        """, (client_slug, period, headline, standfirst, notes_json, actions_json, now))
 
 
 def get_report_by_token(token: str):

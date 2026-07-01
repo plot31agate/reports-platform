@@ -47,8 +47,23 @@ from app.db import (
     upsert_report,
     upsert_upload,
     list_uploads,
+    get_commentary,
+    upsert_commentary,
 )
 from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
+
+# Sections that accept an optional operator note on the review screen.
+REVIEW_NOTE_SECTIONS = [
+    ("media", "Media coverage"),
+    ("sov", "Share of voice"),
+    ("execs", "Executive mentions"),
+    ("sentiment", "Sentiment tracking"),
+    ("traffic", "Website traffic"),
+    ("backlinks", "Referring domains"),
+    ("campaigns", "Campaigns & events"),
+    ("linkedin", "LinkedIn"),
+    ("technical_seo", "Technical SEO & Site Health"),
+]
 from app.reports.builder import build_report
 
 
@@ -275,9 +290,99 @@ async def admin_build_report_post(request: Request, client_slug: str = Form(...)
     _require_admin_or_redirect(request)
     try:
         build_report(client_slug, period)
-        return RedirectResponse(f"/admin?message=Report+built+for+{client_slug}+{period}", status_code=302)
+        # Hand off to the review + edit commentary screen.
+        return RedirectResponse(f"/admin/review?client={client_slug}&period={period}", status_code=302)
     except Exception as e:
         return RedirectResponse(f"/admin?error=Build+failed:+{str(e)[:200]}", status_code=302)
+
+
+# ------------------- ADMIN REVIEW & EDIT COMMENTARY -------------------
+
+def _blank_actions():
+    return {"lean_into": [], "investigate": [], "fix_urgently": None}
+
+
+@app.get("/admin/review", response_class=HTMLResponse)
+def admin_review_get(request: Request, client: str, period: str, message: str = None):
+    _require_admin_or_redirect(request)
+
+    row = get_commentary(client, period)
+    if row is None:
+        # No build has happened yet — send them back to upload.
+        return RedirectResponse(f"/admin/upload?client={client}", status_code=302)
+
+    actions = json.loads(row["actions_json"]) if row.get("actions_json") else _blank_actions()
+    notes = json.loads(row["notes_json"]) if row.get("notes_json") else {}
+
+    # Pad the recommendation buckets to fixed slots for the form.
+    lean = (actions.get("lean_into") or [])[:3] + [{"action": "", "why": ""}] * 3
+    invest = (actions.get("investigate") or [])[:3] + [{"action": "", "why": ""}] * 3
+    fix = actions.get("fix_urgently") or {"action": "", "why": ""}
+
+    html_path = settings.reports_out_dir / client / f"{period}.html"
+    preview_url = f"/c/{client}/{period}" if html_path.exists() else None
+
+    return _render(
+        "admin/review.html",
+        client_slug=client,
+        period=period,
+        headline=row.get("headline") or "Performance Report",
+        standfirst=row.get("standfirst") or "",
+        notes=notes,
+        note_sections=REVIEW_NOTE_SECTIONS,
+        lean=lean[:3],
+        invest=invest[:3],
+        fix=fix,
+        preview_url=preview_url,
+        message=message,
+    )
+
+
+@app.post("/admin/review")
+async def admin_review_post(request: Request):
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period")
+
+    headline = (form.get("headline") or "").strip() or "Performance Report"
+    standfirst = (form.get("standfirst") or "").strip()
+
+    notes = {}
+    for key, _label in REVIEW_NOTE_SECTIONS:
+        val = (form.get(f"note_{key}") or "").strip()
+        if val:
+            notes[key] = val
+
+    def _bucket(prefix):
+        items = []
+        for i in range(3):
+            action = (form.get(f"{prefix}_{i}_action") or "").strip()
+            why = (form.get(f"{prefix}_{i}_why") or "").strip()
+            if action:
+                items.append({"action": action, "why": why})
+        return items
+
+    fix_action = (form.get("fix_0_action") or "").strip()
+    fix_why = (form.get("fix_0_why") or "").strip()
+    actions = {
+        "lean_into": _bucket("lean_into"),
+        "investigate": _bucket("investigate"),
+        "fix_urgently": {"action": fix_action, "why": fix_why} if fix_action else None,
+    }
+
+    upsert_commentary(
+        client_slug, period, headline, standfirst,
+        json.dumps(notes), json.dumps(actions),
+    )
+
+    # Regenerate HTML + PDF with the edited commentary.
+    try:
+        build_report(client_slug, period)
+    except Exception as e:
+        return RedirectResponse(f"/admin/review?client={client_slug}&period={period}&message=Saved+but+build+failed:+{str(e)[:120]}", status_code=302)
+
+    return RedirectResponse(f"/admin?message=Report+updated+for+{client_slug}+{period}", status_code=302)
 
 
 # ------------------- ADMIN FETCH MENTIONS -------------------

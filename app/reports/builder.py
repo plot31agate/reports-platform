@@ -1,4 +1,5 @@
 """Report builder — orchestrates parsing, sentiment, synthesis, and rendering."""
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.clients import get_client
 from app.config import settings
-from app.db import upsert_report
+from app.db import upsert_report, get_commentary, upsert_commentary
 from app.ingestion.parsers import parse_all
 from app.reports.pdf import render_pdf
 from app.sentiment import classify_mentions, synthesise_actions
@@ -46,6 +47,13 @@ def build_report(client_slug: str, period: str) -> dict:
     assembled = {**parsed, "sentiment": sentiment}
     actions = synthesise_actions(assembled, client_config)
 
+    # 3b. Commentary — seed from AI actions on first build, then use saved edits.
+    commentary = _load_or_seed_commentary(client_slug, period, actions)
+
+    # If the operator has edited the recommendations, override the AI output.
+    if commentary.get("actions"):
+        actions = {"configured": True, "content": commentary["actions"]}
+
     # 4. Render HTML
     context = {
         "client": client_config,
@@ -56,6 +64,7 @@ def build_report(client_slug: str, period: str) -> dict:
         "data": parsed,
         "sentiment": sentiment,
         "actions": actions,
+        "commentary": commentary,
         "technical_seo": _build_technical_seo(parsed, period),
     }
 
@@ -81,6 +90,32 @@ def build_report(client_slug: str, period: str) -> dict:
         "pdf_path": str(pdf_path),
         "period": period,
         "client_slug": client_slug,
+    }
+
+
+def _load_or_seed_commentary(client_slug: str, period: str, actions: dict) -> dict:
+    """Return commentary as a dict {headline, standfirst, notes, actions}.
+
+    On the first build for a period, seed a row from the AI-generated actions so the
+    review screen has something to edit. On later builds, use the saved edits verbatim.
+    """
+    row = get_commentary(client_slug, period)
+    if row is None:
+        seed_actions = (actions or {}).get("content") or None
+        upsert_commentary(
+            client_slug, period,
+            headline="Performance Report",
+            standfirst="",
+            notes_json=json.dumps({}),
+            actions_json=json.dumps(seed_actions) if seed_actions else None,
+        )
+        row = get_commentary(client_slug, period)
+
+    return {
+        "headline": row.get("headline") or "Performance Report",
+        "standfirst": row.get("standfirst") or "",
+        "notes": json.loads(row["notes_json"]) if row.get("notes_json") else {},
+        "actions": json.loads(row["actions_json"]) if row.get("actions_json") else None,
     }
 
 

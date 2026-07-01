@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ client.display_name }} — {{ period_display }} Report{% endblock %}
 {% block body %}
+{% macro note(key) %}
+{% if commentary and commentary.notes and commentary.notes.get(key) %}
+<div class="section__note">{{ commentary.notes.get(key) }}</div>
+{% endif %}
+{% endmacro %}
 
 {# ================== TOP BAR ================== #}
 <div class="topbar">
@@ -26,8 +31,17 @@
     </g>
   </svg>
   <div class="hero__label">{{ period_display | upper }}</div>
-  <h1 class="hero__title">Performance<br>Report</h1>
+  <h1 class="hero__title">
+    {%- if commentary and commentary.headline and commentary.headline != "Performance Report" -%}
+      {{ commentary.headline }}
+    {%- else -%}
+      Performance<br>Report
+    {%- endif -%}
+  </h1>
   <div class="hero__brandline">{{ client.tagline }}</div>
+  {% if commentary and commentary.standfirst %}
+  <p class="hero__standfirst">{{ commentary.standfirst }}</p>
+  {% endif %}
 </div>
 
 {# ================== KPI STRIP ================== #}
@@ -81,6 +95,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Media coverage</h2>
   </div>
+  {{ note('media') }}
   {% if data.mentions.data and data.mentions.data.total > 0 %}
     <div class="section__grid">
       <div>
@@ -117,6 +132,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Share of voice</h2>
   </div>
+  {{ note('sov') }}
   <p class="muted">Share of voice benchmarks vs {{ client.competitors|length }} tracked competitors ({{ client.competitors|join(', ') }}). Populate by adding a <code>sov.csv</code> file with columns: brand, mentions.</p>
 </div>
 
@@ -126,6 +142,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Executive mentions</h2>
   </div>
+  {{ note('execs') }}
   {% if client.executives %}
     <p class="muted">Tracking mentions of: {{ client.executives|join(', ') }}. Filter the mentions CSV by executive name to populate this section — will auto-detect in v2.</p>
   {% else %}
@@ -139,6 +156,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Sentiment tracking</h2>
   </div>
+  {{ note('sentiment') }}
   {% if sentiment.configured and sentiment.total > 0 %}
     {% set pos_pct = (sentiment.positive / sentiment.total * 100) if sentiment.total else 0 %}
     {% set neu_pct = (sentiment.neutral / sentiment.total * 100) if sentiment.total else 0 %}
@@ -181,6 +199,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Website traffic</h2>
   </div>
+  {{ note('traffic') }}
   {% if data.ga4_export.data %}
     <div class="section__grid">
       <div>
@@ -222,6 +241,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Referring domains</h2>
   </div>
+  {{ note('backlinks') }}
   {% if data.ahrefs_backlinks.data %}
     <div class="section__grid">
       <div>
@@ -255,6 +275,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Campaigns &amp; events</h2>
   </div>
+  {{ note('campaigns') }}
   {% if data.similarweb_traffic.data %}
     <div class="section__grid">
       <div>
@@ -289,6 +310,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">LinkedIn</h2>
   </div>
+  {{ note('linkedin') }}
   {% if data.linkedin_company.data %}
     <div class="section__grid">
       <div>
@@ -323,6 +345,7 @@
     <div class="section__rule"></div>
     <h2 class="section__title">Technical SEO &amp; Site Health</h2>
   </div>
+  {{ note('technical_seo') }}
   {% if technical_seo %}
     {% set tseo = technical_seo %}
     {% set cur = tseo.current %}
