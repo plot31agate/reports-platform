@@ -194,6 +194,11 @@ def _client_kpis(slug: str, reports: list) -> dict:
         m = ups.get("mentions")
         coverage = m["row_count"] if m and m.get("row_count") else 0
 
+    try:
+        hero = get_client(slug).get("colours", {}).get("hero") or "#0C0D0E"
+    except KeyError:
+        hero = "#0C0D0E"
+
     return {
         "latest_period": latest["period"] if latest else None,
         "updated_at": latest["updated_at"][:10] if latest else None,
@@ -202,6 +207,7 @@ def _client_kpis(slug: str, reports: list) -> dict:
         "sources_filled": sources_filled,
         "status": "live" if latest else "empty",
         "spark": spark[-6:],
+        "hero": hero,
     }
 
 

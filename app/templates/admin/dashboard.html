@@ -70,7 +70,7 @@
   {% set reports = reports_by_client.get(client.slug, []) %}
   <div class="client-card">
     <div class="client-card__top">
-      <div class="client-card__logo">{{ client.display_name[0] | upper }}</div>
+      <div class="client-card__logo" style="background:linear-gradient(135deg, {{ k.hero }}, {{ k.hero }}cc);">{{ client.display_name[0] | upper }}</div>
       <div>
         <div class="client-card__name">{{ client.display_name }}</div>
         <div class="client-card__meta">
