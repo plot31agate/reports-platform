@@ -33,10 +33,15 @@ jobs:
             **/*.pyc
             .env
             reporting.db
+            *.db
+            *.sqlite
             data/**
             reports_out/**
+            sample_data/**
 
       - name: Restart service via webhook
         run: |
-          curl -sf "https://digital-footprints.co.uk/deploy-restart.php?token=${{ secrets.DEPLOY_WEBHOOK_TOKEN }}" \
+          curl -sf -X POST \
+            -H "X-Deploy-Token: ${{ secrets.DEPLOY_WEBHOOK_TOKEN }}" \
+            "https://digital-footprints.co.uk/deploy-restart.php" \
             || (echo "Restart webhook failed" && exit 1)

@@ -6,9 +6,11 @@ venv/
 .venv/
 reporting.db
 reporting.db-journal
-data/*/2*/
-reports_out/*/2*/
+*.db
+*.sqlite
+data/
 !data/.gitkeep
+reports_out/
 !reports_out/.gitkeep
 .DS_Store
 *.log
