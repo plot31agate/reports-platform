@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Upload data — Admin{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div class="topbar__brand">
+    <span>DIGITAL <span class="accent">FOOTPRINTS</span></span>
+  </div>
+  <div class="topbar__breadcrumbs">ADMIN · UPLOAD</div>
+  <div class="topbar__actions">
+    <a class="topbar__link" href="/admin">← Back to dashboard</a>
+  </div>
+</div>
+
+<div class="admin-shell">
+  <div class="admin-container" style="max-width:720px;">
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    {% if message %}<div class="success">{{ message }}</div>{% endif %}
+
+    <div class="admin-card">
+      <h2>Upload monthly data</h2>
+      <p style="color:var(--grey-600);font-size:14px;margin-bottom:24px;">
+        Select the client and reporting period, then drop the CSV/XLSX exports.
+        The system reads filename prefixes to route each file to the right parser —
+        e.g. <code>ahrefs_backlinks_june.csv</code>, <code>ga4_export.csv</code>,
+        <code>mentions.csv</code>. See README for the full list.
+      </p>
+
+      <form method="post" action="/admin/upload" enctype="multipart/form-data">
+        <div class="form-row">
+          <label>Client</label>
+          <select name="client_slug" required>
+            {% for c in clients %}
+            <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>
+              {{ c.display_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>Period (YYYY-MM)</label>
+          <input name="period" placeholder="{{ default_period }}" value="{{ default_period }}" required>
+        </div>
+
+        <div class="upload-drop">
+          <div style="font-weight:600;color:var(--grey-800);margin-bottom:4px;">Drop CSV / XLSX files</div>
+          <div style="font-size:12px;color:var(--grey-600);">Multiple files at once. Existing files for this period will be overwritten.</div>
+          <input type="file" name="files" multiple required accept=".csv,.xlsx,.xls">
+        </div>
+
+        <div style="margin-top:24px;display:flex;gap:12px;">
+          <button class="btn" type="submit" name="action" value="upload_only">Upload only</button>
+          <button class="btn" type="submit" name="action" value="upload_and_build">Upload &amp; build report</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="admin-card">
+      <h2>Expected filename patterns</h2>
+      <div class="rows" style="font-size:13px;">
+        {% for key, label in file_hints %}
+        <div class="rows__row">
+          <span>{{ label }}</span>
+          <span style="font-family:monospace;font-size:12px;color:var(--grey-600);">{{ key }}*.csv</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

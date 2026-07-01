@@ -1,0 +1,16 @@
+[Unit]
+Description=Digital Footprints Reporting Platform
+After=network.target
+
+[Service]
+Type=simple
+User=wwwdfootdigi
+Group=wwwdfootdigi
+WorkingDirectory=/home/wwwdfootdigi/apps/reporting
+EnvironmentFile=/home/wwwdfootdigi/apps/reporting/.env
+ExecStart=/home/wwwdfootdigi/apps/reporting/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

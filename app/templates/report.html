@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}{{ client.display_name }} — {{ period_display }} Report{% endblock %}
+{% block body %}
+
+{# ================== TOP BAR ================== #}
+<div class="topbar">
+  <div class="topbar__brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+      <path d="M2 9 L11 2 L20 9 L17 9 L11 5 L5 9 Z" fill="#00D8AE"/>
+      <path d="M2 16 L11 9 L20 16 L17 16 L11 12 L5 16 Z" fill="#00D8AE"/>
+    </svg>
+    <span>SPORTING<span class="accent">TECH</span></span>
+  </div>
+  <div class="topbar__breadcrumbs">BUILD — EXPAND — GROW</div>
+  <div class="topbar__meta">{{ period_display }} · generated {{ generated_at }}</div>
+</div>
+
+{# ================== HERO ================== #}
+<div class="hero">
+  <svg class="hero__chevrons" width="260" height="140" viewBox="0 0 260 140" aria-hidden="true">
+    <g fill="#00D8AE">
+      <polygon points="130,0 155,0 75,140 50,140"/>
+      <polygon points="160,0 185,0 105,140 80,140"/>
+      <polygon points="190,0 215,0 135,140 110,140"/>
+      <polygon points="220,0 245,0 165,140 140,140"/>
+    </g>
+  </svg>
+  <div class="hero__label">{{ period_display | upper }}</div>
+  <h1 class="hero__title">Performance<br>Report</h1>
+  <div class="hero__brandline">{{ client.tagline }}</div>
+</div>
+
+{# ================== KPI STRIP ================== #}
+<div class="kpis">
+  {% set mentions_total = (data.mentions.data.total if data.mentions.data else 0) or 0 %}
+  <div class="kpi">
+    <div class="kpi__label">Coverage</div>
+    <div class="kpi__value">{{ mentions_total | thousands }}</div>
+    <div class="kpi__trend kpi__trend--flat">mentions this month</div>
+  </div>
+
+  {% set sent_score = sentiment.avg_score %}
+  <div class="kpi {% if sent_score and sent_score < 0 %}kpi--negative{% endif %}">
+    <div class="kpi__label">Sentiment</div>
+    <div class="kpi__value">
+      {% if sent_score is not none %}
+        {{ '{:+.2f}'.format(sent_score) }}
+      {% else %}
+        —
+      {% endif %}
+    </div>
+    <div class="kpi__trend kpi__trend--flat">
+      {% if sentiment.configured %}across {{ sentiment.total }} mentions
+      {% else %}sentiment API not configured
+      {% endif %}
+    </div>
+  </div>
+
+  {% set traffic = (data.ga4_export.data.users if data.ga4_export.data else None) %}
+  <div class="kpi">
+    <div class="kpi__label">Website users</div>
+    <div class="kpi__value">
+      {% if traffic %}{{ traffic | thousands }}{% else %}—{% endif %}
+    </div>
+    <div class="kpi__trend kpi__trend--flat">total users</div>
+  </div>
+
+  {% set refdomains = (data.ahrefs_backlinks.data.referring_domains if data.ahrefs_backlinks.data else None) %}
+  <div class="kpi">
+    <div class="kpi__label">Referring domains</div>
+    <div class="kpi__value">
+      {% if refdomains %}{{ refdomains | thousands }}{% else %}—{% endif %}
+    </div>
+    <div class="kpi__trend kpi__trend--flat">from Ahrefs</div>
+  </div>
+</div>
+
+{# ================== 1. MEDIA COVERAGE ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Media coverage</h2>
+  </div>
+  {% if data.mentions.data and data.mentions.data.total > 0 %}
+    <div class="section__grid">
+      <div>
+        <div class="section__subhead">Top sources</div>
+        <div class="rows">
+          {% for src in data.mentions.data.top_sources[:8] %}
+          <div class="rows__row">
+            <span>{{ src.source }}</span>
+            <span class="rows__value">{{ src.count }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="section__subhead">Latest mentions</div>
+        <div class="rows">
+          {% for m in data.mentions.data.mentions[:6] %}
+          <div class="rows__row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+            <span style="font-weight:600;font-size:13px;">{{ m.title }}</span>
+            <span style="font-size:11px;color:#666;">{{ m.source }} · {{ m.date }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No mentions data uploaded for this period.</p>
+  {% endif %}
+</div>
+
+{# ================== 2. SHARE OF VOICE ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Share of voice</h2>
+  </div>
+  <p class="muted">Share of voice benchmarks vs {{ client.competitors|length }} tracked competitors ({{ client.competitors|join(', ') }}). Populate by adding a <code>sov.csv</code> file with columns: brand, mentions.</p>
+</div>
+
+{# ================== 3. EXECUTIVE MENTIONS ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Executive mentions</h2>
+  </div>
+  {% if client.executives %}
+    <p class="muted">Tracking mentions of: {{ client.executives|join(', ') }}. Filter the mentions CSV by executive name to populate this section — will auto-detect in v2.</p>
+  {% else %}
+    <p class="muted">No executives configured. Add names to <code>app/clients/sportingtech.py</code>.</p>
+  {% endif %}
+</div>
+
+{# ================== 4. SENTIMENT TRACKING ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Sentiment tracking</h2>
+  </div>
+  {% if sentiment.configured and sentiment.total > 0 %}
+    {% set pos_pct = (sentiment.positive / sentiment.total * 100) if sentiment.total else 0 %}
+    {% set neu_pct = (sentiment.neutral / sentiment.total * 100) if sentiment.total else 0 %}
+    {% set neg_pct = (sentiment.negative / sentiment.total * 100) if sentiment.total else 0 %}
+    <div class="sentiment-mix">
+      <div class="sentiment-mix__pos" style="flex:{{ sentiment.positive }};"></div>
+      <div class="sentiment-mix__neu" style="flex:{{ sentiment.neutral }};"></div>
+      <div class="sentiment-mix__neg" style="flex:{{ sentiment.negative }};"></div>
+    </div>
+    <div class="sentiment-legend">
+      <span><span class="dot" style="background:var(--teal)"></span>Positive {{ sentiment.positive }} ({{ '{:.0f}'.format(pos_pct) }}%)</span>
+      <span><span class="dot" style="background:var(--grey-400)"></span>Neutral {{ sentiment.neutral }} ({{ '{:.0f}'.format(neu_pct) }}%)</span>
+      <span><span class="dot" style="background:var(--coral)"></span>Negative {{ sentiment.negative }} ({{ '{:.0f}'.format(neg_pct) }}%)</span>
+    </div>
+
+    <div class="section__subhead" style="margin-top:20px;">Sample scored mentions</div>
+    <div class="rows">
+      {% for m in sentiment.scored[:6] %}
+      <div class="rows__row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+        <span style="font-weight:600;font-size:13px;">
+          {% if m.classification == 'positive' %}<span style="color:var(--accent-strong);">+</span>
+          {% elif m.classification == 'negative' %}<span style="color:var(--negative);">−</span>
+          {% else %}<span style="color:var(--grey-400);">·</span>{% endif %}
+          {{ m.title }}
+        </span>
+        <span style="font-size:11px;color:#666;">{{ m.rationale }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  {% elif not sentiment.configured %}
+    <p class="muted">Claude API not configured. Set <code>ANTHROPIC_API_KEY</code> in the environment to enable sentiment classification.</p>
+  {% else %}
+    <p class="muted">No mentions to score for this period.</p>
+  {% endif %}
+</div>
+
+{# ================== 5. WEBSITE TRAFFIC ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Website traffic</h2>
+  </div>
+  {% if data.ga4_export.data %}
+    <div class="section__grid">
+      <div>
+        <div class="section__subhead">Overview</div>
+        <div class="rows">
+          <div class="rows__row"><span>Users</span><span class="rows__value">{{ (data.ga4_export.data.users or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Sessions</span><span class="rows__value">{{ (data.ga4_export.data.sessions or 0) | thousands }}</span></div>
+        </div>
+        {% if data.search_console.data %}
+        <div class="section__subhead" style="margin-top:20px;">Search Console</div>
+        <div class="rows">
+          <div class="rows__row"><span>Clicks</span><span class="rows__value">{{ (data.search_console.data.clicks or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Impressions</span><span class="rows__value">{{ (data.search_console.data.impressions or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Avg CTR</span><span class="rows__value">{{ data.search_console.data.avg_ctr or '—' }}%</span></div>
+          <div class="rows__row"><span>Avg position</span><span class="rows__value">{{ data.search_console.data.avg_position or '—' }}</span></div>
+        </div>
+        {% endif %}
+      </div>
+      <div>
+        <div class="section__subhead">Top pages</div>
+        <div class="rows">
+          {% for p in data.ga4_export.data.top_pages[:8] %}
+          <div class="rows__row">
+            <span style="font-size:12px;">{{ p.name[:50] }}</span>
+            <span class="rows__value">{{ p.value | thousands }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No GA4 data uploaded for this period.</p>
+  {% endif %}
+</div>
+
+{# ================== 6. REFERRING DOMAINS ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Referring domains</h2>
+  </div>
+  {% if data.ahrefs_backlinks.data %}
+    <div class="section__grid">
+      <div>
+        <div class="section__subhead">Overview</div>
+        <div class="rows">
+          <div class="rows__row"><span>Total backlinks</span><span class="rows__value">{{ (data.ahrefs_backlinks.data.total_backlinks or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Referring domains</span><span class="rows__value">{{ (data.ahrefs_backlinks.data.referring_domains or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Avg DR</span><span class="rows__value">{{ data.ahrefs_backlinks.data.avg_referring_dr or '—' }}</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="section__subhead">Top referring domains</div>
+        <div class="rows">
+          {% for d in data.ahrefs_backlinks.data.top_referring_domains[:8] %}
+          <div class="rows__row">
+            <span>{{ d.domain }}</span>
+            <span class="rows__value">{{ d.backlinks | thousands }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No Ahrefs data uploaded for this period.</p>
+  {% endif %}
+</div>
+
+{# ================== 7. CAMPAIGN & EVENT PERFORMANCE ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Campaigns &amp; events</h2>
+  </div>
+  {% if data.similarweb_traffic.data %}
+    <div class="section__grid">
+      <div>
+        <div class="section__subhead">Similarweb overview</div>
+        <div class="rows">
+          <div class="rows__row"><span>Total visits</span><span class="rows__value">{{ (data.similarweb_traffic.data.total_visits or 0) | thousands }}</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="section__subhead">By region</div>
+        <div class="bars">
+          {% for c in data.similarweb_traffic.data.top_countries[:6] %}
+          <div class="bars__row">
+            <div class="bars__label">{{ c.country }}</div>
+            <div class="bars__track">
+              <div class="bars__fill{% if loop.first %} bars__fill--hero{% endif %}" style="width:{{ c.share }}%;"></div>
+            </div>
+            <div class="bars__value">{{ c.share }}%</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No campaign or Similarweb data uploaded for this period.</p>
+  {% endif %}
+</div>
+
+{# ================== LINKEDIN ================== #}
+<div class="section">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">LinkedIn</h2>
+  </div>
+  {% if data.linkedin_company.data %}
+    <div class="section__grid">
+      <div>
+        <div class="section__subhead">Company page</div>
+        <div class="rows">
+          <div class="rows__row"><span>Followers</span><span class="rows__value">{{ (data.linkedin_company.data.followers or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Growth this month</span><span class="rows__value">+{{ (data.linkedin_company.data.follower_growth or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Impressions</span><span class="rows__value">{{ (data.linkedin_company.data.impressions or 0) | thousands }}</span></div>
+          <div class="rows__row"><span>Engagements</span><span class="rows__value">{{ (data.linkedin_company.data.engagements or 0) | thousands }}</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="section__subhead">Top posts</div>
+        <div class="rows">
+          {% for p in data.linkedin_company.data.top_posts[:5] %}
+          <div class="rows__row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+            <span style="font-size:12px;">{{ p.title[:80] }}</span>
+            <span style="font-size:11px;color:#666;">{{ p.impressions | thousands }} impressions</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <p class="muted">No LinkedIn data uploaded for this period.</p>
+  {% endif %}
+</div>
+
+{# ================== 8. NEXT MONTH'S ACTIONS ================== #}
+<div class="actions-block">
+  <div class="section__header">
+    <div class="section__rule"></div>
+    <h2 class="section__title">Next month's actions</h2>
+  </div>
+  {% if actions.configured and actions.content %}
+    <div class="subhead">Lean into</div>
+    {% for item in actions.content.lean_into or [] %}
+    <div class="action-item">
+      <div class="action-item__what">→ {{ item.action }}</div>
+      <div class="action-item__why">{{ item.why }}</div>
+    </div>
+    {% endfor %}
+
+    <div class="subhead">Investigate</div>
+    {% for item in actions.content.investigate or [] %}
+    <div class="action-item">
+      <div class="action-item__what">→ {{ item.action }}</div>
+      <div class="action-item__why">{{ item.why }}</div>
+    </div>
+    {% endfor %}
+
+    {% if actions.content.fix_urgently %}
+    <div class="subhead subhead--fix">Fix urgently</div>
+    <div class="action-item">
+      <div class="action-item__what">→ {{ actions.content.fix_urgently.action }}</div>
+      <div class="action-item__why">{{ actions.content.fix_urgently.why }}</div>
+    </div>
+    {% endif %}
+  {% elif not actions.configured %}
+    <p style="color:#aaa;font-style:italic;">Claude API not configured — set <code>ANTHROPIC_API_KEY</code> to enable next-month synthesis.</p>
+  {% else %}
+    <p style="color:#aaa;font-style:italic;">Not enough data to synthesise actions.</p>
+  {% endif %}
+</div>
+
+{# ================== FOOTER ================== #}
+<div class="footer">
+  <div class="footer__mark">{{ client.display_name | upper }} · CONFIDENTIAL · {{ generated_at }}</div>
+  <div class="footer__actions">
+    <a href="?format=pdf" class="footer__btn">Export PDF</a>
+  </div>
+</div>
+
+{% endblock %}

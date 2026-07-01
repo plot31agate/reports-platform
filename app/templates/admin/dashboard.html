@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Admin — Digital Footprints Reporting{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div class="topbar__brand">
+    <span>DIGITAL <span class="accent">FOOTPRINTS</span></span>
+  </div>
+  <div class="topbar__breadcrumbs">ADMIN</div>
+  <div class="topbar__actions">
+    <a class="topbar__link" href="/admin/upload">+ New report</a>
+    <a class="topbar__link" href="/admin/logout">Sign out</a>
+  </div>
+</div>
+
+<div class="admin-shell">
+  <div class="admin-container">
+    {% if message %}<div class="success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+    {% for client in clients %}
+    <div class="admin-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 style="margin:0;">{{ client.display_name }}</h2>
+        <a class="btn btn--secondary" href="/admin/upload?client={{ client.slug }}">Upload for {{ client.display_name }}</a>
+      </div>
+
+      {% set client_reports = reports_by_client.get(client.slug, []) %}
+      {% if client_reports %}
+        <div class="rows">
+          {% for r in client_reports %}
+          <div class="rows__row">
+            <div>
+              <span style="font-weight:600;">{{ r.period }}</span>
+              <span style="font-size:12px;color:var(--grey-600);margin-left:12px;">updated {{ r.updated_at[:10] }}</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <a class="topbar__link" style="color:var(--grey-800);border-color:var(--border);" href="/c/{{ r.client_slug }}/{{ r.period }}" target="_blank">View</a>
+              <a class="topbar__link" style="color:var(--grey-800);border-color:var(--border);" href="/c/{{ r.client_slug }}/{{ r.period }}?format=pdf" target="_blank">PDF</a>
+              <form method="post" action="/admin/share" style="display:inline;">
+                <input type="hidden" name="report_id" value="{{ r.id }}">
+                <button class="topbar__link" style="color:var(--grey-800);border-color:var(--border);background:none;cursor:pointer;font-family:inherit;">Share link</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">No reports yet for this client.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if share_url %}
+    <div class="admin-card">
+      <h2>Shareable link</h2>
+      <div class="form-row">
+        <label>Copy this URL — expires in 90 days</label>
+        <input value="{{ share_url }}" readonly onclick="this.select()">
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

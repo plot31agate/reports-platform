@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Admin login — Digital Footprints Reporting{% endblock %}
+{% block body %}
+<div class="admin-shell">
+  <div class="admin-container" style="max-width:420px;">
+    <div style="text-align:center;margin:40px 0 24px;">
+      <div style="font-family:var(--font-heading);font-weight:900;font-style:italic;text-transform:uppercase;font-size:22px;letter-spacing:0.04em;">
+        Digital Footprints
+      </div>
+      <div style="font-size:12px;color:var(--grey-600);letter-spacing:0.2em;margin-top:4px;">REPORTING PLATFORM</div>
+    </div>
+
+    <div class="admin-card">
+      <h2>Sign in</h2>
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+      <form method="post" action="/admin/login">
+        <div class="form-row">
+          <label>Username</label>
+          <input name="username" required autofocus>
+        </div>
+        <div class="form-row">
+          <label>Password</label>
+          <input name="password" type="password" required>
+        </div>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
