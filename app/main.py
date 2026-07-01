@@ -18,6 +18,7 @@ Routes:
     POST /admin/share                  generate share link for a report
 """
 import json
+import re
 import secrets
 import subprocess
 import sys
@@ -49,6 +50,8 @@ from app.db import (
     list_uploads,
     get_commentary,
     upsert_commentary,
+    create_client,
+    get_client_row,
 )
 from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
 
@@ -78,6 +81,7 @@ env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),
 )
+env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else v
 
 
 @app.on_event("startup")
@@ -169,6 +173,38 @@ def admin_logout():
 
 # ------------------- ADMIN DASHBOARD -------------------
 
+def _client_kpis(slug: str, reports: list) -> dict:
+    """Derive light dashboard KPIs for a client from stored reports + uploads."""
+    reports = sorted(reports, key=lambda r: r["period"], reverse=True)
+    latest = reports[0] if reports else None
+
+    coverage = None
+    sources_filled = 0
+    spark = []  # coverage per period, oldest -> newest, for a mini bar chart
+
+    for r in sorted(reports, key=lambda r: r["period"]):
+        ups = list_uploads(slug, r["period"])
+        mentions = ups.get("mentions")
+        cov = mentions["row_count"] if mentions and mentions.get("row_count") else 0
+        spark.append({"period": r["period"], "coverage": cov})
+
+    if latest:
+        ups = list_uploads(slug, latest["period"])
+        sources_filled = sum(1 for u in ups.values() if u.get("parse_status") in ("ok", "warning"))
+        m = ups.get("mentions")
+        coverage = m["row_count"] if m and m.get("row_count") else 0
+
+    return {
+        "latest_period": latest["period"] if latest else None,
+        "updated_at": latest["updated_at"][:10] if latest else None,
+        "report_count": len(reports),
+        "coverage": coverage,
+        "sources_filled": sources_filled,
+        "status": "live" if latest else "empty",
+        "spark": spark[-6:],
+    }
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, message: str = None, error: str = None, share_url: str = None):
     _require_admin_or_redirect(request)
@@ -177,14 +213,87 @@ def admin_dashboard(request: Request, message: str = None, error: str = None, sh
     reports_by_client = {}
     for r in all_reports:
         reports_by_client.setdefault(r["client_slug"], []).append(r)
+
+    kpis_by_client = {c["slug"]: _client_kpis(c["slug"], reports_by_client.get(c["slug"], [])) for c in clients}
+
+    total_reports = len(all_reports)
+    total_coverage = sum((k["coverage"] or 0) for k in kpis_by_client.values())
+    active_clients = sum(1 for k in kpis_by_client.values() if k["status"] == "live")
+    latest_activity = max((k["updated_at"] for k in kpis_by_client.values() if k["updated_at"]), default=None)
+
+    overview = {
+        "clients": len(clients),
+        "active_clients": active_clients,
+        "reports": total_reports,
+        "coverage": total_coverage,
+        "latest_activity": latest_activity,
+        "source_count": len(SOURCE_DEFS),
+    }
+
     return _render(
         "admin/dashboard.html",
+        active="dashboard",
+        nav_clients=clients,
         clients=clients,
-        reports_by_client=reports_by_client,
+        reports_by_client={k: sorted(v, key=lambda r: r["period"], reverse=True) for k, v in reports_by_client.items()},
+        kpis_by_client=kpis_by_client,
+        overview=overview,
         message=message,
         error=error,
         share_url=share_url,
     )
+
+
+# ------------------- ADMIN NEW CLIENT -------------------
+
+def _slugify(name: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return s or "client"
+
+
+@app.get("/admin/clients/new", response_class=HTMLResponse)
+def admin_new_client_get(request: Request, error: str = None):
+    _require_admin_or_redirect(request)
+    return _render(
+        "admin/new_client.html",
+        active="dashboard",
+        nav_clients=list_clients(),
+        error=error,
+    )
+
+
+@app.post("/admin/clients/new")
+async def admin_new_client_post(request: Request):
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    display_name = (form.get("display_name") or "").strip()
+    if not display_name:
+        return RedirectResponse("/admin/clients/new?error=Enter+a+client+name", status_code=302)
+
+    slug = _slugify(form.get("slug") or display_name)
+    if slug in CLIENTS or get_client_row(slug):
+        return RedirectResponse(f"/admin/clients/new?error=Client+{slug}+already+exists", status_code=302)
+
+    def _lines(key):
+        raw = form.get(key) or ""
+        return [x.strip() for x in re.split(r"[\n,]+", raw) if x.strip()]
+
+    hero = (form.get("hero_colour") or "#FF4F40").strip()
+    accent = (form.get("accent_colour") or "#00D8AE").strip()
+    config = {
+        "brandline": (form.get("brandline") or "").strip(),
+        "tagline": (form.get("tagline") or "").strip(),
+        "colours": {"coral": hero, "hero": hero, "teal": accent, "accent": accent},
+        "executives": _lines("executives"),
+        "competitors": _lines("competitors"),
+        "regions_of_interest": _lines("regions"),
+    }
+    sc = (form.get("sentiment_context") or "").strip()
+    if sc:
+        config["sentiment_context"] = sc
+
+    create_client(slug, display_name, json.dumps(config))
+    return RedirectResponse(f"/admin?message=Client+{display_name}+added", status_code=302)
 
 
 # ------------------- ADMIN UPLOAD -------------------

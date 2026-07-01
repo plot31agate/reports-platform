@@ -1,71 +1,145 @@
-{% extends "base.html" %}
-{% block title %}Admin — Digital Footprints Reporting{% endblock %}
-{% block body %}
-<div class="topbar">
-  <div class="topbar__brand">
-    <span>DIGITAL <span class="accent">FOOTPRINTS</span></span>
+{% extends "admin/_shell.html" %}
+{% block title %}Dashboard — Digital Footprints{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">Overview</h1>
+    <div class="page-head__sub">
+      {% if overview.latest_activity %}Last activity {{ overview.latest_activity }}{% else %}No reports yet{% endif %}
+      · {{ overview.clients }} client{{ 's' if overview.clients != 1 }}
+    </div>
   </div>
-  <div class="topbar__breadcrumbs">ADMIN</div>
-  <div class="topbar__actions">
-    <a class="topbar__link" href="/admin/upload">+ New report</a>
-    <a class="topbar__link" href="/admin/logout">Sign out</a>
+  <div class="page-head__actions">
+    <a class="button button--ghost" href="/admin/clients/new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
+      New client
+    </a>
+    <a class="button button--primary" href="/admin/upload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New report
+    </a>
   </div>
 </div>
 
-<div class="admin-shell">
-  <div class="admin-container">
-    {% if message %}<div class="success">{{ message }}</div>{% endif %}
-    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if message %}<div class="flash flash--ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
 
-    {% for client in clients %}
-    <div class="admin-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2 style="margin:0;">{{ client.display_name }}</h2>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <form method="post" action="/admin/fetch-mentions" style="display:flex;gap:6px;align-items:center;">
-            <input type="hidden" name="client_slug" value="{{ client.slug }}">
-            <input name="period" placeholder="YYYY-MM" style="width:100px;padding:6px 10px;border:0.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;">
-            <button class="btn btn--secondary" type="submit" style="white-space:nowrap;">Fetch mentions</button>
-          </form>
-          <a class="btn btn--secondary" href="/admin/upload?client={{ client.slug }}">Upload data</a>
+{% if share_url %}
+<div class="share-box">
+  <strong style="font-size:13px;">Shareable link — expires in 90 days</strong>
+  <input value="{{ share_url }}" readonly onclick="this.select()">
+</div>
+{% endif %}
+
+<div class="kpi-grid">
+  <div class="stat stat--coral">
+    <div class="stat__accent"></div>
+    <div class="stat__label">Active clients</div>
+    <div class="stat__value">{{ overview.active_clients }}</div>
+    <div class="stat__foot">of {{ overview.clients }} in workspace</div>
+  </div>
+  <div class="stat stat--teal">
+    <div class="stat__accent"></div>
+    <div class="stat__label">Reports published</div>
+    <div class="stat__value">{{ overview.reports }}</div>
+    <div class="stat__foot">across all periods</div>
+  </div>
+  <div class="stat stat--blue">
+    <div class="stat__accent"></div>
+    <div class="stat__label">Coverage tracked</div>
+    <div class="stat__value">{{ overview.coverage | thousands }}</div>
+    <div class="stat__foot">mentions this cycle</div>
+  </div>
+  <div class="stat stat--amber">
+    <div class="stat__accent"></div>
+    <div class="stat__label">Data sources</div>
+    <div class="stat__value">{{ overview.source_count }}</div>
+    <div class="stat__foot">connectors available</div>
+  </div>
+</div>
+
+<div class="section-title">
+  <h2>Clients</h2>
+  <span class="count">{{ clients | length }}</span>
+</div>
+
+<div class="client-grid">
+  {% for client in clients %}
+  {% set k = kpis_by_client.get(client.slug) %}
+  {% set reports = reports_by_client.get(client.slug, []) %}
+  <div class="client-card">
+    <div class="client-card__top">
+      <div class="client-card__logo">{{ client.display_name[0] | upper }}</div>
+      <div>
+        <div class="client-card__name">{{ client.display_name }}</div>
+        <div class="client-card__meta">
+          {% if k.latest_period %}Latest {{ k.latest_period }}{% else %}Awaiting first upload{% endif %}
         </div>
       </div>
-
-      {% set client_reports = reports_by_client.get(client.slug, []) %}
-      {% if client_reports %}
-        <div class="rows">
-          {% for r in client_reports %}
-          <div class="rows__row">
-            <div>
-              <span style="font-weight:600;">{{ r.period }}</span>
-              <span style="font-size:12px;color:var(--grey-600);margin-left:12px;">updated {{ r.updated_at[:10] }}</span>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <a class="topbar__link" style="color:var(--grey-800);border-color:var(--border);" href="/c/{{ r.client_slug }}/{{ r.period }}" target="_blank">View</a>
-              <a class="topbar__link" style="color:var(--grey-800);border-color:var(--border);" href="/c/{{ r.client_slug }}/{{ r.period }}?format=pdf" target="_blank">PDF</a>
-              <form method="post" action="/admin/share" style="display:inline;">
-                <input type="hidden" name="report_id" value="{{ r.id }}">
-                <button class="topbar__link" style="color:var(--grey-800);border-color:var(--border);background:none;cursor:pointer;font-family:inherit;">Share link</button>
-              </form>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="muted">No reports yet for this client.</p>
-      {% endif %}
+      <span class="client-card__status status--{{ k.status }}">
+        <span class="dot"></span>{{ 'Live' if k.status == 'live' else 'Empty' }}
+      </span>
     </div>
-    {% endfor %}
 
-    {% if share_url %}
-    <div class="admin-card">
-      <h2>Shareable link</h2>
-      <div class="form-row">
-        <label>Copy this URL — expires in 90 days</label>
-        <input value="{{ share_url }}" readonly onclick="this.select()">
+    <div class="client-card__kpis">
+      <div class="mini">
+        <div class="mini__label">Coverage</div>
+        <div class="mini__value">{{ (k.coverage | thousands) if k.coverage is not none else '—' }}</div>
       </div>
+      <div class="mini">
+        <div class="mini__label">Sources</div>
+        <div class="mini__value">{{ k.sources_filled }}<span style="font-size:12px;color:var(--grey-400);">/{{ overview.source_count }}</span></div>
+      </div>
+      <div class="mini">
+        <div class="mini__label">Reports</div>
+        <div class="mini__value">{{ k.report_count }}</div>
+      </div>
+    </div>
+
+    {% if k.spark and k.spark | length > 1 %}
+    {% set maxcov = (k.spark | map(attribute='coverage') | max) or 1 %}
+    <div class="spark">
+      <div class="spark__row">
+        {% for s in k.spark %}
+        <div class="spark__bar" style="height:{{ (((s.coverage or 0) / maxcov) * 100) | round | int }}%;" title="{{ s.period }}: {{ s.coverage }}"></div>
+        {% endfor %}
+      </div>
+      <div class="spark__label">Coverage · last {{ k.spark | length }} periods</div>
     </div>
     {% endif %}
+
+    <div class="client-card__reports">
+      {% if reports %}
+        {% for r in reports[:3] %}
+        <div class="report-row">
+          <span class="report-row__period">{{ r.period }}</span>
+          <span class="report-row__date">updated {{ r.updated_at[:10] }}</span>
+          <span class="report-row__actions">
+            <a class="chip-link" href="/c/{{ r.client_slug }}/{{ r.period }}" target="_blank">View</a>
+            <a class="chip-link chip-link--go" href="/admin/review?client={{ r.client_slug }}&period={{ r.period }}">Edit</a>
+            <form method="post" action="/admin/share" style="display:inline;">
+              <input type="hidden" name="report_id" value="{{ r.id }}">
+              <button class="chip-link" type="submit">Share</button>
+            </form>
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="client-card__empty">No reports yet. Upload data to build the first one.</div>
+      {% endif %}
+    </div>
+
+    <div class="client-card__foot">
+      <a class="button button--ghost button--sm" href="/admin/upload?client={{ client.slug }}">Upload data</a>
+      <form method="post" action="/admin/fetch-mentions" style="flex:1;display:flex;gap:6px;">
+        <input type="hidden" name="client_slug" value="{{ client.slug }}">
+        <input name="period" placeholder="YYYY-MM" style="width:100%;padding:7px 10px;border:1px solid var(--line-strong);border-radius:8px;font-size:12px;font-family:inherit;">
+        <button class="button button--dark button--sm" type="submit">Fetch</button>
+      </form>
+    </div>
   </div>
+  {% endfor %}
 </div>
+
 {% endblock %}

@@ -77,6 +77,10 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        # Lightweight migration: config_json holds brand + context for DB-defined clients
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(clients)").fetchall()]
+        if "config_json" not in cols:
+            conn.execute("ALTER TABLE clients ADD COLUMN config_json TEXT")
         # Seed Sportingtech as first client if not present
         existing = conn.execute(
             "SELECT slug FROM clients WHERE slug = ?", ("sportingtech",)
@@ -91,9 +95,25 @@ def init_db():
 def list_clients():
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT slug, display_name FROM clients ORDER BY display_name"
+            "SELECT slug, display_name, config_json FROM clients ORDER BY display_name"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_client_row(slug: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT slug, display_name, config_json FROM clients WHERE slug = ?", (slug,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def create_client(slug: str, display_name: str, config_json: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO clients (slug, display_name, created_at, config_json) VALUES (?, ?, ?, ?)",
+            (slug, display_name, datetime.utcnow().isoformat(), config_json),
+        )
 
 
 def list_reports(client_slug: Optional[str] = None):

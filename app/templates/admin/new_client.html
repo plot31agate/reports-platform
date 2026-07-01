@@ -1,0 +1,151 @@
+{% extends "admin/_shell.html" %}
+{% block title %}New client — Digital Footprints{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">New client</h1>
+    <div class="page-head__sub">Set up a brand once. Its reports inherit these details.</div>
+  </div>
+  <a class="button button--ghost" href="/admin">Cancel</a>
+</div>
+
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+<form method="post" action="/admin/clients/new" class="setup" id="client-form">
+  <div class="setup__grid">
+
+    <div class="panel">
+      <div class="panel__head">
+        <span class="panel__num">1</span>
+        <div>
+          <div class="panel__title">Identity</div>
+          <div class="panel__hint">Name and brand line shown on the report cover.</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Client name</label>
+        <input name="display_name" id="name" placeholder="e.g. Northwind Gaming" required autofocus>
+      </div>
+      <div class="field">
+        <label>URL slug</label>
+        <input name="slug" id="slug" placeholder="northwind-gaming">
+        <div class="field__hint">Used in report links. Auto-filled from the name.</div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Brand line</label>
+          <input name="brandline" placeholder="Winning Edge">
+        </div>
+        <div class="field">
+          <label>Tagline</label>
+          <input name="tagline" placeholder="Build. Expand. Grow.">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head">
+        <span class="panel__num">2</span>
+        <div>
+          <div class="panel__title">Brand colours</div>
+          <div class="panel__hint">Drives the report hero and accent tones.</div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Hero colour</label>
+          <div class="swatch">
+            <input type="color" name="hero_colour" id="hero" value="#FF4F40">
+            <input type="text" id="hero-hex" value="#FF4F40" class="hex">
+          </div>
+        </div>
+        <div class="field">
+          <label>Accent colour</label>
+          <div class="swatch">
+            <input type="color" name="accent_colour" id="accent" value="#00D8AE">
+            <input type="text" id="accent-hex" value="#00D8AE" class="hex">
+          </div>
+        </div>
+      </div>
+      <div class="brand-preview" id="preview">
+        <div class="brand-preview__hero" id="pv-hero">
+          <span class="brand-preview__label">Preview</span>
+          <span class="brand-preview__title" id="pv-name">Client name</span>
+        </div>
+        <div class="brand-preview__chip" id="pv-accent">Accent</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head">
+        <span class="panel__num">3</span>
+        <div>
+          <div class="panel__title">Tracking</div>
+          <div class="panel__hint">Executives and competitors to watch in coverage. One per line.</div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Executives</label>
+          <textarea name="executives" rows="5" placeholder="Jane Doe&#10;John Smith"></textarea>
+        </div>
+        <div class="field">
+          <label>Competitors</label>
+          <textarea name="competitors" rows="5" placeholder="Rival One&#10;Rival Two"></textarea>
+        </div>
+      </div>
+      <div class="field">
+        <label>Regions of interest</label>
+        <input name="regions" placeholder="LATAM, Brazil, Europe">
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head">
+        <span class="panel__num">4</span>
+        <div>
+          <div class="panel__title">Sentiment context <span class="opt">optional</span></div>
+          <div class="panel__hint">Guides how Claude scores mentions. Leave blank for a sensible default.</div>
+        </div>
+      </div>
+      <div class="field">
+        <textarea name="sentiment_context" rows="5" placeholder="e.g. This is a B2B iGaming vendor. Regulatory clarity in new markets is POSITIVE..."></textarea>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="setup__foot">
+    <a class="button button--ghost" href="/admin">Cancel</a>
+    <button type="submit" class="button button--primary">Create client</button>
+  </div>
+</form>
+
+<script>
+(function () {
+  var name = document.getElementById('name');
+  var slug = document.getElementById('slug');
+  var pvName = document.getElementById('pv-name');
+  var hero = document.getElementById('hero'), heroHex = document.getElementById('hero-hex');
+  var accent = document.getElementById('accent'), accentHex = document.getElementById('accent-hex');
+  var pvHero = document.getElementById('pv-hero'), pvAccent = document.getElementById('pv-accent');
+  var slugEdited = false;
+
+  function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+  name.addEventListener('input', function(){
+    pvName.textContent = name.value || 'Client name';
+    if (!slugEdited) slug.value = slugify(name.value);
+  });
+  slug.addEventListener('input', function(){ slugEdited = true; });
+
+  function syncHero(){ pvHero.style.background = hero.value; heroHex.value = hero.value.toUpperCase(); }
+  function syncAccent(){ pvAccent.style.background = accent.value; accentHex.value = accent.value.toUpperCase(); }
+  hero.addEventListener('input', syncHero);
+  accent.addEventListener('input', syncAccent);
+  heroHex.addEventListener('input', function(){ if(/^#[0-9a-fA-F]{6}$/.test(heroHex.value)){ hero.value = heroHex.value; syncHero(); }});
+  accentHex.addEventListener('input', function(){ if(/^#[0-9a-fA-F]{6}$/.test(accentHex.value)){ accent.value = accentHex.value; syncAccent(); }});
+  syncHero(); syncAccent();
+})();
+</script>
+{% endblock %}

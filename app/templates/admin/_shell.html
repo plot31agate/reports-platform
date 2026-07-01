@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Admin — Digital Footprints{% endblock %}</title>
+<link rel="stylesheet" href="/static/css/brand.css">
+<link rel="stylesheet" href="/static/css/admin.css">
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="side__brand">
+      <span class="dot">
+        <svg width="15" height="15" viewBox="0 0 22 22" aria-hidden="true">
+          <path d="M2 9 L11 2 L20 9 L17 9 L11 5 L5 9 Z" fill="#fff"/>
+          <path d="M2 16 L11 9 L20 16 L17 16 L11 12 L5 16 Z" fill="#fff"/>
+        </svg>
+      </span>
+      <span>DIGITAL <span class="accent">FOOTPRINTS</span></span>
+    </div>
+
+    <div class="side__section">Workspace</div>
+    <a class="side__link {% if active == 'dashboard' %}side__link--active{% endif %}" href="/admin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      Dashboard
+    </a>
+    <a class="side__link {% if active == 'upload' %}side__link--active{% endif %}" href="/admin/upload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+      Upload data
+    </a>
+
+    <div class="side__section">Clients</div>
+    {% for c in nav_clients or [] %}
+    <a class="side__link" href="/admin/upload?client={{ c.slug }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
+      {{ c.display_name }}
+    </a>
+    {% endfor %}
+    <a class="side__link {% if active == 'new_client' %}side__link--active{% endif %}" href="/admin/clients/new" style="color:rgba(255,255,255,0.55);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Add client
+    </a>
+
+    <div class="side__spacer"></div>
+    <div class="side__foot">
+      <span class="side__user">Signed in</span>
+      <a class="side__signout" href="/admin/logout">Sign out</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    {% block main %}{% endblock %}
+  </main>
+</div>
+{% block body_extra %}{% endblock %}
+</body>
+</html>
