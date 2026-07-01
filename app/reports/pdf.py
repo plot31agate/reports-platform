@@ -10,4 +10,4 @@ def render_pdf(html_content: str, out_path: Path) -> None:
     # Lazy import — WeasyPrint has native deps we don't want to load at app startup
     from weasyprint import HTML
 
-    HTML(string=html_content).write_pdf(str(out_path))
+    HTML(string=html_content, base_url=None).write_pdf(str(out_path))
