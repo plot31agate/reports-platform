@@ -26,7 +26,13 @@ SPORTINGTECH = {
 
     # Fill these in with real names when known
     "executives": [
-        # "Nikolas Vlassopoulos",  # example — replace with real execs
+        "Nana Totoe",
+        "Emma Loveday",
+        "Camilo Millon",
+        "Tommy Molloy",
+        "Michael Jack",
+        "Anthony Murphy",
+        "Tom Ustunel",
     ],
 
     "competitors": [
