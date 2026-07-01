@@ -18,6 +18,8 @@ Routes:
     POST /admin/share                  generate share link for a report
 """
 import secrets
+import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -230,6 +232,40 @@ async def admin_upload_post(
             f"/admin?error=Build+failed:+{str(e)[:200]}",
             status_code=302,
         )
+
+
+# ------------------- ADMIN FETCH MENTIONS -------------------
+
+@app.post("/admin/fetch-mentions")
+def admin_fetch_mentions(request: Request, client_slug: str = Form(...), period: str = Form(...)):
+    _require_admin_or_redirect(request)
+
+    script = Path(__file__).parent.parent / "scripts" / "fetch_mentions.py"
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--period", period, "--client", client_slug],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        output = result.stdout.strip()
+        if result.returncode != 0 or "ERROR" in result.stderr:
+            error_msg = result.stderr.strip() or "Fetch failed"
+            return RedirectResponse(
+                f"/admin?error=Mentions+fetch+failed:+{error_msg[:150]}",
+                status_code=302,
+            )
+        # Extract count from last output line e.g. "8 mentions written to ..."
+        count_line = [l for l in output.splitlines() if "mentions written" in l]
+        count = count_line[0].split()[0] if count_line else "0"
+        return RedirectResponse(
+            f"/admin?message=Fetched+{count}+mentions+for+{client_slug}/{period}+—+ready+to+build",
+            status_code=302,
+        )
+    except subprocess.TimeoutExpired:
+        return RedirectResponse("/admin?error=Mentions+fetch+timed+out", status_code=302)
+    except Exception as e:
+        return RedirectResponse(f"/admin?error=Fetch+error:+{str(e)[:150]}", status_code=302)
 
 
 # ------------------- ADMIN SHARE LINK -------------------

@@ -21,7 +21,14 @@
     <div class="admin-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <h2 style="margin:0;">{{ client.display_name }}</h2>
-        <a class="btn btn--secondary" href="/admin/upload?client={{ client.slug }}">Upload for {{ client.display_name }}</a>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <form method="post" action="/admin/fetch-mentions" style="display:flex;gap:6px;align-items:center;">
+            <input type="hidden" name="client_slug" value="{{ client.slug }}">
+            <input name="period" placeholder="YYYY-MM" style="width:100px;padding:6px 10px;border:0.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;">
+            <button class="btn btn--secondary" type="submit" style="white-space:nowrap;">Fetch mentions</button>
+          </form>
+          <a class="btn btn--secondary" href="/admin/upload?client={{ client.slug }}">Upload data</a>
+        </div>
       </div>
 
       {% set client_reports = reports_by_client.get(client.slug, []) %}
