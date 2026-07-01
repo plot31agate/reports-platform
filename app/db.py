@@ -34,6 +34,20 @@ CREATE TABLE IF NOT EXISTS share_tokens (
     created_at   TEXT NOT NULL,
     FOREIGN KEY(report_id) REFERENCES reports(id)
 );
+
+CREATE TABLE IF NOT EXISTS uploads (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_slug  TEXT NOT NULL,
+    period       TEXT NOT NULL,
+    source_key   TEXT NOT NULL,
+    filename     TEXT,
+    stored_path  TEXT,
+    uploaded_at  TEXT NOT NULL,
+    parse_status TEXT NOT NULL DEFAULT 'empty',
+    row_count    INTEGER,
+    summary_json TEXT,
+    UNIQUE(client_slug, period, source_key)
+);
 """
 
 
@@ -124,6 +138,28 @@ def create_share_token(report_id: int, token: str, expires_at: Optional[str] = N
                VALUES (?, ?, ?, ?)""",
             (token, report_id, expires_at, datetime.utcnow().isoformat()),
         )
+
+
+def upsert_upload(client_slug, period, source_key, filename, stored_path, parse_status, row_count, summary_json):
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO uploads (client_slug, period, source_key, filename, stored_path, uploaded_at, parse_status, row_count, summary_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(client_slug, period, source_key) DO UPDATE SET
+                filename=excluded.filename, stored_path=excluded.stored_path,
+                uploaded_at=excluded.uploaded_at, parse_status=excluded.parse_status,
+                row_count=excluded.row_count, summary_json=excluded.summary_json
+        """, (client_slug, period, source_key, filename, stored_path, now, parse_status, row_count, summary_json))
+
+
+def list_uploads(client_slug, period):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM uploads WHERE client_slug=? AND period=? ORDER BY source_key",
+            (client_slug, period)
+        ).fetchall()
+        return {r["source_key"]: dict(r) for r in rows}
 
 
 def get_report_by_token(token: str):

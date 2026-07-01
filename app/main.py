@@ -17,6 +17,7 @@ Routes:
     POST /admin/upload
     POST /admin/share                  generate share link for a report
 """
+import json
 import secrets
 import subprocess
 import sys
@@ -44,8 +45,10 @@ from app.db import (
     list_clients,
     list_reports,
     upsert_report,
+    upsert_upload,
+    list_uploads,
 )
-from app.ingestion.parsers import PARSER_MAP
+from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
 from app.reports.builder import build_report
 
 
@@ -175,13 +178,12 @@ def admin_dashboard(request: Request, message: str = None, error: str = None, sh
 def admin_upload_get(request: Request, client: str = None):
     _require_admin_or_redirect(request)
     default_period = datetime.utcnow().strftime("%Y-%m")
-    file_hints = [(k, label) for k, (label, _) in PARSER_MAP.items()]
     return _render(
         "admin/upload.html",
         clients=list_clients(),
         selected_client=client or "sportingtech",
         default_period=default_period,
-        file_hints=file_hints,
+        source_defs=SOURCE_DEFS,
     )
 
 
@@ -232,6 +234,50 @@ async def admin_upload_post(
             f"/admin?error=Build+failed:+{str(e)[:200]}",
             status_code=302,
         )
+
+
+@app.post("/admin/parse-upload")
+async def admin_parse_upload(
+    request: Request,
+    source_key: str = Form(...),
+    client_slug: str = Form(...),
+    period: str = Form(...),
+    file: UploadFile = File(...),
+):
+    _require_admin_or_redirect(request)
+
+    if source_key not in PARSER_MAP:
+        return JSONResponse({"status": "error", "summary": f"Unknown source: {source_key}", "warnings": [], "row_count": 0})
+
+    label, parser = PARSER_MAP[source_key]
+    ext = Path(file.filename).suffix.lower() or ".csv"
+    dest_dir = settings.data_dir / client_slug / period
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    canonical = f"{source_key}_{period}{ext}"
+    dest = dest_dir / canonical
+    content = await file.read()
+    dest.write_bytes(content)
+
+    try:
+        data = parser(dest)
+        result = summarise_parsed(source_key, data)
+        upsert_upload(client_slug, period, source_key, file.filename, str(dest),
+                      result["status"], result.get("row_count", 0), json.dumps(result))
+        return JSONResponse(result)
+    except Exception as e:
+        err = {"status": "error", "summary": f"Could not parse - check this is the right file ({str(e)[:120]})", "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, file.filename, str(dest), "error", 0, json.dumps(err))
+        return JSONResponse(err)
+
+
+@app.post("/admin/build-report")
+async def admin_build_report_post(request: Request, client_slug: str = Form(...), period: str = Form(...)):
+    _require_admin_or_redirect(request)
+    try:
+        build_report(client_slug, period)
+        return RedirectResponse(f"/admin?message=Report+built+for+{client_slug}+{period}", status_code=302)
+    except Exception as e:
+        return RedirectResponse(f"/admin?error=Build+failed:+{str(e)[:200]}", status_code=302)
 
 
 # ------------------- ADMIN FETCH MENTIONS -------------------

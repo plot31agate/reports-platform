@@ -1,0 +1,2 @@
+month,health_score,high_open,medium_open,low_open,total_open,confirmed,verify,action,resolved_this_month,new_this_month,domain_rating,note
+2026-06,74,6,6,5,17,7,9,1,0,17,39,Baseline established. Post-migration month.

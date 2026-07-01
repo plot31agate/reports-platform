@@ -38,6 +38,19 @@ def parse_mentions(path: Path) -> dict:
         if m.get("title") or m.get("url"):
             mentions.append(m)
 
+    # Dedup by normalised url + title
+    seen = set()
+    deduped_count = 0
+    unique_mentions = []
+    for m in mentions:
+        key = (m.get("url", "").strip().lower().rstrip("/"), m.get("title", "").strip().lower())
+        if key in seen:
+            deduped_count += 1
+            continue
+        seen.add(key)
+        unique_mentions.append(m)
+    mentions = unique_mentions
+
     top_sources = []
     if "source" in col_map:
         counts = df[col_map["source"]].dropna().value_counts().head(10)
@@ -47,4 +60,5 @@ def parse_mentions(path: Path) -> dict:
         "total": len(mentions),
         "mentions": mentions,
         "top_sources": top_sources,
+        "deduped_count": deduped_count,
     }

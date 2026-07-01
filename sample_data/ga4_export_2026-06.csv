@@ -1,11 +1,16 @@
-Page path,Users,Sessions
-/,12840,15230
-/platform,4210,4890
-/products/sportsbook,3102,3640
-/products/casino,2780,3190
-/about,1540,1820
-/blog/latam-sportsbook-trends,1340,1500
-/careers,920,1040
-/contact,810,960
-/products/live-betting,780,890
-/case-studies,640,720
+# ----------------------------------------
+# Traffic acquisition: Session primary channel group (Default Channel Group)
+# Account: Sporting Tech
+# Property: Sportingtech
+# ----------------------------------------
+# 
+# All Users
+# Start date: 20260601
+# End date: 20260630
+Session primary channel group (Default Channel Group),Sessions,Engaged sessions,Engagement rate,Average engagement time per session,Events per session,Event count,Key events,Session key event rate,Total revenue
+Organic Search,423,261,0.6170212765957447,38.09219858156028,5.742316784869977,2429,0,0,0
+Direct,382,235,0.6151832460732984,53.05235602094241,6.075916230366492,2321,0,0,0
+Organic Social,67,44,0.6567164179104478,28.71641791044776,5.462686567164179,366,0,0,0
+Referral,64,32,0.5,28.5625,4.453125,285,0,0,0
+Unassigned,22,11,0.5,26.272727272727273,5.136363636363637,113,0,0,0
+AI Assistant,18,15,0.8333333333333334,84.38888888888889,6.944444444444445,125,0,0,0
