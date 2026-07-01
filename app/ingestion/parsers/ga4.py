@@ -17,16 +17,24 @@ def parse_ga4(path: Path) -> dict:
 
     users_col = _find_col(df, ["Users", "Total users", "Active users"])
     sessions_col = _find_col(df, ["Sessions"])
+    engaged_col = _find_col(df, ["Engaged sessions"])
 
     total_users = _sum_col(df, users_col)
     total_sessions = _sum_col(df, sessions_col)
+    total_engaged = _sum_col(df, engaged_col)
 
-    top_pages = _top_by(df, ["Page path", "Page path and screen class"], users_col or sessions_col, 10)
-    top_sources = _top_by(df, ["Session source", "First user source", "Source"], sessions_col or users_col, 10)
+    top_pages = _top_by(df, ["Page path", "Page path and screen class", "Page title and screen class"], users_col or sessions_col, 10)
+    top_sources = _top_by(df, [
+        "Session primary channel group (Default Channel Group)",
+        "Session source / medium", "Session source",
+        "First user primary channel group (Default Channel Group)",
+        "First user source", "Source",
+    ], sessions_col or users_col, 10)
 
     return {
         "users": total_users,
         "sessions": total_sessions,
+        "engaged_sessions": total_engaged,
         "top_pages": top_pages,
         "top_sources": top_sources,
     }
@@ -38,7 +46,12 @@ def _read_ga4_csv(path: Path):
         try:
             df = pd.read_csv(path, encoding="utf-8", skiprows=skip, on_bad_lines="skip")
             # Heuristic: if we got sensible columns, we're good
-            if any(c in df.columns for c in ["Users", "Sessions", "Page path", "Session source"]):
+            if any(c in df.columns for c in [
+                "Users", "Sessions", "Page path", "Session source",
+                "Session primary channel group (Default Channel Group)",
+                "First user primary channel group (Default Channel Group)",
+                "Page title and screen class",
+            ]):
                 return df
         except Exception:
             continue
