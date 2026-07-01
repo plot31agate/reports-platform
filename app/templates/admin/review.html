@@ -56,23 +56,38 @@
         <div class="review-rec">
           <div class="review-rec__bucket">Lean into</div>
           {% for item in lean %}
-          <input type="text" name="lean_into_{{ loop.index0 }}_action" placeholder="Action" value="{{ item.action }}">
-          <input type="text" name="lean_into_{{ loop.index0 }}_why" placeholder="Why" value="{{ item.why }}">
+          <div class="rec-slot">
+            <span class="rec-slot__num">{{ loop.index }}</span>
+            <div class="rec-slot__fields">
+              <input type="text" name="lean_into_{{ loop.index0 }}_action" placeholder="Action — what to do" value="{{ item.action }}">
+              <input type="text" name="lean_into_{{ loop.index0 }}_why" placeholder="Why — the reason it matters" value="{{ item.why }}">
+            </div>
+          </div>
           {% endfor %}
         </div>
 
         <div class="review-rec">
           <div class="review-rec__bucket">Investigate</div>
           {% for item in invest %}
-          <input type="text" name="investigate_{{ loop.index0 }}_action" placeholder="Action" value="{{ item.action }}">
-          <input type="text" name="investigate_{{ loop.index0 }}_why" placeholder="Why" value="{{ item.why }}">
+          <div class="rec-slot">
+            <span class="rec-slot__num">{{ loop.index }}</span>
+            <div class="rec-slot__fields">
+              <input type="text" name="investigate_{{ loop.index0 }}_action" placeholder="Action — what to do" value="{{ item.action }}">
+              <input type="text" name="investigate_{{ loop.index0 }}_why" placeholder="Why — the reason it matters" value="{{ item.why }}">
+            </div>
+          </div>
           {% endfor %}
         </div>
 
         <div class="review-rec" style="margin-bottom:0;">
           <div class="review-rec__bucket">Fix urgently</div>
-          <input type="text" name="fix_0_action" placeholder="Action" value="{{ fix.action }}">
-          <input type="text" name="fix_0_why" placeholder="Why" value="{{ fix.why }}">
+          <div class="rec-slot">
+            <span class="rec-slot__num">!</span>
+            <div class="rec-slot__fields">
+              <input type="text" name="fix_0_action" placeholder="Action — what to do" value="{{ fix.action }}">
+              <input type="text" name="fix_0_why" placeholder="Why — the reason it matters" value="{{ fix.why }}">
+            </div>
+          </div>
         </div>
       </div>
 
