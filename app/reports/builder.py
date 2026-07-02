@@ -57,9 +57,14 @@ def build_context(client_slug: str, period: str) -> dict:
     if commentary.get("actions"):
         actions = {"configured": True, "content": commentary["actions"]}
 
+    # Client logo for the cover chip, if one exists in static/img/clients/
+    logo_path = Path(__file__).parent.parent / "static" / "img" / "clients" / f"{client_slug}.png"
+    client_logo = f"/static/img/clients/{client_slug}.png" if logo_path.exists() else None
+
     return {
         "client": client_config,
         "client_slug": client_slug,
+        "client_logo": client_logo,
         "period": period,
         "period_display": _period_display(period),
         "generated_at": datetime.utcnow().strftime("%d %b %Y"),

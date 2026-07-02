@@ -60,12 +60,12 @@ REVIEW_NOTE_SECTIONS = [
     ("media", "Media coverage"),
     ("sov", "Share of voice"),
     ("execs", "Executive mentions"),
-    ("sentiment", "Sentiment tracking"),
-    ("traffic", "Website traffic"),
-    ("backlinks", "Referring domains"),
-    ("campaigns", "Campaigns & events"),
+    ("sentiment", "Sentiment"),
+    ("traffic", "Search & traffic"),
+    ("backlinks", "Authority & social"),
+    ("campaigns", "Geography"),
     ("linkedin", "LinkedIn"),
-    ("technical_seo", "Technical SEO & Site Health"),
+    ("technical_seo", "Technical SEO"),
 ]
 from app.reports.builder import build_report
 

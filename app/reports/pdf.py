@@ -11,11 +11,11 @@ import re
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
-BRAND_CSS_PATH = STATIC_DIR / "css" / "brand.css"
+REPORT_CSS_PATH = STATIC_DIR / "css" / "report.css"
 
 _VAR_DECL = re.compile(r"--([a-zA-Z0-9-]+)\s*:\s*([^;}]+)")
 _VAR_REF = re.compile(r"var\(\s*--([a-zA-Z0-9-]+)\s*\)")
-_BRAND_LINK = re.compile(r'<link[^>]+href="/static/css/brand\.css"[^>]*>')
+_CSS_LINK = re.compile(r'<link[^>]+href="/static/css/report\.css"[^>]*>')
 
 
 def _collect_variables(*sources: str) -> dict:
@@ -35,14 +35,15 @@ def _collect_variables(*sources: str) -> dict:
 
 def prepare_pdf_html(html: str) -> str:
     """Return a self-contained version of the report HTML for WeasyPrint."""
-    brand_css = BRAND_CSS_PATH.read_text(encoding="utf-8")
-    # brand.css defaults first, then the per-client :root overrides in the HTML head
-    variables = _collect_variables(brand_css, html)
+    report_css = REPORT_CSS_PATH.read_text(encoding="utf-8")
+    # report.css defaults first, then the per-client :root overrides in the HTML head
+    variables = _collect_variables(report_css, html)
 
     def substitute(text: str) -> str:
         return _VAR_REF.sub(lambda m: variables.get(m.group(1), "inherit"), text)
 
-    html = _BRAND_LINK.sub(lambda m: "<style>\n" + substitute(brand_css) + "\n</style>", html, count=1)
+    report_css = substitute(report_css).replace("url('/static/", f"url('file://{STATIC_DIR}/")
+    html = _CSS_LINK.sub(lambda m: "<style>\n" + report_css + "\n</style>", html, count=1)
     html = substitute(html)
     html = html.replace('src="/static/', f'src="file://{STATIC_DIR}/')
     return html
