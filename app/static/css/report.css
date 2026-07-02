@@ -594,20 +594,44 @@ a { color: inherit; }
 .moves--edit .move { min-width: 300px; }
 
 /* -------- Print (PDF export) --------
-   WeasyPrint mishandles flex gap and baseline rows, so the decorated
-   rows fall back to block/absolute layouts here. */
+   The PDF gets its own paged layout: a cover page, then one section per
+   page in a single column. Two-column flex bands don't survive paging
+   (and WeasyPrint mishandles flex gap and baseline rows), so bands stack
+   and decorated rows fall back to block/absolute layouts. */
 @media print {
   @page { size: A4; margin: 0; }
   .edit-bar, .edit-message, .edit-tag, .foot__actions { display: none; }
   .card, .move, .score { border: 1px solid var(--line); }
-  .score, .card, .move, .band__aside { page-break-inside: avoid; }
-  .band, .duo { page-break-inside: avoid; }
-  .navy-band { page-break-inside: avoid; }
-  .foot { page-break-inside: avoid; }
   a { text-decoration: none; }
 
-  .cover__prepared-label { white-space: nowrap; margin-right: 14px; }
+  /* Page 1: cover + scorecards. */
+  .cover__inner { padding: 72px 48px 150px; }
+  .cover__title { font-size: 62px; }
+  .cover__prepared { display: block; text-align: right; }
+  .cover__prepared-label { display: block; margin: 0 0 10px; white-space: nowrap; }
 
+  /* Every section starts on its own page and stacks single-column:
+     narrative block on top, content full-width below. */
+  .band { display: block; page-break-before: always; padding: 72px 48px 0; }
+  .band__aside { width: auto; max-width: none; margin-bottom: 36px; page-break-inside: avoid; page-break-after: avoid; }
+  .band__body { display: block; }
+  .band__lede { max-width: 620px; }
+  .navy-band { margin-top: 0; page-break-before: always; }
+  .navy-band__inner { display: block; padding: 72px 48px; }
+  .navy-band .band__aside { margin-bottom: 40px; }
+
+  /* Cards keep together where they fit; the mention list may span pages. */
+  .score, .card, .move { page-break-inside: avoid; }
+  .card--list { page-break-inside: auto; }
+  .mention { page-break-inside: avoid; }
+  .duo { page-break-inside: avoid; }
+  .foot { page-break-inside: avoid; }
+
+  /* Action cards stack full-width. */
+  .moves { display: block; margin-top: 36px; }
+  .move { display: block; min-width: 0; margin-bottom: 16px; }
+
+  /* Row fallbacks for WeasyPrint's flex engine. */
   .mention { display: block; position: relative; padding-left: 46px; }
   .mention__num { position: absolute; left: 0; top: 20px; }
   .mention__main { display: block; }

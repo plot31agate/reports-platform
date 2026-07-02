@@ -231,8 +231,8 @@
       <div class="stat-head__value">{{ (gsc.clicks or 0) | thousands }}</div>
       <div class="stat-head__label">organic clicks · {{ (gsc.impressions or 0) | thousands }} impressions</div>
     </div>
-    <div class="statrow"><span class="statrow__label">Average CTR <span class="statrow__source">GSC</span></span><span class="statrow__value">{{ gsc.avg_ctr or '—' }}%</span></div>
-    <div class="statrow"><span class="statrow__label">Average position <span class="statrow__source">GSC</span></span><span class="statrow__value">{{ gsc.avg_position or '—' }}</span></div>
+    <div class="statrow"><span class="statrow__label">Average CTR <span class="statrow__source">GSC</span></span><span class="statrow__value">{% if gsc.avg_ctr %}{{ gsc.avg_ctr | round(2) }}%{% else %}—{% endif %}</span></div>
+    <div class="statrow"><span class="statrow__label">Average position <span class="statrow__source">GSC</span></span><span class="statrow__value">{% if gsc.avg_position %}{{ gsc.avg_position | round(1) }}{% else %}—{% endif %}</span></div>
     {% endif %}
     {% if ga4 %}
     <div class="statrow"><span class="statrow__label">Users <span class="statrow__source">GA4</span></span><span class="statrow__value">{{ (ga4.users or 0) | thousands }}</span></div>
@@ -284,6 +284,14 @@
 {% set sw = data.similarweb_traffic.data %}
 {% if editable or sw or notes.get('campaigns') %}
 <div class="band band--flip">
+  <div class="band__aside">
+    <div class="kicker">/ Geography</div>
+    <h2 class="band__title">Where visits come from.</h2>
+    {{ note('campaigns') }}
+    {% if editable and not sw %}
+    <p class="muted muted--internal">No SimilarWeb data uploaded for this period. This section will not appear in the published report.</p>
+    {% endif %}
+  </div>
   {% if sw and sw.top_countries %}
   <div class="band__body card">
     <div class="card__label">Visits by country · SimilarWeb</div>
@@ -304,14 +312,6 @@
     {% if sw.total_visits %}<div class="card__footnote">{{ sw.total_visits | thousands }} total visits this month.</div>{% endif %}
   </div>
   {% endif %}
-  <div class="band__aside">
-    <div class="kicker">/ Geography</div>
-    <h2 class="band__title">Where visits come from.</h2>
-    {{ note('campaigns') }}
-    {% if editable and not sw %}
-    <p class="muted muted--internal">No SimilarWeb data uploaded for this period. This section will not appear in the published report.</p>
-    {% endif %}
-  </div>
 </div>
 {% endif %}
 
