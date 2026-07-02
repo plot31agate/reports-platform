@@ -336,6 +336,13 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
   font-style: italic;
 }
+/* Operator-only hint shown on the review screen, never published */
+.muted--internal {
+  border: 1px dashed var(--grey-200);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--grey-50);
+}
 
 /* -------- Admin pages -------- */
 .admin-shell {
@@ -630,6 +637,11 @@ a { color: inherit; text-decoration: none; }
 .upload-actions form {
   display: flex;
   gap: 12px;
+  align-items: center;
+}
+.upload-actions__hint {
+  font-size: 12px;
+  color: var(--grey-400);
 }
 
 /* -------- Editable commentary -------- */
@@ -830,8 +842,12 @@ a { color: inherit; text-decoration: none; }
 
 /* -------- Print (PDF export) -------- */
 @media print {
+  @page { size: A4; margin: 0; }
   .topbar__actions, .footer__actions { display: none; }
+  .edit-bar, .edit-message, .edit-tag { display: none; }
   .section { page-break-inside: avoid; }
-  .actions-block { page-break-before: auto; }
+  .tseo-table tr, .kpi, .action-item { page-break-inside: avoid; }
+  .footer { page-break-inside: avoid; }
+  a { text-decoration: none; }
   body { background: var(--white); }
 }

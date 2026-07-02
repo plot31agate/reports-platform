@@ -28,6 +28,7 @@
 <div class="edit-bar">
   <div class="edit-bar__label">Editing {{ client.display_name }} · {{ period_display }} — comments show where they will appear</div>
   <div class="edit-bar__actions">
+    <a class="btn btn--secondary" href="/admin">Done</a>
     {% if preview_url %}<a class="btn btn--secondary" href="{{ preview_url }}" target="_blank">Open published</a>{% endif %}
     <button type="submit" form="review-form" class="btn">Save and regenerate</button>
   </div>
@@ -103,8 +104,8 @@
       {% endif %}
     </div>
     <div class="kpi__trend kpi__trend--flat">
-      {% if sentiment.configured %}across {{ sentiment.total }} mentions
-      {% else %}sentiment API not configured
+      {% if sentiment.configured and sentiment.total %}across {{ sentiment.total }} mentions
+      {% else %}not scored this month
       {% endif %}
     </div>
   </div>
@@ -128,7 +129,12 @@
   </div>
 </div>
 
+{# Sections only publish when they have data or an operator note. In review
+   mode everything renders, with unpublished setup hints tagged as internal. #}
+{% set notes = commentary.notes if (commentary and commentary.notes) else {} %}
+
 {# ================== 1. MEDIA COVERAGE ================== #}
+{% if editable or (data.mentions.data and data.mentions.data.total > 0) or notes.get('media') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -166,36 +172,46 @@
         </div>
       </div>
     </div>
-  {% else %}
-    <p class="muted">No mentions data uploaded for this period.</p>
+  {% elif editable %}
+    <p class="muted muted--internal">No mentions data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== 2. SHARE OF VOICE ================== #}
+{% if editable or notes.get('sov') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
     <h2 class="section__title">Share of voice</h2>
   </div>
   {{ note('sov') }}
-  <p class="muted">Share of voice benchmarks vs {{ client.competitors|length }} tracked competitors ({{ client.competitors|join(', ') }}). Populate by adding a <code>sov.csv</code> file with columns: brand, mentions.</p>
+  {% if editable %}
+  <p class="muted muted--internal">Share of voice benchmarks vs {{ client.competitors|length }} tracked competitors ({{ client.competitors|join(', ') }}). Populate by adding a <code>sov.csv</code> file with columns: brand, mentions. Only your note above is published.</p>
+  {% endif %}
 </div>
+{% endif %}
 
 {# ================== 3. EXECUTIVE MENTIONS ================== #}
+{% if editable or notes.get('execs') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
     <h2 class="section__title">Executive mentions</h2>
   </div>
   {{ note('execs') }}
-  {% if client.executives %}
-    <p class="muted">Tracking mentions of: {{ client.executives|join(', ') }}. Filter the mentions CSV by executive name to populate this section — will auto-detect in v2.</p>
-  {% else %}
-    <p class="muted">No executives configured. Add names to <code>app/clients/sportingtech.py</code>.</p>
+  {% if editable %}
+    {% if client.executives %}
+    <p class="muted muted--internal">Tracking mentions of: {{ client.executives|join(', ') }}. Executive auto-detection lands in v2. Only your note above is published.</p>
+    {% else %}
+    <p class="muted muted--internal">No executives configured for this client. Only your note above is published.</p>
+    {% endif %}
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== 4. SENTIMENT TRACKING ================== #}
+{% if editable or (sentiment.configured and sentiment.total > 0) or notes.get('sentiment') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -231,14 +247,18 @@
       </div>
       {% endfor %}
     </div>
-  {% elif not sentiment.configured %}
-    <p class="muted">Claude API not configured. Set <code>ANTHROPIC_API_KEY</code> in the environment to enable sentiment classification.</p>
-  {% else %}
-    <p class="muted">No mentions to score for this period.</p>
+  {% elif editable %}
+    {% if not sentiment.configured %}
+    <p class="muted muted--internal">Claude API not configured. Set <code>ANTHROPIC_API_KEY</code> in the environment to enable sentiment classification. This section will not appear in the published report.</p>
+    {% else %}
+    <p class="muted muted--internal">No mentions to score for this period. This section will not appear in the published report.</p>
+    {% endif %}
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== 5. WEBSITE TRAFFIC ================== #}
+{% if editable or data.ga4_export.data or notes.get('traffic') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -275,12 +295,14 @@
         </div>
       </div>
     </div>
-  {% else %}
-    <p class="muted">No GA4 data uploaded for this period.</p>
+  {% elif editable %}
+    <p class="muted muted--internal">No GA4 data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== 6. REFERRING DOMAINS ================== #}
+{% if editable or data.ahrefs_backlinks.data or notes.get('backlinks') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -309,12 +331,14 @@
         </div>
       </div>
     </div>
-  {% else %}
-    <p class="muted">No Ahrefs data uploaded for this period.</p>
+  {% elif editable %}
+    <p class="muted muted--internal">No Ahrefs data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== 7. CAMPAIGN & EVENT PERFORMANCE ================== #}
+{% if editable or data.similarweb_traffic.data or notes.get('campaigns') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -344,12 +368,14 @@
         </div>
       </div>
     </div>
-  {% else %}
-    <p class="muted">No campaign or Similarweb data uploaded for this period.</p>
+  {% elif editable %}
+    <p class="muted muted--internal">No campaign or Similarweb data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== LINKEDIN ================== #}
+{% if editable or data.linkedin_company.data or notes.get('linkedin') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -379,12 +405,14 @@
         </div>
       </div>
     </div>
-  {% else %}
-    <p class="muted">No LinkedIn data uploaded for this period.</p>
+  {% elif editable %}
+    <p class="muted muted--internal">No LinkedIn data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== TECHNICAL SEO & SITE HEALTH ================== #}
+{% if editable or technical_seo or notes.get('technical_seo') %}
 <div class="section">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -488,12 +516,14 @@
     <div class="tseo-low-summary">+{{ tseo.low_count }} low-severity issue{{ 's' if tseo.low_count != 1 else '' }} tracked — detail available on request.</div>
     {% endif %}
 
-  {% else %}
-    <p class="muted">No technical SEO data uploaded for this period. Upload <code>technical_seo_metrics.csv</code> and <code>technical_seo_register.csv</code>.</p>
+  {% elif editable %}
+    <p class="muted muted--internal">No technical SEO data uploaded for this period. Upload <code>technical_seo_metrics.csv</code> and <code>technical_seo_register.csv</code>. This section will not appear in the published report.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {# ================== 8. NEXT MONTH'S ACTIONS ================== #}
+{% if editable or (actions.configured and actions.content) %}
 <div class="actions-block">
   <div class="section__header">
     <div class="section__rule"></div>
@@ -554,12 +584,9 @@
       <div class="action-item__why">{{ actions.content.fix_urgently.why }}</div>
     </div>
     {% endif %}
-  {% elif not actions.configured %}
-    <p style="color:#aaa;font-style:italic;">Claude API not configured — set <code>ANTHROPIC_API_KEY</code> to enable next-month synthesis.</p>
-  {% else %}
-    <p style="color:#aaa;font-style:italic;">Not enough data to synthesise actions.</p>
   {% endif %}
 </div>
+{% endif %}
 
 {% if editable %}
 </form>

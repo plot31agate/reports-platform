@@ -134,7 +134,7 @@
       <a class="button button--ghost button--sm" href="/admin/upload?client={{ client.slug }}">Upload data</a>
       <form method="post" action="/admin/fetch-mentions" style="flex:1;display:flex;gap:6px;">
         <input type="hidden" name="client_slug" value="{{ client.slug }}">
-        <input name="period" placeholder="YYYY-MM" style="width:100%;padding:7px 10px;border:1px solid var(--line-strong);border-radius:8px;font-size:12px;font-family:inherit;">
+        <input name="period" value="{{ default_period }}" placeholder="YYYY-MM" title="Period to fetch mentions for" style="width:100%;padding:7px 10px;border:1px solid var(--line-strong);border-radius:8px;font-size:12px;font-family:inherit;">
         <button class="button button--dark button--sm" type="submit">Fetch</button>
       </form>
     </div>

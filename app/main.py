@@ -122,6 +122,8 @@ def share_link(token: str, format: str = None):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found or link expired")
     if format == "pdf":
+        if not report.get("pdf_path") or not Path(report["pdf_path"]).exists():
+            raise HTTPException(status_code=404, detail="PDF not available for this report")
         return FileResponse(report["pdf_path"], media_type="application/pdf",
                             filename=f"{report['client_slug']}-{report['period']}.pdf")
     return HTMLResponse(Path(report["html_path"]).read_text(encoding="utf-8"))
@@ -136,6 +138,8 @@ def report_view(request: Request, slug: str, period: str, format: str = None):
     if not html_path.exists():
         raise HTTPException(status_code=404, detail="Report not built yet")
     if format == "pdf":
+        if not pdf_path.exists():
+            raise HTTPException(status_code=404, detail="PDF not built yet - rebuild the report")
         return FileResponse(pdf_path, media_type="application/pdf",
                             filename=f"{slug}-{period}.pdf")
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
@@ -244,6 +248,7 @@ def admin_dashboard(request: Request, message: str = None, error: str = None, sh
         reports_by_client={k: sorted(v, key=lambda r: r["period"], reverse=True) for k, v in reports_by_client.items()},
         kpis_by_client=kpis_by_client,
         overview=overview,
+        default_period=datetime.utcnow().strftime("%Y-%m"),
         message=message,
         error=error,
         share_url=share_url,
@@ -320,53 +325,23 @@ def admin_upload_get(request: Request, client: str = None):
     )
 
 
-@app.post("/admin/upload")
-async def admin_upload_post(
-    request: Request,
-    client_slug: str = Form(...),
-    period: str = Form(...),
-    action: str = Form(...),
-    files: list[UploadFile] = File(...),
-):
+@app.get("/admin/upload-status")
+def admin_upload_status(request: Request, client: str, period: str):
+    """Card states for the upload grid - lets the page rehydrate what is already uploaded."""
     _require_admin_or_redirect(request)
-
-    if client_slug not in CLIENTS:
-        return _render("admin/upload.html",
-                       clients=list_clients(),
-                       selected_client=client_slug,
-                       default_period=period,
-                       file_hints=[(k, label) for k, (label, _) in PARSER_MAP.items()],
-                       error=f"Unknown client: {client_slug}")
-
-    # Save files
-    upload_dir = settings.data_dir / client_slug / period
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    saved = []
-    for f in files:
-        dest = upload_dir / f.filename
-        content = await f.read()
-        dest.write_bytes(content)
-        saved.append(f.filename)
-
-    if action == "upload_only":
-        return RedirectResponse(
-            f"/admin?message=Uploaded+{len(saved)}+files+to+{client_slug}/{period}",
-            status_code=302,
-        )
-
-    # Build the report
-    try:
-        result = build_report(client_slug, period)
-        return RedirectResponse(
-            f"/admin?message=Report+built+for+{client_slug}+{period}",
-            status_code=302,
-        )
-    except Exception as e:
-        return RedirectResponse(
-            f"/admin?error=Build+failed:+{str(e)[:200]}",
-            status_code=302,
-        )
+    out = {}
+    for source_key, row in list_uploads(client, period).items():
+        try:
+            summary = json.loads(row.get("summary_json") or "{}")
+        except (TypeError, ValueError):
+            summary = {}
+        out[source_key] = {
+            "status": row.get("parse_status") or "error",
+            "filename": row.get("filename") or "",
+            "summary": summary.get("summary") or "",
+            "warnings": summary.get("warnings") or [],
+        }
+    return JSONResponse(out)
 
 
 @app.post("/admin/parse-upload")
@@ -500,7 +475,8 @@ async def admin_review_post(request: Request):
     except Exception as e:
         return RedirectResponse(f"/admin/review?client={client_slug}&period={period}&message=Saved+but+build+failed:+{str(e)[:120]}", status_code=302)
 
-    return RedirectResponse(f"/admin?message=Report+updated+for+{client_slug}+{period}", status_code=302)
+    # Stay on the review screen so the operator can keep tweaking.
+    return RedirectResponse(f"/admin/review?client={client_slug}&period={period}&message=Saved+and+republished", status_code=302)
 
 
 # ------------------- ADMIN FETCH MENTIONS -------------------

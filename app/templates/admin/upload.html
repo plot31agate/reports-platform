@@ -47,7 +47,7 @@
   <form method="post" action="/admin/build-report" id="build-form">
     <input type="hidden" name="client_slug" id="build-client">
     <input type="hidden" name="period" id="build-period">
-    <button type="button" class="button button--ghost" onclick="saveOnly()">Save uploads</button>
+    <span class="upload-actions__hint">Files save as soon as they parse. Build when you are ready.</span>
     <button type="button" class="button button--primary" onclick="buildReport()">Build report</button>
   </form>
 </div>
@@ -56,6 +56,35 @@
 (function() {
   function getClient() { return document.getElementById('client-slug').value; }
   function getPeriod() { return document.getElementById('period').value; }
+
+  function clearCard(sourceKey) {
+    document.getElementById('dot-' + sourceKey).className = 'source-card__dot source-card__dot--empty';
+    document.getElementById('status-' + sourceKey).innerHTML = '';
+    document.getElementById('drop-' + sourceKey).classList.remove('source-card__drop--uploading');
+  }
+
+  // Rehydrate card states for the selected client + period so revisits and
+  // client/period switches always show what is already uploaded.
+  function refreshCards() {
+    var period = getPeriod();
+    document.querySelectorAll('.source-card').forEach(function(card) { clearCard(card.dataset.sourceKey); });
+    if (!period || !period.match(/^\d{4}-\d{2}$/)) { return; }
+    fetch('/admin/upload-status?client=' + encodeURIComponent(getClient()) + '&period=' + encodeURIComponent(period))
+      .then(function(r) { return r.json(); })
+      .then(function(states) {
+        Object.keys(states).forEach(function(key) {
+          var s = states[key];
+          if (document.getElementById('card-' + key)) {
+            setCardState(key, s.status, s.filename, s.summary, s.warnings || []);
+          }
+        });
+      })
+      .catch(function() {});
+  }
+
+  document.getElementById('client-slug').addEventListener('change', refreshCards);
+  document.getElementById('period').addEventListener('change', refreshCards);
+  refreshCards();
 
   document.querySelectorAll('.source-card').forEach(function(card) {
     var key = card.dataset.sourceKey;
@@ -126,10 +155,6 @@
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-
-  window.saveOnly = function() {
-    window.location.href = '/admin?message=Files+saved';
-  };
 
   window.buildReport = function() {
     document.getElementById('build-client').value = getClient();
