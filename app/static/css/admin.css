@@ -55,7 +55,7 @@
   font-size: 15px;
   line-height: 1.15;
 }
-.side__logo { width: 34px; height: 34px; flex-shrink: 0; }
+.side__logo { width: 178px; height: auto; display: block; }
 .side__brand .accent { color: var(--df-yellow); }
 .side__section {
   font-size: 10px;
@@ -334,7 +334,7 @@
   display: flex; align-items: center; gap: 12px;
   font-weight: 800; letter-spacing: 0.02em; font-size: 16px;
 }
-.login__logo { width: 40px; height: 40px; }
+.login__logo { width: 230px; height: auto; display: block; }
 .login__mark .accent { color: var(--df-yellow); }
 .login__lead {
   margin-top: auto;
