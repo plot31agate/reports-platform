@@ -446,8 +446,8 @@
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
         <div class="rec-slot__fields">
-          <input type="text" name="lean_into_{{ loop.index0 }}_action" placeholder="Action - what to do" value="{{ item.action }}">
-          <input type="text" name="lean_into_{{ loop.index0 }}_why" placeholder="Why - the reason it matters" value="{{ item.why }}">
+          <textarea name="lean_into_{{ loop.index0 }}_action" rows="2" placeholder="Action - what to do">{{ item.action }}</textarea>
+          <textarea name="lean_into_{{ loop.index0 }}_why" rows="2" placeholder="Why - the reason it matters">{{ item.why }}</textarea>
         </div>
       </div>
       {% endfor %}
@@ -458,8 +458,8 @@
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
         <div class="rec-slot__fields">
-          <input type="text" name="investigate_{{ loop.index0 }}_action" placeholder="Action - what to do" value="{{ item.action }}">
-          <input type="text" name="investigate_{{ loop.index0 }}_why" placeholder="Why - the reason it matters" value="{{ item.why }}">
+          <textarea name="investigate_{{ loop.index0 }}_action" rows="2" placeholder="Action - what to do">{{ item.action }}</textarea>
+          <textarea name="investigate_{{ loop.index0 }}_why" rows="2" placeholder="Why - the reason it matters">{{ item.why }}</textarea>
         </div>
       </div>
       {% endfor %}
@@ -469,8 +469,8 @@
       <div class="rec-slot">
         <span class="rec-slot__num">!</span>
         <div class="rec-slot__fields">
-          <input type="text" name="fix_0_action" placeholder="Action - what to do" value="{{ edit_fix.action }}">
-          <input type="text" name="fix_0_why" placeholder="Why - the reason it matters" value="{{ edit_fix.why }}">
+          <textarea name="fix_0_action" rows="2" placeholder="Action - what to do">{{ edit_fix.action }}</textarea>
+          <textarea name="fix_0_why" rows="2" placeholder="Why - the reason it matters">{{ edit_fix.why }}</textarea>
         </div>
       </div>
     </div>
@@ -512,9 +512,9 @@
 {% if editable %}
 </form>
 <script>
-// Auto-grow the cover inputs so long headlines never clip (fallback for
-// browsers without CSS field-sizing).
-document.querySelectorAll('.cover__title-input, .cover__standfirst-input').forEach(function(el) {
+// Auto-grow every edit field so Claude-generated text is fully visible
+// (fallback for browsers without CSS field-sizing).
+document.querySelectorAll('.cover__title-input, .cover__standfirst-input, .rec-slot__fields textarea, .section__note--edit textarea').forEach(function(el) {
   function grow() { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
   el.addEventListener('input', grow);
   grow();

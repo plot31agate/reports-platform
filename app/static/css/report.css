@@ -575,17 +575,22 @@ a { color: inherit; }
   margin-top: 4px;
 }
 .rec-slot__fields { flex: 1 1 0; display: flex; flex-direction: column; gap: 8px; }
-.rec-slot__fields input {
+.rec-slot__fields textarea {
+  display: block;
   width: 100%;
   font-family: inherit;
   font-size: 13px;
+  line-height: 1.5;
   color: var(--ink);
   background: rgba(255, 255, 255, 0.75);
   border: 1px dashed var(--bar-muted);
   border-radius: 8px;
   padding: 9px 12px;
+  resize: vertical;
+  overflow: hidden;
+  field-sizing: content;
 }
-.rec-slot__fields input:first-child { font-weight: 700; }
+.rec-slot__fields textarea:first-child { font-weight: 700; }
 .moves--edit .move { min-width: 300px; }
 
 /* -------- Print (PDF export) --------
