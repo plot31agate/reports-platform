@@ -58,7 +58,7 @@
     <div class="cover__kicker">/ Monthly performance · {{ period_display }}</div>
     {% if editable %}
     <span class="edit-tag">Headline</span>
-    <input class="cover__title-input" name="headline" value="{{ commentary.headline }}" placeholder="Performance Report">
+    <textarea class="cover__title-input" name="headline" rows="2" placeholder="Performance Report">{{ commentary.headline }}</textarea>
     <span class="edit-tag" style="margin-top:16px;">Standfirst</span>
     <textarea class="cover__standfirst-input" name="standfirst" rows="3" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
     {% else %}
@@ -511,6 +511,15 @@
 
 {% if editable %}
 </form>
+<script>
+// Auto-grow the cover inputs so long headlines never clip (fallback for
+// browsers without CSS field-sizing).
+document.querySelectorAll('.cover__title-input, .cover__standfirst-input').forEach(function(el) {
+  function grow() { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+  el.addEventListener('input', grow);
+  grow();
+});
+</script>
 {% endif %}
 
 {# ================== FOOTER ================== #}
