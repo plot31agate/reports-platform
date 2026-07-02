@@ -48,6 +48,7 @@ from app.db import (
     upsert_report,
     upsert_upload,
     list_uploads,
+    delete_uploads,
     get_commentary,
     upsert_commentary,
     create_client,
@@ -369,6 +370,14 @@ async def admin_parse_upload(
     try:
         data = parser(dest)
         result = summarise_parsed(source_key, data)
+        # Flag month mismatches - e.g. a June-named file dropped into July.
+        name_period = re.search(r"\d{4}-\d{2}", file.filename or "")
+        if name_period and name_period.group(0) != period:
+            result.setdefault("warnings", []).append(
+                f"File name says {name_period.group(0)} but you are uploading into {period} - check the period box"
+            )
+            if result.get("status") == "ok":
+                result["status"] = "warning"
         upsert_upload(client_slug, period, source_key, file.filename, str(dest),
                       result["status"], result.get("row_count", 0), json.dumps(result))
         return JSONResponse(result)
@@ -376,6 +385,22 @@ async def admin_parse_upload(
         err = {"status": "error", "summary": f"Could not parse - check this is the right file ({str(e)[:120]})", "warnings": [], "row_count": 0}
         upsert_upload(client_slug, period, source_key, file.filename, str(dest), "error", 0, json.dumps(err))
         return JSONResponse(err)
+
+
+@app.post("/admin/clear-uploads")
+def admin_clear_uploads(request: Request, client_slug: str = Form(...), period: str = Form(...)):
+    """Reset a period: remove its upload records and the stored data files."""
+    _require_admin_or_redirect(request)
+    paths = delete_uploads(client_slug, period)
+    removed = 0
+    for p in paths:
+        f = Path(p)
+        # Only ever delete files inside this client+period's data folder.
+        expected_dir = settings.data_dir / client_slug / period
+        if f.exists() and f.parent == expected_dir:
+            f.unlink()
+            removed += 1
+    return JSONResponse({"cleared": len(paths), "files_removed": removed})
 
 
 @app.post("/admin/build-report")

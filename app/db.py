@@ -193,6 +193,17 @@ def list_uploads(client_slug, period):
         return {r["source_key"]: dict(r) for r in rows}
 
 
+def delete_uploads(client_slug, period):
+    """Delete all upload records for a client+period. Returns the stored file paths."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT stored_path FROM uploads WHERE client_slug=? AND period=?",
+            (client_slug, period)
+        ).fetchall()
+        conn.execute("DELETE FROM uploads WHERE client_slug=? AND period=?", (client_slug, period))
+        return [r["stored_path"] for r in rows if r["stored_path"]]
+
+
 def get_commentary(client_slug: str, period: str):
     with get_conn() as conn:
         row = conn.execute(
