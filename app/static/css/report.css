@@ -71,7 +71,7 @@ a { color: inherit; }
   gap: 24px;
   margin-bottom: 88px;
 }
-.cover__logo { height: 32px; width: auto; display: block; }
+.cover__logo { height: 52px; width: auto; display: block; }
 .cover__prepared { display: flex; align-items: center; gap: 14px; }
 .cover__prepared-label {
   font-size: 11px;
@@ -432,7 +432,7 @@ a { color: inherit; }
 .foot { background: var(--ink-deep); }
 .foot__inner { max-width: 1080px; margin: 0 auto; padding: 60px 48px 56px; }
 .foot__row { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
-.foot__logo { height: 28px; width: auto; display: block; }
+.foot__logo { height: 44px; width: auto; display: block; }
 .foot__mark {
   margin-top: 26px;
   font-size: 32px;
