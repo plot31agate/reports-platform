@@ -2,19 +2,27 @@
    Builds on brand.css tokens. Sidebar shell + dashboard system. */
 
 :root {
-  --sidebar-w: 240px;
+  --sidebar-w: 244px;
+  /* Digital Footprints brand palette */
+  --df-navy: #16294A;
+  --df-navy-2: #1E3560;
+  --df-yellow: #FFE500;
+  --df-pink: #EC0F8D;
+  --df-cyan: #25CFE0;
+  --df-orange: #FF8A1E;
+
   --amber: #F59E0B;
   --amber-strong: #B45309;
   --green: #22C55E;
   --red: #EF4444;
-  --ink: #0C0D0E;
+  --ink: #16294A;            /* navy — headings + sidebar */
   --panel: #FFFFFF;
-  --canvas: #F6F7F9;
-  --line: rgba(12, 13, 14, 0.08);
-  --line-strong: rgba(12, 13, 14, 0.14);
-  --shadow-sm: 0 1px 2px rgba(12,13,14,0.04), 0 1px 3px rgba(12,13,14,0.06);
-  --shadow-md: 0 4px 12px rgba(12,13,14,0.06), 0 2px 4px rgba(12,13,14,0.04);
-  --shadow-lg: 0 12px 32px rgba(12,13,14,0.10);
+  --canvas: #F5F7FA;
+  --line: rgba(22, 41, 74, 0.10);
+  --line-strong: rgba(22, 41, 74, 0.18);
+  --shadow-sm: 0 1px 2px rgba(22,41,74,0.05), 0 1px 3px rgba(22,41,74,0.07);
+  --shadow-md: 0 4px 12px rgba(22,41,74,0.08), 0 2px 4px rgba(22,41,74,0.05);
+  --shadow-lg: 0 14px 34px rgba(22,41,74,0.14);
 }
 
 .app {
@@ -30,7 +38,7 @@
   top: 0;
   align-self: start;
   height: 100vh;
-  background: var(--ink);
+  background: var(--df-navy);
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -40,19 +48,15 @@
 .side__brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   padding: 4px 8px 20px;
   font-weight: 800;
   letter-spacing: 0.02em;
   font-size: 15px;
+  line-height: 1.15;
 }
-.side__brand .dot {
-  width: 26px; height: 26px; border-radius: 8px;
-  background: var(--coral);
-  display: grid; place-items: center;
-  flex-shrink: 0;
-}
-.side__brand .accent { color: var(--teal); }
+.side__logo { width: 34px; height: 34px; flex-shrink: 0; }
+.side__brand .accent { color: var(--df-yellow); }
 .side__section {
   font-size: 10px;
   letter-spacing: 0.18em;
@@ -72,7 +76,7 @@
   transition: background 0.15s, color 0.15s;
 }
 .side__link:hover { background: rgba(255,255,255,0.07); color: #fff; }
-.side__link--active { background: rgba(255,255,255,0.10); color: #fff; }
+.side__link--active { background: rgba(255,255,255,0.10); color: #fff; box-shadow: inset 3px 0 0 var(--df-yellow); }
 .side__link svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.9; }
 .side__spacer { flex: 1; }
 .side__foot {
@@ -123,8 +127,8 @@
 }
 .button svg { width: 15px; height: 15px; }
 .button:active { transform: translateY(1px); }
-.button--primary { background: var(--coral); color: #fff; box-shadow: var(--shadow-sm); }
-.button--primary:hover { background: #ec4433; box-shadow: var(--shadow-md); }
+.button--primary { background: var(--df-pink); color: #fff; box-shadow: var(--shadow-sm); }
+.button--primary:hover { background: #d10a7d; box-shadow: var(--shadow-md); }
 .button--ghost { background: var(--panel); color: var(--ink); border-color: var(--line-strong); }
 .button--ghost:hover { border-color: var(--ink); }
 .button--dark { background: var(--ink); color: #fff; }
@@ -159,10 +163,10 @@
 }
 .stat__foot { font-size: 12px; color: var(--grey-600); display: flex; align-items: center; gap: 6px; }
 .stat__accent { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
-.stat--coral .stat__accent { background: var(--coral); }
-.stat--teal .stat__accent  { background: var(--teal); }
-.stat--amber .stat__accent { background: var(--amber); }
-.stat--blue .stat__accent  { background: var(--blue); }
+.stat--coral .stat__accent { background: var(--df-pink); }
+.stat--teal .stat__accent  { background: var(--df-cyan); }
+.stat--amber .stat__accent { background: var(--df-yellow); }
+.stat--blue .stat__accent  { background: var(--df-navy); }
 
 .delta { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; }
 .delta--up   { color: var(--accent-strong); }
@@ -244,8 +248,8 @@
 
 .spark { padding: 14px 20px 4px; }
 .spark__row { display: flex; align-items: flex-end; gap: 4px; height: 40px; }
-.spark__bar { flex: 1; background: var(--teal); border-radius: 3px 3px 0 0; min-height: 3px; opacity: 0.85; }
-.spark__bar:last-child { background: var(--coral); opacity: 1; }
+.spark__bar { flex: 1; background: var(--df-cyan); border-radius: 3px 3px 0 0; min-height: 3px; opacity: 0.85; }
+.spark__bar:last-child { background: var(--df-pink); opacity: 1; }
 .spark__label { font-size: 10px; color: var(--grey-400); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 8px; }
 
 .client-card__reports { padding: 6px 8px 8px; }
@@ -330,15 +334,15 @@
   display: flex; align-items: center; gap: 12px;
   font-weight: 800; letter-spacing: 0.02em; font-size: 16px;
 }
-.login__mark .dot { width: 30px; height: 30px; border-radius: 9px; background: var(--coral); display: grid; place-items: center; }
-.login__mark .accent { color: var(--teal); }
+.login__logo { width: 40px; height: 40px; }
+.login__mark .accent { color: var(--df-yellow); }
 .login__lead {
   margin-top: auto;
   font-family: var(--font-heading);
   font-weight: 900; font-style: italic; text-transform: uppercase;
   font-size: 46px; line-height: 1.02; letter-spacing: 0.01em;
 }
-.login__lead .teal { color: var(--teal); }
+.login__lead .teal { color: var(--df-cyan); }
 .login__sub { margin-top: 16px; font-size: 15px; color: rgba(255,255,255,0.65); max-width: 400px; line-height: 1.6; }
 .login__foot { margin-top: 40px; font-size: 12px; color: rgba(255,255,255,0.4); letter-spacing: 0.06em; }
 
