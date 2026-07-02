@@ -396,8 +396,11 @@ def _blank_actions():
 
 
 @app.get("/admin/review", response_class=HTMLResponse)
-def admin_review_get(request: Request, client: str, period: str, message: str = None):
+def admin_review_get(request: Request, client: str = None, period: str = None, message: str = None):
     _require_admin_or_redirect(request)
+
+    if not client or not period:
+        return RedirectResponse("/admin?error=Pick+a+report+to+review+from+a+client+card", status_code=302)
 
     row = get_commentary(client, period)
     if row is None:
@@ -437,6 +440,8 @@ async def admin_review_post(request: Request):
     form = await request.form()
     client_slug = form.get("client_slug")
     period = form.get("period")
+    if not client_slug or not period:
+        return RedirectResponse("/admin?error=Review+form+was+missing+client+or+period+-+try+again+from+the+client+card", status_code=302)
 
     headline = (form.get("headline") or "").strip() or "Performance Report"
     standfirst = (form.get("standfirst") or "").strip()
