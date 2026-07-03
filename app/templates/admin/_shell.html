@@ -28,6 +28,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
       Portal access
     </a>
+    <a class="side__link {% if active == 'keys' %}side__link--active{% endif %}" href="/admin/keys">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="15" r="4"/><path d="M10.9 12.1L21 2M15 8l3 3M18 5l2 2"/></svg>
+      API keys
+    </a>
 
     <div class="side__section">Clients</div>
     {% for c in nav_clients or [] %}

@@ -86,13 +86,13 @@
       </div>
     </div>
 
-    <!-- API connections live with the data they feed -->
+    <!-- API connections: per-client settings; the shared keys live on /admin/keys -->
     <details class="panel ws-connections" id="connections">
       <summary>
         <span class="ws-connections__title">API connections</span>
         <span class="ws-connections__sub">
           {% set live = connection_cards | selectattr('configured') | list %}
-          {% if live %}{{ live | length }} set up — paste keys once, then Sync replaces the CSV exports{% else %}None yet — paste keys once and Sync replaces the CSV exports{% endif %}
+          {% if live %}{{ live | length }} set up for {{ client.display_name }} — Sync replaces the CSV exports{% else %}Set which domain / properties to pull for {{ client.display_name }}{% endif %}
         </span>
       </summary>
 
@@ -107,7 +107,9 @@
                 {% for s in card.def.sources %}<span class="conn-chip">{{ s }}</span>{% endfor %}
               </div>
             </div>
-            {% if card.configured %}
+            {% if not card.agency_key_set %}
+            <a class="conn-status conn-status--untested" href="/admin/keys" title="One key covers every client">No agency key →</a>
+            {% elif card.configured %}
             <span class="conn-status conn-status--{{ card.status or 'untested' }}">
               {% if card.status == 'ok' %}Connected{% elif card.status == 'error' %}Error{% else %}Untested{% endif %}
             </span>
@@ -129,23 +131,19 @@
             <input type="hidden" name="provider" value="{{ card.def.provider }}">
             {% for f in card.fields %}
             <div class="field">
-              <label>{{ f.label }}{% if f.secret and f.has_value %} <span class="conn-saved">saved — leave blank to keep</span>{% endif %}</label>
-              {% if f.type == 'textarea' %}
-              <textarea name="{{ f.key }}" rows="3" placeholder="{{ '•••••• (saved)' if f.has_value and f.secret else (f.placeholder or '') }}"></textarea>
-              {% elif f.type == 'password' %}
-              <input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ '•••••• (saved)' if f.has_value else (f.placeholder or '') }}">
-              {% else %}
+              <label>{{ f.label }}</label>
               <input type="text" name="{{ f.key }}" value="{{ f.value }}" placeholder="{{ f.placeholder or '' }}">
-              {% endif %}
               {% if f.hint %}<div class="field__hint">{{ f.hint }}</div>{% endif %}
             </div>
             {% endfor %}
             <div class="conn-actions">
               <button class="button button--primary button--sm" type="submit">Save</button>
-              {% if card.configured %}
+              {% if card.configured and card.agency_key_set %}
               <button class="button button--ghost button--sm" type="submit" formaction="/admin/connections/test">Test</button>
+              {% endif %}
+              {% if card.configured %}
               <button class="chip-link chip-link--danger" type="submit" formaction="/admin/connections/delete"
-                      onclick="return confirm('Remove this connection? Saved keys are deleted.');">Remove</button>
+                      onclick="return confirm('Remove {{ client.display_name }}&#39;s settings for this provider?');">Remove</button>
               {% endif %}
             </div>
           </form>
@@ -153,7 +151,8 @@
         {% endfor %}
       </div>
       <p class="ws-hint" style="margin:14px 0 0;">
-        Keys are stored in the app database on your server and never shown again once saved.
+        API keys are shared across clients and live on the <a href="/admin/keys" style="font-weight:700;text-decoration:underline;">API keys</a> page —
+        here you only set what to pull for {{ client.display_name }}.
         LinkedIn and Google Alerts don't offer key-based APIs — those stay on upload / auto-fetch.
       </p>
     </details>

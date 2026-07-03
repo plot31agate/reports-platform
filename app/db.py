@@ -106,6 +106,14 @@ CREATE TABLE IF NOT EXISTS client_connections (
     UNIQUE(client_slug, provider),
     FOREIGN KEY(client_slug) REFERENCES clients(slug)
 );
+
+CREATE TABLE IF NOT EXISTS agency_credentials (
+    provider       TEXT PRIMARY KEY,
+    config_json    TEXT NOT NULL,
+    status         TEXT DEFAULT 'untested',   -- untested | ok | error
+    status_detail  TEXT,
+    updated_at     TEXT NOT NULL
+);
 """
 
 
@@ -131,6 +139,43 @@ def init_db():
         share_cols = [r["name"] for r in conn.execute("PRAGMA table_info(share_tokens)").fetchall()]
         if "revoked_at" not in share_cols:
             conn.execute("ALTER TABLE share_tokens ADD COLUMN revoked_at TEXT")
+
+        # Migration: provider secrets used to live on per-client connections.
+        # Keys are really agency-wide (one Ahrefs account for all clients), so
+        # lift them into agency_credentials and strip them from client rows.
+        from app.connectors import CONNECTOR_DEFS
+
+        for cdef in CONNECTOR_DEFS:
+            provider = cdef["provider"]
+            secret_keys = [f["key"] for f in cdef.get("agency_fields", [])]
+            if not secret_keys:
+                continue
+            client_rows = conn.execute(
+                "SELECT client_slug, config_json FROM client_connections WHERE provider = ?",
+                (provider,),
+            ).fetchall()
+            agency_exists = conn.execute(
+                "SELECT provider FROM agency_credentials WHERE provider = ?", (provider,)
+            ).fetchone()
+            for row in client_rows:
+                try:
+                    cfg = json.loads(row["config_json"] or "{}")
+                except (ValueError, TypeError):
+                    continue
+                secrets = {k: cfg[k] for k in secret_keys if cfg.get(k)}
+                if secrets and not agency_exists:
+                    conn.execute(
+                        "INSERT INTO agency_credentials (provider, config_json, updated_at) VALUES (?, ?, ?)",
+                        (provider, json.dumps(secrets), datetime.utcnow().isoformat()),
+                    )
+                    agency_exists = True
+                if any(k in cfg for k in secret_keys):
+                    for k in secret_keys:
+                        cfg.pop(k, None)
+                    conn.execute(
+                        "UPDATE client_connections SET config_json = ? WHERE client_slug = ? AND provider = ?",
+                        (json.dumps(cfg), row["client_slug"], provider),
+                    )
 
         # Seed code-registry clients into the DB. The DB is the single source of
         # truth at runtime; code modules act only as seed data for first boot.
@@ -404,6 +449,48 @@ def get_sentiment_cached(client_slug: str, content_hash: str):
             return json.loads(row["result_json"])
         except (ValueError, TypeError):
             return None
+
+
+# ------------------- agency credentials -------------------
+
+def upsert_agency_credential(provider: str, config_json: str):
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO agency_credentials (provider, config_json, status, updated_at)
+               VALUES (?, ?, 'untested', ?)
+               ON CONFLICT(provider) DO UPDATE SET
+                   config_json = excluded.config_json, status = 'untested',
+                   status_detail = NULL, updated_at = excluded.updated_at""",
+            (provider, config_json, now),
+        )
+
+
+def get_agency_credentials() -> dict:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM agency_credentials").fetchall()
+        return {r["provider"]: dict(r) for r in rows}
+
+
+def get_agency_credential(provider: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM agency_credentials WHERE provider = ?", (provider,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def set_agency_credential_status(provider: str, status: str, detail: str = None):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE agency_credentials SET status=?, status_detail=?, updated_at=? WHERE provider=?",
+            (status, detail, datetime.utcnow().isoformat(), provider),
+        )
+
+
+def delete_agency_credential(provider: str):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM agency_credentials WHERE provider = ?", (provider,))
 
 
 # ------------------- API connections -------------------

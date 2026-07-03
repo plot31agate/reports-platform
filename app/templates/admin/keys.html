@@ -1,0 +1,78 @@
+{% extends "admin/_shell.html" %}
+{% block title %}API keys — Admin{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">API keys</h1>
+    <div class="page-head__sub">One key per provider covers every client. Which domain or property to pull lives with each client, in their workspace under API connections.</div>
+  </div>
+</div>
+
+{% if message %}<div class="flash flash--ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+<div class="conn-grid">
+  {% for card in cards %}
+  <div class="panel conn-card" style="background:var(--panel);">
+    <div class="conn-card__head">
+      <div>
+        <span class="conn-card__name">{{ card.def.label }}</span>
+        <div class="conn-card__sources">
+          feeds:
+          {% for s in card.def.sources %}<span class="conn-chip">{{ s }}</span>{% endfor %}
+        </div>
+      </div>
+      {% if card.configured %}
+      <span class="conn-status conn-status--{{ card.status or 'untested' }}">
+        {% if card.status == 'ok' %}Working{% elif card.status == 'error' %}Error{% else %}Untested{% endif %}
+      </span>
+      {% endif %}
+    </div>
+
+    <p class="ws-hint">{{ card.def.blurb }}</p>
+
+    <details class="keyhelp">
+      <summary>How do I get this key?</summary>
+      <ol>
+        {% for step in card.def.key_help %}
+        <li>{{ step }}</li>
+        {% endfor %}
+      </ol>
+    </details>
+
+    {% if card.status_detail %}
+    <div class="conn-detail conn-detail--{{ card.status or 'untested' }}">{{ card.status_detail }}</div>
+    {% endif %}
+
+    <form method="post" action="/admin/keys/save">
+      <input type="hidden" name="provider" value="{{ card.def.provider }}">
+      {% for f in card.fields %}
+      <div class="field">
+        <label>{{ f.label }}{% if f.has_value %} <span class="conn-saved">saved — leave blank to keep</span>{% endif %}</label>
+        {% if f.type == 'textarea' %}
+        <textarea name="{{ f.key }}" rows="4" placeholder="{{ '•••••• (saved)' if f.has_value else (f.placeholder or '') }}"></textarea>
+        {% else %}
+        <input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ '•••••• (saved)' if f.has_value else (f.placeholder or '') }}">
+        {% endif %}
+        {% if f.hint %}<div class="field__hint">{{ f.hint }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="conn-actions">
+        <button class="button button--primary button--sm" type="submit">Save</button>
+        {% if card.configured %}
+        <button class="button button--ghost button--sm" type="submit" formaction="/admin/keys/test">Test key</button>
+        <button class="chip-link chip-link--danger" type="submit" formaction="/admin/keys/delete"
+                onclick="return confirm('Remove this key? Syncs will stop for every client until a new one is saved.');">Remove</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="ws-hint" style="margin-top:18px;">
+  Keys are stored in the app database on your server and never shown again once saved.
+</p>
+
+{% endblock %}

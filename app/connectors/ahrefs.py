@@ -51,6 +51,18 @@ def _get(config, path, params):
     return resp.json()
 
 
+def test_key(config) -> tuple[bool, str]:
+    """Validate the agency API key alone, against a known domain."""
+    try:
+        _get(config, "/site-explorer/domain-rating", {
+            "target": "ahrefs.com",
+            "date": date.today().isoformat(),
+        })
+        return True, "API key works"
+    except ConnectorError as e:
+        return False, str(e)
+
+
 def test(config) -> tuple[bool, str]:
     try:
         data = _get(config, "/site-explorer/domain-rating", {
