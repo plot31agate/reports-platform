@@ -11,7 +11,11 @@ if (!hash_equals($expected, $provided)) {
     exit('Forbidden');
 }
 
-// No request input reaches the shell — command is fully hardcoded.
+// No request input reaches the shell — commands are fully hardcoded.
+// Install any new Python deps first (runs as the app user, no sudo needed),
+// then restart. Allow time for a cold pip run.
+set_time_limit(300);
+shell_exec('cd /home/wwwdfootdigi/apps/reporting && ./venv/bin/pip install -q -r requirements.txt 2>&1');
 shell_exec('sudo /bin/systemctl restart reporting 2>&1');
 sleep(3);
 echo "Deploy successful\n";

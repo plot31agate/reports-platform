@@ -179,7 +179,7 @@
         <div id="build-done" style="display:none;">
           <div class="flash flash--ok" style="margin:0 0 10px;">Report built and published.</div>
           <div id="build-warnings"></div>
-          <a class="button button--primary" style="width:100%;text-align:center;" href="/admin/review?client={{ selected_client }}&period={{ period }}">Review &amp; edit →</a>
+          <a class="button button--primary" style="width:100%;text-align:center;" href="/admin/review?client={{ selected_client }}&period={{ period }}" target="_blank" rel="noopener">Review &amp; edit →</a>
         </div>
         <div id="build-error" style="display:none;">
           <div class="flash flash--err" style="margin:0;" id="build-error-msg"></div>
@@ -196,9 +196,9 @@
         </span>
       </div>
       <div class="ws-actions">
-        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}" target="_blank">View</a>
-        <a class="button button--ghost button--sm" href="/admin/review?client={{ selected_client }}&period={{ period }}">Edit commentary</a>
-        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}?format=pdf">PDF</a>
+        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}" target="_blank" rel="noopener">View</a>
+        <a class="button button--ghost button--sm" href="/admin/review?client={{ selected_client }}&period={{ period }}" target="_blank" rel="noopener">Edit commentary</a>
+        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}?format=pdf" target="_blank" rel="noopener">PDF</a>
       </div>
     </div>
 

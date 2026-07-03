@@ -116,8 +116,8 @@
           <a class="report-row__period" href="/admin/workspace?client={{ r.client_slug }}&period={{ r.period }}" title="Open this month's workspace">{{ r.period }}</a>
           <span class="report-row__date">updated {{ r.updated_at[:10] }}</span>
           <span class="report-row__actions">
-            <a class="chip-link" href="/c/{{ r.client_slug }}/{{ r.period }}" target="_blank">View</a>
-            <a class="chip-link chip-link--go" href="/admin/review?client={{ r.client_slug }}&period={{ r.period }}">Edit</a>
+            <a class="chip-link" href="/c/{{ r.client_slug }}/{{ r.period }}" target="_blank" rel="noopener">View</a>
+            <a class="chip-link chip-link--go" href="/admin/review?client={{ r.client_slug }}&period={{ r.period }}" target="_blank" rel="noopener">Edit</a>
             <form method="post" action="/admin/share" style="display:inline;">
               <input type="hidden" name="report_id" value="{{ r.id }}">
               <button class="chip-link" type="submit">Share</button>
