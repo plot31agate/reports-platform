@@ -22,6 +22,12 @@ def _env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else v
+    # Same cache-buster the admin app uses, so restyled reports refresh too.
+    try:
+        css_dir = Path(__file__).parent.parent / "static" / "css"
+        env.globals["static_v"] = str(int(max(p.stat().st_mtime for p in css_dir.glob("*.css"))))
+    except (ValueError, OSError):
+        env.globals["static_v"] = "1"
     return env
 
 

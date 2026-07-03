@@ -105,6 +105,17 @@ env = Environment(
 )
 env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else v
 
+# Cache-buster for stylesheets: changes whenever the newest CSS file changes,
+# so browsers pick up redeployed styles instead of serving stale cached ones.
+def _static_version() -> str:
+    try:
+        css_dir = STATIC_DIR / "css"
+        return str(int(max(p.stat().st_mtime for p in css_dir.glob("*.css"))))
+    except (ValueError, OSError):
+        return "1"
+
+env.globals["static_v"] = _static_version()
+
 
 @app.on_event("startup")
 def startup():
@@ -379,6 +390,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
                 "label": connectors.get_def(provider)["label"],
                 "status": conns[provider].get("status"),
             }
+    connection_cards = [_masked_connection_view(conns.get(d["provider"]), d) for d in connectors.CONNECTOR_DEFS]
 
     return _render(
         "admin/workspace.html",
@@ -394,6 +406,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         views=views,
         portal_member_count=len(portal_members),
         connected_sources=connected_sources,
+        connection_cards=connection_cards,
         message=message,
         error=error,
         share_url=share_url,
@@ -620,23 +633,23 @@ def _masked_connection_view(conn_row, cdef) -> dict:
     }
 
 
-@app.get("/admin/connections", response_class=HTMLResponse)
-def admin_connections_get(request: Request, client: str = None, message: str = None, error: str = None):
+@app.get("/admin/connections")
+def admin_connections_get(request: Request, client: str = None):
+    """Connections live inside the client workspace now."""
     _require_admin_or_redirect(request)
-    clients = list_clients()
-    selected = client if client and any(c["slug"] == client for c in clients) else (clients[0]["slug"] if clients else None)
-    saved = get_connections(selected) if selected else {}
-    cards = [_masked_connection_view(saved.get(d["provider"]), d) for d in connectors.CONNECTOR_DEFS]
-    return _render(
-        "admin/connections.html",
-        active="connections",
-        nav_clients=clients,
-        clients=clients,
-        selected_client=selected,
-        cards=cards,
-        message=message,
-        error=error,
-    )
+    suffix = f"?client={client}" if client else ""
+    return RedirectResponse(f"/admin/workspace{suffix}#connections", status_code=302)
+
+
+def _connections_redirect(client_slug: str, period: str = None, message: str = None, error: str = None):
+    url = f"/admin/workspace?client={client_slug}"
+    if period:
+        url += f"&period={period}"
+    if message:
+        url += f"&message={message}"
+    if error:
+        url += f"&error={error}"
+    return RedirectResponse(url + "#connections", status_code=302)
 
 
 @app.post("/admin/connections/save")
@@ -667,33 +680,33 @@ async def admin_connections_save(request: Request):
         config[f["key"]] = val
 
     upsert_connection(client_slug, provider, json.dumps(config))
-    return RedirectResponse(
-        f"/admin/connections?client={client_slug}&message={cdef['label']}+saved+—+now+test+it",
-        status_code=302,
-    )
+    return _connections_redirect(client_slug, form.get("period"),
+                                 message=f"{cdef['label']}+saved+—+now+test+it")
 
 
 @app.post("/admin/connections/test")
-def admin_connections_test(request: Request, client_slug: str = Form(...), provider: str = Form(...)):
+def admin_connections_test(request: Request, client_slug: str = Form(...), provider: str = Form(...), period: str = Form(None)):
     _require_admin_or_redirect(request)
     row = get_connection(client_slug, provider)
     if not row:
-        return RedirectResponse(f"/admin/connections?client={client_slug}&error=Save+the+connection+first", status_code=302)
+        return _connections_redirect(client_slug, period, error="Save+the+connection+first")
     try:
         config = json.loads(row.get("config_json") or "{}")
     except (ValueError, TypeError):
         config = {}
     ok, msg = connectors.test_connection(provider, config)
     set_connection_status(client_slug, provider, "ok" if ok else "error", msg)
-    key = "message" if ok else "error"
-    return RedirectResponse(f"/admin/connections?client={client_slug}&{key}={msg[:200]}", status_code=302)
+    from urllib.parse import quote
+    if ok:
+        return _connections_redirect(client_slug, period, message=quote(msg[:200]))
+    return _connections_redirect(client_slug, period, error=quote(msg[:200]))
 
 
 @app.post("/admin/connections/delete")
-def admin_connections_delete(request: Request, client_slug: str = Form(...), provider: str = Form(...)):
+def admin_connections_delete(request: Request, client_slug: str = Form(...), provider: str = Form(...), period: str = Form(None)):
     _require_admin_or_redirect(request)
     delete_connection(client_slug, provider)
-    return RedirectResponse(f"/admin/connections?client={client_slug}&message=Connection+removed", status_code=302)
+    return _connections_redirect(client_slug, period, message="Connection+removed")
 
 
 @app.post("/admin/sync-source")
