@@ -1,0 +1,412 @@
+{% extends "admin/_shell.html" %}
+{% block title %}{{ client.display_name }} {{ period }} — Workspace{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ client.display_name }}</h1>
+    <div class="page-head__sub">Everything for one month lives here: data in, build, review, deliver.</div>
+  </div>
+  <div class="page-head__actions">
+    <select id="ws-client" title="Client">
+      {% for c in clients %}
+      <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
+      {% endfor %}
+    </select>
+    <input type="month" id="ws-period" value="{{ period }}" title="Reporting month">
+  </div>
+</div>
+
+{% if message %}<div class="flash flash--ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+{% if share_url %}
+<div class="share-box">
+  <strong style="font-size:13px;">Shareable link — expires in 90 days</strong>
+  <input value="{{ share_url }}" readonly onclick="this.select()">
+</div>
+{% endif %}
+
+<div class="ws-grid">
+
+  <!-- ============ LEFT: SOURCES ============ -->
+  <div>
+    <div class="panel">
+      <div class="panel__head">
+        <h2>This month's data</h2>
+        <span class="ws-filled" id="ws-filled">0/{{ source_defs | length }} sources</span>
+      </div>
+
+      <div class="ws-drop" id="ws-drop">
+        <input type="file" id="ws-drop-input" multiple accept=".csv,.xlsx,.xls" style="display:none;">
+        <div class="ws-drop__big">Drop this month's export files here</div>
+        <div class="ws-drop__small">Any number at once — each file routes to its source automatically. Or <span class="ws-drop__browse">browse</span>.</div>
+      </div>
+
+      <div id="ws-unrouted"></div>
+
+      <div class="ws-sources">
+        {% for src in source_defs %}
+        <div class="ws-source" id="src-{{ src.key }}" data-key="{{ src.key }}">
+          <span class="source-card__dot source-card__dot--empty" id="dot-{{ src.key }}"></span>
+          <div class="ws-source__body">
+            <div class="ws-source__title">{{ src.title }}
+              <span class="ws-source__purpose">{{ src.purpose }}</span>
+            </div>
+            <div class="ws-source__status" id="status-{{ src.key }}">
+              <span class="status-summary">Waiting for file — needs columns: {{ src.cols }}</span>
+            </div>
+          </div>
+          <div class="ws-source__actions">
+            {% if src.key == 'mentions' %}
+            <form method="post" action="/admin/fetch-mentions" style="display:inline;">
+              <input type="hidden" name="client_slug" value="{{ selected_client }}">
+              <input type="hidden" name="period" value="{{ period }}">
+              <button class="chip-link" type="submit" title="Pull this month's Google Alerts automatically">Auto-fetch</button>
+            </form>
+            {% endif %}
+            <button class="chip-link" type="button" onclick="browseFor('{{ src.key }}')">Browse</button>
+            <input type="file" id="file-{{ src.key }}" accept=".csv,.xlsx,.xls" style="display:none;">
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="ws-sources__foot">
+        <button class="chip-link" type="button" onclick="clearUploads()">Clear all uploads for this month</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: BUILD & DELIVER ============ -->
+  <div class="ws-rail">
+
+    <div class="panel">
+      <div class="panel__head"><h2>Build</h2></div>
+      <div class="ws-build">
+        <div id="build-idle">
+          <p class="ws-hint">Builds run in the background — sentiment, recommendations, page and PDF. You can keep working while it runs.</p>
+          <button class="button button--primary" id="build-btn" onclick="startBuild()" style="width:100%;">
+            {{ 'Rebuild report' if report else 'Build report' }}
+          </button>
+        </div>
+        <div id="build-progress" style="display:none;">
+          <div class="ws-progress__label" id="build-stage">Starting…</div>
+          <div class="ws-progress"><div class="ws-progress__bar" id="build-bar"></div></div>
+          <div class="ws-progress__detail" id="build-detail"></div>
+        </div>
+        <div id="build-done" style="display:none;">
+          <div class="flash flash--ok" style="margin:0 0 10px;">Report built and published.</div>
+          <div id="build-warnings"></div>
+          <a class="button button--primary" style="width:100%;text-align:center;" href="/admin/review?client={{ selected_client }}&period={{ period }}">Review &amp; edit →</a>
+        </div>
+        <div id="build-error" style="display:none;">
+          <div class="flash flash--err" style="margin:0;" id="build-error-msg"></div>
+        </div>
+      </div>
+    </div>
+
+    {% if report %}
+    <div class="panel">
+      <div class="panel__head">
+        <h2>Report</h2>
+        <span class="ws-views" title="Opens via portal + share links">
+          {{ views.total }} view{{ 's' if views.total != 1 }}{% if views.last_viewed %} · last {{ views.last_viewed[:10] }}{% endif %}
+        </span>
+      </div>
+      <div class="ws-actions">
+        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}" target="_blank">View</a>
+        <a class="button button--ghost button--sm" href="/admin/review?client={{ selected_client }}&period={{ period }}">Edit commentary</a>
+        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}?format=pdf">PDF</a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head"><h2>Share links</h2></div>
+      {% for s in shares %}
+      <div class="ws-share {% if not s.active %}ws-share--dead{% endif %}">
+        <input value="{{ s.url }}" readonly onclick="this.select()">
+        <span class="ws-share__meta">
+          {% if s.revoked_at %}revoked{% elif not s.active %}expired{% else %}until {{ s.expires_at[:10] }}{% endif %}
+        </span>
+        {% if s.active %}
+        <form method="post" action="/admin/share/revoke" onsubmit="return confirm('Revoke this link? Anyone using it loses access immediately.');">
+          <input type="hidden" name="token" value="{{ s.token }}">
+          <input type="hidden" name="client" value="{{ selected_client }}">
+          <input type="hidden" name="period" value="{{ period }}">
+          <button class="chip-link chip-link--danger" type="submit">Revoke</button>
+        </form>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="ws-hint" style="margin:0 0 10px;">No live links. Create one to send the report without a login.</p>
+      {% endfor %}
+      <form method="post" action="/admin/share" style="margin-top:10px;">
+        <input type="hidden" name="report_id" value="{{ report.id }}">
+        <input type="hidden" name="redirect" value="workspace">
+        <button class="button button--dark button--sm" type="submit" style="width:100%;">New share link (90 days)</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <div class="panel__head"><h2>Client portal</h2></div>
+      <p class="ws-hint">
+        {% if portal_member_count %}
+        {{ portal_member_count }} contact{{ 's' if portal_member_count != 1 }} can sign in and see every published report.
+        {% else %}
+        No client contacts yet — give them a login and every published report appears in their portal automatically.
+        {% endif %}
+      </p>
+      <a class="button button--ghost button--sm" href="/admin/portal?client={{ selected_client }}" style="width:100%;text-align:center;">Manage portal access</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  var CLIENT = {{ selected_client | tojson }};
+  var PERIOD = {{ period | tojson }};
+  var SOURCE_KEYS = [{% for src in source_defs %}{{ src.key | tojson }}{{ "," if not loop.last }}{% endfor %}];
+  var SOURCE_TITLES = { {% for src in source_defs %}{{ src.key | tojson }}: {{ src.title | tojson }}{{ "," if not loop.last }}{% endfor %} };
+
+  // Filename → source routing. Longest/most-specific patterns first.
+  var ROUTES = [
+    ['technical_seo_register', ['technical_seo_register', 'seo_register']],
+    ['technical_seo_metrics',  ['technical_seo_metrics', 'seo_metrics']],
+    ['search_console',         ['search_console', 'searchconsole', 'gsc']],
+    ['ahrefs_backlinks',       ['ahrefs']],
+    ['similarweb_traffic',     ['similarweb']],
+    ['ga4_export',             ['ga4']],
+    ['linkedin_company',       ['linkedin']],
+    ['mentions',               ['mentions', 'alerts']]
+  ];
+
+  function navigate() {
+    var c = document.getElementById('ws-client').value;
+    var p = document.getElementById('ws-period').value;
+    window.location = '/admin/workspace?client=' + encodeURIComponent(c) + '&period=' + encodeURIComponent(p);
+  }
+  document.getElementById('ws-client').addEventListener('change', navigate);
+  document.getElementById('ws-period').addEventListener('change', navigate);
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function setSourceState(key, status, filename, summary, warnings) {
+    var dot = document.getElementById('dot-' + key);
+    var statusEl = document.getElementById('status-' + key);
+    if (!dot || !statusEl) return;
+    dot.className = 'source-card__dot source-card__dot--' + status;
+    if (status === 'uploading') {
+      statusEl.innerHTML = '<span class="status-filename">' + esc(filename) + '</span><span class="status-summary">Parsing…</span>';
+      return;
+    }
+    var html = '';
+    if (filename) html += '<span class="status-filename">' + esc(filename) + '</span>';
+    if (summary) html += '<span class="status-summary status-summary--' + status + '">' + esc(summary) + '</span>';
+    (warnings || []).forEach(function(w) { html += '<span class="status-warning">' + esc(w) + '</span>'; });
+    statusEl.innerHTML = html || '<span class="status-summary">Waiting for file</span>';
+    updateFilledCount();
+  }
+
+  var filled = {};
+  function updateFilledCount() {
+    var n = Object.keys(filled).filter(function(k) { return filled[k]; }).length;
+    document.getElementById('ws-filled').textContent = n + '/' + SOURCE_KEYS.length + ' sources';
+  }
+
+  function refreshSources() {
+    fetch('/admin/upload-status?client=' + encodeURIComponent(CLIENT) + '&period=' + encodeURIComponent(PERIOD))
+      .then(function(r) { return r.json(); })
+      .then(function(states) {
+        SOURCE_KEYS.forEach(function(key) {
+          var s = states[key];
+          if (s) {
+            filled[key] = (s.status === 'ok' || s.status === 'warning');
+            setSourceState(key, s.status, s.filename, s.summary, s.warnings || []);
+          } else {
+            filled[key] = false;
+          }
+        });
+        updateFilledCount();
+      })
+      .catch(function() {});
+  }
+  refreshSources();
+
+  // ---------- routing + upload ----------
+  function routeFile(filename) {
+    var lower = filename.toLowerCase();
+    for (var i = 0; i < ROUTES.length; i++) {
+      var key = ROUTES[i][0], aliases = ROUTES[i][1];
+      for (var j = 0; j < aliases.length; j++) {
+        if (lower.indexOf(aliases[j]) !== -1) return key;
+      }
+    }
+    return null;
+  }
+
+  function uploadFile(key, file) {
+    setSourceState(key, 'uploading', file.name, '', []);
+    var fd = new FormData();
+    fd.append('source_key', key);
+    fd.append('client_slug', CLIENT);
+    fd.append('period', PERIOD);
+    fd.append('file', file);
+    fetch('/admin/parse-upload', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        filled[key] = (d.status === 'ok' || d.status === 'warning');
+        setSourceState(key, d.status, file.name, d.summary, d.warnings || []);
+      })
+      .catch(function() { setSourceState(key, 'error', file.name, 'Upload failed — try again', []); });
+  }
+
+  function handleFiles(fileList) {
+    Array.prototype.forEach.call(fileList, function(file) {
+      var key = routeFile(file.name);
+      if (key) { uploadFile(key, file); }
+      else { addUnrouted(file); }
+    });
+  }
+
+  // Unrouted files get a manual assignment row instead of failing silently.
+  var pendingUnrouted = [];
+  function addUnrouted(file) {
+    pendingUnrouted.push(file);
+    var idx = pendingUnrouted.length - 1;
+    var box = document.getElementById('ws-unrouted');
+    var row = document.createElement('div');
+    row.className = 'ws-unrouted-row';
+    var options = SOURCE_KEYS.map(function(k) {
+      return '<option value="' + k + '">' + esc(SOURCE_TITLES[k]) + '</option>';
+    }).join('');
+    row.innerHTML =
+      '<span class="ws-unrouted-row__name">' + esc(file.name) + '</span>' +
+      '<span class="ws-unrouted-row__q">Which source is this?</span>' +
+      '<select>' + options + '</select>' +
+      '<button class="chip-link" type="button">Assign</button>' +
+      '<button class="chip-link" type="button">Skip</button>';
+    var select = row.querySelector('select');
+    var btns = row.querySelectorAll('button');
+    btns[0].addEventListener('click', function() { uploadFile(select.value, pendingUnrouted[idx]); row.remove(); });
+    btns[1].addEventListener('click', function() { row.remove(); });
+    box.appendChild(row);
+  }
+
+  // Global dropzone
+  var drop = document.getElementById('ws-drop');
+  var dropInput = document.getElementById('ws-drop-input');
+  drop.addEventListener('click', function() { dropInput.click(); });
+  dropInput.addEventListener('change', function() { handleFiles(dropInput.files); dropInput.value = ''; });
+  drop.addEventListener('dragover', function(e) { e.preventDefault(); drop.classList.add('ws-drop--active'); });
+  drop.addEventListener('dragleave', function() { drop.classList.remove('ws-drop--active'); });
+  drop.addEventListener('drop', function(e) {
+    e.preventDefault();
+    drop.classList.remove('ws-drop--active');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  // Per-row browse
+  window.browseFor = function(key) {
+    var input = document.getElementById('file-' + key);
+    input.onchange = function() { if (input.files[0]) { uploadFile(key, input.files[0]); input.value = ''; } };
+    input.click();
+  };
+
+  window.clearUploads = function() {
+    if (!confirm('Remove all uploaded files for ' + CLIENT + ' ' + PERIOD + '?')) return;
+    var fd = new FormData();
+    fd.append('client_slug', CLIENT);
+    fd.append('period', PERIOD);
+    fetch('/admin/clear-uploads', { method: 'POST', body: fd })
+      .then(function() { window.location.reload(); })
+      .catch(function() { alert('Clear failed — try again.'); });
+  };
+
+  // ---------- build with progress ----------
+  var STAGE_ORDER = ['parsing', 'sentiment', 'synthesis', 'rendering', 'saving', 'done'];
+  var pollTimer = null;
+
+  function showBuildSection(id) {
+    ['build-idle', 'build-progress', 'build-done', 'build-error'].forEach(function(s) {
+      document.getElementById(s).style.display = (s === id) ? '' : 'none';
+    });
+  }
+
+  function renderJob(job) {
+    if (job.status === 'running') {
+      showBuildSection('build-progress');
+      var idx = STAGE_ORDER.indexOf(job.stage);
+      var pct = idx < 0 ? 8 : Math.round(((idx + 1) / STAGE_ORDER.length) * 100);
+      document.getElementById('build-stage').textContent = job.stage_label || job.stage;
+      document.getElementById('build-detail').textContent = job.detail || '';
+      document.getElementById('build-bar').style.width = pct + '%';
+    } else if (job.status === 'done') {
+      stopPolling();
+      showBuildSection('build-done');
+      var w = document.getElementById('build-warnings');
+      w.innerHTML = '';
+      var health = job.ai_health || {};
+      (health.warnings || []).forEach(function(msg) {
+        var div = document.createElement('div');
+        div.className = 'flash flash--err';
+        div.style.margin = '0 0 10px';
+        div.textContent = msg;
+        w.appendChild(div);
+      });
+    } else if (job.status === 'error') {
+      stopPolling();
+      showBuildSection('build-error');
+      document.getElementById('build-error-msg').textContent = job.error || 'Build failed';
+    }
+  }
+
+  function poll() {
+    fetch('/admin/build-status?client=' + encodeURIComponent(CLIENT) + '&period=' + encodeURIComponent(PERIOD))
+      .then(function(r) { return r.json(); })
+      .then(function(job) { if (job.status && job.status !== 'idle') renderJob(job); })
+      .catch(function() {});
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(poll, 1200);
+  }
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  window.startBuild = function() {
+    var fd = new FormData();
+    fd.append('client_slug', CLIENT);
+    fd.append('period', PERIOD);
+    showBuildSection('build-progress');
+    document.getElementById('build-stage').textContent = 'Starting…';
+    document.getElementById('build-bar').style.width = '4%';
+    fetch('/admin/build-report', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(job) {
+        if (job.status === 'error' && job.error) { renderJob(job); return; }
+        renderJob(job);
+        startPolling();
+      })
+      .catch(function() {
+        showBuildSection('build-error');
+        document.getElementById('build-error-msg').textContent = 'Could not start the build — try again.';
+      });
+  };
+
+  // If a build is already running for this month (e.g. page was reloaded), resume showing it.
+  fetch('/admin/build-status?client=' + encodeURIComponent(CLIENT) + '&period=' + encodeURIComponent(PERIOD))
+    .then(function(r) { return r.json(); })
+    .then(function(job) {
+      if (job.status === 'running') { renderJob(job); startPolling(); }
+    })
+    .catch(function() {});
+})();
+</script>
+{% endblock %}

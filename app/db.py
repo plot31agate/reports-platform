@@ -1,4 +1,9 @@
-"""SQLite database layer. Tables: clients, reports, share_tokens."""
+"""SQLite database layer.
+
+Tables: clients, reports, share_tokens, uploads, report_commentary,
+client_users (portal logins), report_views (engagement), sentiment_cache.
+"""
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -59,6 +64,36 @@ CREATE TABLE IF NOT EXISTS report_commentary (
     updated_at   TEXT NOT NULL,
     UNIQUE(client_slug, period)
 );
+
+CREATE TABLE IF NOT EXISTS client_users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_slug   TEXT NOT NULL,
+    email         TEXT NOT NULL,
+    name          TEXT,
+    invite_token  TEXT UNIQUE NOT NULL,
+    created_at    TEXT NOT NULL,
+    last_login_at TEXT,
+    revoked_at    TEXT,
+    UNIQUE(client_slug, email),
+    FOREIGN KEY(client_slug) REFERENCES clients(slug)
+);
+
+CREATE TABLE IF NOT EXISTS report_views (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_slug  TEXT NOT NULL,
+    period       TEXT NOT NULL,
+    channel      TEXT NOT NULL,   -- 'share' or 'portal'
+    viewer       TEXT,            -- portal email, or share token prefix
+    viewed_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sentiment_cache (
+    client_slug  TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    result_json  TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    UNIQUE(client_slug, content_hash)
+);
 """
 
 
@@ -77,19 +112,33 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
-        # Lightweight migration: config_json holds brand + context for DB-defined clients
+        # Lightweight migrations
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(clients)").fetchall()]
         if "config_json" not in cols:
             conn.execute("ALTER TABLE clients ADD COLUMN config_json TEXT")
-        # Seed Sportingtech as first client if not present
-        existing = conn.execute(
-            "SELECT slug FROM clients WHERE slug = ?", ("sportingtech",)
-        ).fetchone()
-        if not existing:
-            conn.execute(
-                "INSERT INTO clients (slug, display_name, created_at) VALUES (?, ?, ?)",
-                ("sportingtech", "Sportingtech", datetime.utcnow().isoformat()),
-            )
+        share_cols = [r["name"] for r in conn.execute("PRAGMA table_info(share_tokens)").fetchall()]
+        if "revoked_at" not in share_cols:
+            conn.execute("ALTER TABLE share_tokens ADD COLUMN revoked_at TEXT")
+
+        # Seed code-registry clients into the DB. The DB is the single source of
+        # truth at runtime; code modules act only as seed data for first boot.
+        from app.clients import CLIENTS
+
+        for slug, config in CLIENTS.items():
+            row = conn.execute(
+                "SELECT slug, config_json FROM clients WHERE slug = ?", (slug,)
+            ).fetchone()
+            seed = {k: v for k, v in config.items() if k not in ("slug", "display_name")}
+            if not row:
+                conn.execute(
+                    "INSERT INTO clients (slug, display_name, created_at, config_json) VALUES (?, ?, ?, ?)",
+                    (slug, config["display_name"], datetime.utcnow().isoformat(), json.dumps(seed)),
+                )
+            elif not row["config_json"]:
+                conn.execute(
+                    "UPDATE clients SET config_json = ? WHERE slug = ?",
+                    (json.dumps(seed), slug),
+                )
 
 
 def list_clients():
@@ -232,7 +281,125 @@ def get_report_by_token(token: str):
             """SELECT r.* FROM reports r
                JOIN share_tokens t ON t.report_id = r.id
                WHERE t.token = ?
+               AND t.revoked_at IS NULL
                AND (t.expires_at IS NULL OR t.expires_at > ?)""",
             (token, datetime.utcnow().isoformat()),
         ).fetchone()
         return dict(row) if row else None
+
+
+def list_share_tokens(report_id: int):
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT token, expires_at, created_at, revoked_at
+               FROM share_tokens WHERE report_id = ? ORDER BY created_at DESC""",
+            (report_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def revoke_share_token(token: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE share_tokens SET revoked_at = ? WHERE token = ?",
+            (datetime.utcnow().isoformat(), token),
+        )
+
+
+# ------------------- portal users -------------------
+
+def create_client_user(client_slug: str, email: str, name: str, invite_token: str):
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO client_users (client_slug, email, name, invite_token, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (client_slug, email.lower().strip(), name, invite_token, datetime.utcnow().isoformat()),
+        )
+
+
+def list_client_users(client_slug: str):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM client_users WHERE client_slug = ? ORDER BY created_at",
+            (client_slug,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_client_user(user_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM client_users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def get_client_user_by_invite(invite_token: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM client_users WHERE invite_token = ? AND revoked_at IS NULL",
+            (invite_token,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def touch_client_user_login(user_id: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE client_users SET last_login_at = ? WHERE id = ?",
+            (datetime.utcnow().isoformat(), user_id),
+        )
+
+
+def revoke_client_user(user_id: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE client_users SET revoked_at = ? WHERE id = ?",
+            (datetime.utcnow().isoformat(), user_id),
+        )
+
+
+# ------------------- report views -------------------
+
+def record_report_view(client_slug: str, period: str, channel: str, viewer: str = None):
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO report_views (client_slug, period, channel, viewer, viewed_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (client_slug, period, channel, viewer, datetime.utcnow().isoformat()),
+        )
+
+
+def report_view_stats(client_slug: str, period: str) -> dict:
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) AS total, MAX(viewed_at) AS last_viewed
+               FROM report_views WHERE client_slug = ? AND period = ?""",
+            (client_slug, period),
+        ).fetchone()
+        return {"total": row["total"], "last_viewed": row["last_viewed"]}
+
+
+# ------------------- sentiment cache -------------------
+
+def get_sentiment_cached(client_slug: str, content_hash: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT result_json FROM sentiment_cache WHERE client_slug = ? AND content_hash = ?",
+            (client_slug, content_hash),
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row["result_json"])
+        except (ValueError, TypeError):
+            return None
+
+
+def put_sentiment_cache(client_slug: str, content_hash: str, result: dict):
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO sentiment_cache (client_slug, content_hash, result_json, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(client_slug, content_hash) DO UPDATE SET
+                   result_json = excluded.result_json, created_at = excluded.created_at""",
+            (client_slug, content_hash, json.dumps(result), datetime.utcnow().isoformat()),
+        )

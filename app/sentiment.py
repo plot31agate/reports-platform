@@ -4,12 +4,14 @@ Two entry points:
 - classify_mentions(mentions, client_config): scores each mention pos/neg/neutral
 - synthesise_actions(report_data, client_config): generates the "next month" section
 """
+import hashlib
 import json
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from anthropic import Anthropic
 
 from app.config import settings
+from app.db import get_sentiment_cached, put_sentiment_cache
 
 
 def _client() -> Optional[Anthropic]:
@@ -48,6 +50,7 @@ Classify the following mention:
                 raw = raw[4:]
         data = json.loads(raw.strip())
         return {
+            "ok": True,
             "classification": data.get("classification", "neutral"),
             "confidence": float(data.get("confidence", 0.5)),
             "themes": data.get("themes", []),
@@ -55,6 +58,7 @@ Classify the following mention:
         }
     except Exception as e:
         return {
+            "ok": False,
             "classification": "neutral",
             "confidence": 0.0,
             "themes": [],
@@ -62,9 +66,28 @@ Classify the following mention:
         }
 
 
-def classify_mentions(mentions: List[dict], client_config: dict) -> dict:
-    """Classify a list of mentions and return aggregate + per-item scores."""
+def _mention_hash(mention: dict) -> str:
+    raw = "|".join([
+        mention.get("url", ""), mention.get("title", ""), mention.get("snippet", ""),
+    ])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def classify_mentions(
+    mentions: List[dict],
+    client_config: dict,
+    progress: Optional[Callable[[int, int], None]] = None,
+) -> dict:
+    """Classify a list of mentions and return aggregate + per-item scores.
+
+    Results are cached per client+content hash, so republish/review loads
+    only pay for mentions that haven't been scored before. Failed calls are
+    never cached, are excluded from the sentiment score, and are counted in
+    `failed` so the UI can flag a degraded build instead of passing failures
+    off as neutral coverage.
+    """
     client = _client()
+    slug = client_config.get("slug", "")
     if not client or not mentions:
         return {
             "configured": bool(client),
@@ -72,19 +95,35 @@ def classify_mentions(mentions: List[dict], client_config: dict) -> dict:
             "positive": 0, "neutral": 0, "negative": 0,
             "avg_score": None,
             "scored": [],
+            "failed": 0,
+            "from_cache": 0,
         }
 
     scored = []
-    for m in mentions:
-        result = classify_mention(client, m, client_config)
+    failed = 0
+    from_cache = 0
+    for i, m in enumerate(mentions):
+        content_hash = _mention_hash(m)
+        result = get_sentiment_cached(slug, content_hash)
+        if result:
+            from_cache += 1
+        else:
+            result = classify_mention(client, m, client_config)
+            if result.get("ok"):
+                put_sentiment_cache(slug, content_hash, result)
+            else:
+                failed += 1
         scored.append({**m, **result})
+        if progress:
+            progress(i + 1, len(mentions))
 
-    pos = sum(1 for s in scored if s["classification"] == "positive")
-    neg = sum(1 for s in scored if s["classification"] == "negative")
-    neu = sum(1 for s in scored if s["classification"] == "neutral")
+    counted = [s for s in scored if s.get("ok", True)]
+    pos = sum(1 for s in counted if s["classification"] == "positive")
+    neg = sum(1 for s in counted if s["classification"] == "negative")
+    neu = sum(1 for s in counted if s["classification"] == "neutral")
 
-    # Simple sentiment score: (pos - neg) / total, range -1 to +1
-    avg_score = round((pos - neg) / len(scored), 2) if scored else None
+    # Simple sentiment score: (pos - neg) / classified, range -1 to +1.
+    avg_score = round((pos - neg) / len(counted), 2) if counted else None
 
     return {
         "configured": True,
@@ -92,6 +131,8 @@ def classify_mentions(mentions: List[dict], client_config: dict) -> dict:
         "positive": pos, "neutral": neu, "negative": neg,
         "avg_score": avg_score,
         "scored": scored,
+        "failed": failed,
+        "from_cache": from_cache,
     }
 
 

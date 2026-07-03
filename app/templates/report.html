@@ -25,12 +25,17 @@
 <div class="edit-bar">
   <div class="edit-bar__label">Editing {{ client.display_name }} · {{ period_display }} — comments show where they will appear</div>
   <div class="edit-bar__actions">
-    <a class="btn btn--secondary" href="/admin">Done</a>
+    <a class="btn btn--secondary" href="/admin/workspace?client={{ client_slug }}&period={{ period }}">Done</a>
     {% if preview_url %}<a class="btn btn--secondary" href="{{ preview_url }}" target="_blank">Open published</a>{% endif %}
     <button type="submit" form="review-form" class="btn">Save and regenerate</button>
   </div>
 </div>
 {% if message %}<div class="edit-message">{{ message }}</div>{% endif %}
+{% if ai_health and ai_health.warnings %}
+{% for w in ai_health.warnings %}
+<div class="edit-message" style="background:#FEF2F2;color:#B91C1C;border:1px solid rgba(185,28,28,0.25);">⚠ {{ w }}</div>
+{% endfor %}
+{% endif %}
 <form method="post" action="/admin/review" id="review-form">
 <input type="hidden" name="client_slug" value="{{ client_slug }}">
 <input type="hidden" name="period" value="{{ period }}">

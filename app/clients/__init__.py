@@ -1,15 +1,18 @@
 """Client registry.
 
-Clients come from two places:
-  1. Code modules (rich, hand-tuned configs like Sportingtech).
-  2. The DB `clients` table (created in-app via the New client flow),
-     whose config_json is merged onto a sensible default template.
+The DB `clients` table is the single source of truth at runtime — every
+client (whether added in-app or seeded from code) lives there, and its
+config_json is merged onto DEFAULT_CLIENT below.
+
+Code modules (like sportingtech.py) are seed data only: init_db copies them
+into the DB on first boot, after which edits belong in the DB.
 """
 import json
 
 from app.clients.sportingtech import SPORTINGTECH
 
 
+# Seed registry — consumed by init_db, not used for runtime lookups.
 CLIENTS = {
     "sportingtech": SPORTINGTECH,
 }
@@ -53,14 +56,13 @@ def _merge(base: dict, override: dict) -> dict:
 
 
 def get_client(slug: str) -> dict:
-    if slug in CLIENTS:
-        return CLIENTS[slug]
-
-    # Fall back to a DB-defined client.
     from app.db import get_client_row
 
     row = get_client_row(slug)
     if not row:
+        # Not yet seeded (e.g. before first init_db run) — fall back to code.
+        if slug in CLIENTS:
+            return CLIENTS[slug]
         raise KeyError(f"Unknown client: {slug}")
 
     cfg = {}

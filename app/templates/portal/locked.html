@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client portal — Digital Footprints</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #0C0D0E; color: #fff;
+    font-family: 'Aptos', 'Inter', system-ui, -apple-system, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    max-width: 420px; text-align: center; padding: 48px 40px;
+    background: #141619; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+  }
+  .card img { width: 180px; margin-bottom: 28px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.65); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img src="/static/img/df-logo-white.png" alt="Digital Footprints">
+    {% if reason == 'expired' %}
+    <h1>This link is no longer active</h1>
+    <p>Your portal link has expired or access was withdrawn. Ask your Digital Footprints contact to send you a fresh link.</p>
+    {% else %}
+    <h1>Your reports live here</h1>
+    <p>Open the personal access link we sent you to view your reports. If you don't have one, ask your Digital Footprints contact.</p>
+    {% endif %}
+  </div>
+</body>
+</html>
