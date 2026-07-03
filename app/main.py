@@ -526,7 +526,7 @@ def admin_build_status(request: Request, client: str, period: str):
 # ------------------- ADMIN REVIEW & EDIT COMMENTARY -------------------
 
 def _blank_actions():
-    return {"lean_into": [], "investigate": [], "fix_urgently": None}
+    return {"lean_into": [], "investigate": [], "fix_urgently": None, "worked": [], "watch": []}
 
 
 @app.get("/admin/review", response_class=HTMLResponse)
@@ -551,6 +551,8 @@ def admin_review_get(request: Request, client: str = None, period: str = None, m
     lean = (actions.get("lean_into") or []) + [{"action": "", "why": ""}] * 3
     invest = (actions.get("investigate") or []) + [{"action": "", "why": ""}] * 3
     fix = actions.get("fix_urgently") or {"action": "", "why": ""}
+    worked = (actions.get("worked") or []) + [""] * 5
+    watch = (actions.get("watch") or []) + [""] * 5
 
     html_path = settings.reports_out_dir / client / f"{period}.html"
     preview_url = f"/c/{client}/{period}" if html_path.exists() else None
@@ -560,6 +562,8 @@ def admin_review_get(request: Request, client: str = None, period: str = None, m
         "edit_lean": lean[:3],
         "edit_invest": invest[:3],
         "edit_fix": fix,
+        "edit_worked": worked[:5],
+        "edit_watch": watch[:5],
         "preview_url": preview_url,
         "message": message,
     })
@@ -585,6 +589,9 @@ async def admin_review_post(request: Request):
         val = (form.get(f"note_{key}") or "").strip()
         if val:
             notes[key] = val
+        caveat = (form.get(f"callout_{key}") or "").strip()
+        if caveat:
+            notes[f"callout_{key}"] = caveat
 
     def _bucket(prefix):
         items = []
@@ -595,12 +602,22 @@ async def admin_review_post(request: Request):
                 items.append({"action": action, "why": why})
         return items
 
+    def _lines(prefix, count=5):
+        items = []
+        for i in range(count):
+            val = (form.get(f"{prefix}_{i}") or "").strip()
+            if val:
+                items.append(val)
+        return items
+
     fix_action = (form.get("fix_0_action") or "").strip()
     fix_why = (form.get("fix_0_why") or "").strip()
     actions = {
         "lean_into": _bucket("lean_into"),
         "investigate": _bucket("investigate"),
         "fix_urgently": {"action": fix_action, "why": fix_why} if fix_action else None,
+        "worked": _lines("worked"),
+        "watch": _lines("watch"),
     }
 
     upsert_commentary(

@@ -21,6 +21,17 @@
 {% endif %}
 {% endmacro %}
 
+{% macro callout(key) %}
+{% if editable %}
+<div class="section__note--edit">
+  <span class="edit-tag">Data caveat</span>
+  <textarea name="callout_{{ key }}" rows="2" placeholder="Optional caveat shown as an amber callout, e.g. first month on a new platform, treat as baseline. Leave blank to omit.">{{ notes.get('callout_' ~ key) or '' }}</textarea>
+</div>
+{% elif notes.get('callout_' ~ key) %}
+<div class="callout">{{ notes.get('callout_' ~ key) }}</div>
+{% endif %}
+{% endmacro %}
+
 {% if editable %}
 <div class="edit-bar">
   <div class="edit-bar__label">Editing {{ client.display_name }} · {{ period_display }} — comments show where they will appear</div>
@@ -122,12 +133,13 @@
 </div>
 
 {# ================== MEDIA COVERAGE ================== #}
-{% if editable or (data.mentions.data and data.mentions.data.total > 0) or notes.get('media') %}
+{% if editable or (data.mentions.data and data.mentions.data.total > 0) or notes.get('media') or notes.get('callout_media') %}
 <div class="band">
   <div class="band__aside">
     <div class="kicker">/ Media coverage</div>
     <h2 class="band__title">{% if mentions_total %}{{ mentions_total }} stories this month.{% else %}Media coverage.{% endif %}</h2>
     {{ note('media') }}
+    {{ callout('media') }}
     {% if editable and not (data.mentions.data and data.mentions.data.total > 0) %}
     <p class="muted muted--internal">No mentions data uploaded for this period. This section will not appear in the published report.</p>
     {% endif %}
@@ -161,12 +173,13 @@
 {# ================== SHARE OF VOICE ================== #}
 {% set sov = data.competitor_benchmark.data if data.competitor_benchmark else none %}
 {% set has_sov = sov and sov.rows %}
-{% if editable or has_sov or notes.get('sov') %}
+{% if editable or has_sov or notes.get('sov') or notes.get('callout_sov') %}
 <div class="band band--flip">
   <div class="band__aside">
     <div class="kicker">/ Share of voice</div>
     <h2 class="band__title">Your slice of the search market.</h2>
     {{ note('sov') }}
+    {{ callout('sov') }}
     {% if editable and not has_sov %}
     <p class="muted muted--internal">No benchmark data yet — add competitor domains on the client's Ahrefs card and sync "Competitor benchmark". This section will not appear in the published report.</p>
     {% endif %}
@@ -216,12 +229,13 @@
 {% endif %}
 
 {# ================== EXECUTIVE MENTIONS ================== #}
-{% if editable or exec_mentions or notes.get('execs') %}
+{% if editable or exec_mentions or notes.get('execs') or notes.get('callout_execs') %}
 <div class="band">
   <div class="band__aside">
     <div class="kicker">/ Executive mentions</div>
     <h2 class="band__title">Executive visibility.</h2>
     {{ note('execs') }}
+    {{ callout('execs') }}
     {% if editable and not exec_mentions %}
       {% if client.executives %}
       <p class="muted muted--internal">Tracking {{ client.executives|length }} executives ({{ client.executives|join(', ') }}) — none detected in this month's coverage. This section will not appear in the published report.</p>
@@ -250,13 +264,14 @@
 {% endif %}
 
 {# ================== SENTIMENT (navy panel) ================== #}
-{% if editable or (sentiment.configured and sentiment.total > 0) or notes.get('sentiment') %}
+{% if editable or (sentiment.configured and sentiment.total > 0) or notes.get('sentiment') or notes.get('callout_sentiment') %}
 <div class="navy-band">
   <div class="navy-band__inner">
     <div class="band__aside">
       <div class="kicker">/ Sentiment</div>
       <h2 class="band__title">How the market reads you.</h2>
       {{ note('sentiment') }}
+      {{ callout('sentiment') }}
       {% if editable and not (sentiment.configured and sentiment.total > 0) %}
         {% if not sentiment.configured %}
         <p class="muted muted--internal">Claude API not configured. Set <code>ANTHROPIC_API_KEY</code> to enable sentiment scoring. This section will not appear in the published report.</p>
@@ -290,12 +305,13 @@
 {# ================== SEARCH & TRAFFIC ================== #}
 {% set gsc = data.search_console.data %}
 {% set ga4 = data.ga4_export.data %}
-{% if editable or gsc or ga4 or notes.get('traffic') %}
+{% if editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic') %}
 <div class="band">
   <div class="band__aside">
     <div class="kicker">/ Search &amp; traffic</div>
     <h2 class="band__title">Search and site traffic.</h2>
     {{ note('traffic') }}
+    {{ callout('traffic') }}
     {% if editable and not (gsc or ga4) %}
     <p class="muted muted--internal">No GA4 or Search Console data uploaded for this period. This section will not appear in the published report.</p>
     {% endif %}
@@ -360,12 +376,13 @@
 {# GA4 country data preferred; Similarweb kept as fallback for old months. #}
 {% set geo = data.ga4_geography.data if data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries else data.similarweb_traffic.data %}
 {% set geo_label = 'GA4' if (data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries) else 'SimilarWeb' %}
-{% if editable or geo or notes.get('campaigns') %}
+{% if editable or geo or notes.get('campaigns') or notes.get('callout_campaigns') %}
 <div class="band band--flip">
   <div class="band__aside">
     <div class="kicker">/ Geography</div>
     <h2 class="band__title">Where visits come from.</h2>
     {{ note('campaigns') }}
+    {{ callout('campaigns') }}
     {% if editable and not (geo and geo.top_countries) %}
     <p class="muted muted--internal">No geography data for this period — sync or upload GA4 geography (countries). This section will not appear in the published report.</p>
     {% endif %}
@@ -398,12 +415,13 @@
 {% set li = data.linkedin_company.data %}
 {% set tr = data.ahrefs_trends.data if data.ahrefs_trends else none %}
 {% set has_trends = tr and tr.points and tr.points | length > 1 %}
-{% if editable or ah or li or has_trends or notes.get('backlinks') or notes.get('linkedin') %}
+{% if editable or ah or li or has_trends or notes.get('backlinks') or notes.get('linkedin') or notes.get('callout_backlinks') %}
 <div class="band band--stack">
   <div class="kicker">/ Authority &amp; social</div>
   <h2 class="band__title">New links, new followers.</h2>
   {{ note('backlinks') }}
   {{ note('linkedin') }}
+  {{ callout('backlinks') }}
   {% if editable and not (ah or li or has_trends) %}
   <p class="muted muted--internal">No Ahrefs or LinkedIn data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
@@ -485,7 +503,7 @@
 {% endif %}
 
 {# ================== TECHNICAL SEO (navy panel) ================== #}
-{% if editable or technical_seo or notes.get('technical_seo') %}
+{% if editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo') %}
 <div class="navy-band">
   <div class="navy-band__inner">
     <div class="band__aside">
@@ -496,6 +514,7 @@
       <h2 class="band__title">Technical SEO.</h2>
       {% endif %}
       {{ note('technical_seo') }}
+      {{ callout('technical_seo') }}
       {% if editable and not technical_seo %}
       <p class="muted muted--internal">No technical SEO data uploaded. Upload <code>technical_seo_metrics.csv</code> and <code>technical_seo_register.csv</code>. This section will not appear in the published report.</p>
       {% endif %}
@@ -543,6 +562,65 @@
     </div>
     {% endif %}
   </div>
+</div>
+{% endif %}
+
+{# ================== WHAT WORKED / WHAT TO WATCH ================== #}
+{% set worked_items = (actions.content.worked if (actions.configured and actions.content) else none) or [] %}
+{% set watch_items = (actions.content.watch if (actions.configured and actions.content) else none) or [] %}
+{% if editable or worked_items or watch_items %}
+<div class="band band--read">
+  <div class="kicker">/ Read on the month</div>
+  <h2 class="band__title">What worked, what to watch.</h2>
+  {% if editable %}
+  <div class="readout">
+    <div class="readout__card readout__card--worked">
+      <h3 class="readout__head">What worked</h3>
+      {% for item in edit_worked %}
+      <div class="rec-slot">
+        <span class="rec-slot__num">{{ loop.index }}</span>
+        <div class="rec-slot__fields">
+          <textarea name="worked_{{ loop.index0 }}" rows="2" placeholder="A win from the month, with the numbers behind it. Leave blank to omit.">{{ item }}</textarea>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="readout__card readout__card--watch">
+      <h3 class="readout__head">What to watch</h3>
+      {% for item in edit_watch %}
+      <div class="rec-slot">
+        <span class="rec-slot__num">{{ loop.index }}</span>
+        <div class="rec-slot__fields">
+          <textarea name="watch_{{ loop.index0 }}" rows="2" placeholder="A soft spot, risk or caveat worth an eye. Leave blank to omit.">{{ item }}</textarea>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="readout">
+    {% if worked_items %}
+    <div class="readout__card readout__card--worked">
+      <h3 class="readout__head">What worked</h3>
+      <ul class="readout__list">
+        {% for item in worked_items %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if watch_items %}
+    <div class="readout__card readout__card--watch">
+      <h3 class="readout__head">What to watch</h3>
+      <ul class="readout__list">
+        {% for item in watch_items %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 

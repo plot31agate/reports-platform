@@ -169,14 +169,18 @@ Each item has two parts:
 - "action": a short imperative headline, 5 to 10 words maximum, no trailing full stop (e.g. "Feed the proactive earned-media pipeline", "Build a landing page for sportsbook demo"). Never a full sentence with clauses.
 - "why": one or two sentences carrying the detail - the specific targets, outlets, queries and numbers from the data that justify it.
 
-Punchy, no fluff, no generic advice. Return as JSON:
+Also give a read on the month:
+- "worked": three to five bullets on what worked, each a single string of one or two sentences naming the specific result and the numbers behind it
+- "watch": two to four bullets on what to watch, each a single string of one or two sentences flagging a soft spot, risk or caveat in the data
 
-{{"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}}}}"""
+Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
+
+{{"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]}}"""
 
     try:
         resp = client.messages.create(
             model=settings.claude_model_synthesis,
-            max_tokens=2000,
+            max_tokens=3000,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
