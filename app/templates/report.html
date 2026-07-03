@@ -531,7 +531,7 @@
         {% for issue in tseo.high_med_issues[:4] %}
         <div class="navy-list__row">
           <span class="navy-list__id">{{ issue.issue_id }}</span>
-          <span class="navy-list__text">{{ issue.finding[:80] }}</span>
+          <span class="navy-list__text">{{ issue.finding[:160] }}{% if issue.finding | length > 160 %}…{% endif %}</span>
           <span class="navy-list__tag">{{ issue.timeframe or issue.severity }}</span>
         </div>
         {% endfor %}
