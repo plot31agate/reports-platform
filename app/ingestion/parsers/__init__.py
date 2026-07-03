@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.ingestion.parsers.ahrefs import parse_ahrefs
 from app.ingestion.parsers.similarweb import parse_similarweb
-from app.ingestion.parsers.ga4 import parse_ga4
+from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_geography
 from app.ingestion.parsers.search_console import parse_search_console
 from app.ingestion.parsers.linkedin import parse_linkedin
 from app.ingestion.parsers.mentions import parse_mentions
@@ -19,8 +19,12 @@ from app.ingestion.parsers.technical_seo import (
 
 PARSER_MAP = {
     "ahrefs_backlinks":        ("Ahrefs backlinks",            parse_ahrefs),
+    # similarweb_traffic stays parseable so months built from old uploads
+    # still render, but it's no longer an upload card (GA4 geography
+    # replaced it - real measured data instead of estimates).
     "similarweb_traffic":      ("Similarweb traffic",          parse_similarweb),
     "ga4_export":              ("GA4 export",                  parse_ga4),
+    "ga4_geography":           ("GA4 geography",               parse_ga4_geography),
     "search_console":          ("Search Console",              parse_search_console),
     "linkedin_company":        ("LinkedIn (company)",          parse_linkedin),
     "mentions":                ("Media mentions",              parse_mentions),
@@ -33,9 +37,9 @@ PARSER_MAP = {
 SOURCE_DEFS = [
     {"key": "mentions",               "title": "Media mentions",        "purpose": "Coverage, sentiment, exec mentions",          "cols": "title, url, source, date"},
     {"key": "ga4_export",             "title": "GA4",                   "purpose": "Sessions, users, top pages",                  "cols": "sessions, users, pagePath"},
+    {"key": "ga4_geography",          "title": "GA4 geography",         "purpose": "Visits by country",                           "cols": "Country, Sessions"},
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
-    {"key": "similarweb_traffic",     "title": "Similarweb",            "purpose": "Traffic and channel mix",                    "cols": "date, visits, channel, share"},
     {"key": "linkedin_company",       "title": "LinkedIn (company)",    "purpose": "Impressions, followers, top posts",           "cols": "date, impressions, clicks, followers"},
     {"key": "technical_seo_metrics",  "title": "Technical SEO metrics", "purpose": "Site health score, DR, open issues by month", "cols": "month, health_score, domain_rating, total_open"},
     {"key": "technical_seo_register", "title": "Technical SEO register","purpose": "Issue register with severity and status",     "cols": "issue_id, finding, severity, status"},
@@ -96,6 +100,18 @@ def summarise_parsed(source_key: str, data) -> dict:
         return {"status": "ok" if rd > 0 else "warning", "summary": s,
                 "warnings": [] if rd > 0 else ["No referring domains found - check column names"],
                 "row_count": rd}
+
+    if source_key == "ga4_geography":
+        countries = (data or {}).get("top_countries") or []
+        visits = (data or {}).get("total_visits") or 0
+        if not countries:
+            return {"status": "warning", "summary": "No countries found - needs Country + Sessions columns",
+                    "warnings": [], "row_count": 0}
+        top = countries[0]
+        s = f"{len(countries)} countries, top: {top['country']} ({top['share']}%)"
+        if visits:
+            s += f", {visits:,} sessions"
+        return {"status": "ok", "summary": s, "warnings": [], "row_count": len(countries)}
 
     if source_key == "similarweb_traffic":
         visits = (data or {}).get("total_visits") or 0

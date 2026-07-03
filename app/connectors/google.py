@@ -142,6 +142,15 @@ def sync(config, source_key, dest, period):
         write_ga4_csv(rows, dest)
         return len(rows)
 
+    if source_key == "ga4_geography":
+        prop = (config.get("ga4_property_id") or "").strip()
+        if not prop:
+            raise ConnectorError("No GA4 property ID saved")
+        data = _ga4_report(session, prop, start, end, ["country"], ["sessions"], limit=250)
+        rows = data.get("rows") or []
+        write_geo_csv(rows, dest)
+        return len(rows)
+
     if source_key == "search_console":
         site = (config.get("gsc_site_url") or "").strip()
         if not site:
@@ -168,6 +177,18 @@ def write_ga4_csv(rows, dest):
         vals = [m.get("value", "0") for m in mets] + ["0", "0", "0"]
         out.append([channel, vals[0], vals[1], vals[2]])
     write_csv(dest, header, out)
+
+
+def write_geo_csv(rows, dest):
+    """GA4 country rows -> CSV for parse_ga4_geography (Country, Sessions)."""
+    out = []
+    for r in rows:
+        dims = r.get("dimensionValues") or []
+        mets = r.get("metricValues") or []
+        country = dims[0].get("value", "") if dims else ""
+        sessions = mets[0].get("value", "0") if mets else "0"
+        out.append([country, sessions])
+    write_csv(dest, ["Country", "Sessions"], out)
 
 
 def write_gsc_csv(rows, dest):

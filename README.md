@@ -11,8 +11,8 @@ V1 client: Sportingtech.
 
 ## What this platform does
 
-Turns CSV / XLSX exports from Ahrefs, Similarweb, GA4, Search Console, LinkedIn,
-and Google Alerts into a branded monthly report with eight sections:
+Turns API syncs (Ahrefs, GA4, Search Console) and CSV / XLSX exports
+(LinkedIn, Google Alerts) into a branded monthly report with eight sections:
 
 1. Media coverage
 2. Share of voice
@@ -172,7 +172,6 @@ see the login page.
 
 1. **Export CSVs** from each tool (~30 min):
    - Ahrefs: Site Explorer → Backlinks → Export → `ahrefs_backlinks_YYYY-MM.csv`
-   - Similarweb: Traffic Overview → Export → `similarweb_traffic_YYYY-MM.csv`
    - GA4: Reports → Export → `ga4_export_YYYY-MM.csv`
    - Search Console: Performance → Export → `search_console_YYYY-MM.csv`
    - LinkedIn: Analytics → Export → `linkedin_company_YYYY-MM.xlsx`
@@ -205,14 +204,24 @@ Total human time each month: ~30-45 minutes.
 Two halves, reflecting how the accounts actually work:
 
 - **Agency keys** (Admin → API keys, one per provider, shared by every
-  client): the Ahrefs API key, the Similarweb API key, and one Google
-  service account JSON that covers both GA4 and Search Console. Each card
-  has a "How do I get this key?" walkthrough.
+  client): the Ahrefs API key and one Google service account JSON that
+  covers GA4 traffic, GA4 geography, and Search Console. Each card has a
+  "How do I get this key?" walkthrough.
 - **Client settings** (workspace → "API connections" panel): which target
-  domain (Ahrefs), domain (Similarweb), GA4 property ID and Search Console
-  property to pull for that client. For Google, the service account's email
-  must be added as a viewer on each client's GA4 property and Search
-  Console site.
+  domain and Site Audit project ID (Ahrefs), GA4 property ID and Search
+  Console property to pull for that client. For Google, the service
+  account's email must be added as a viewer on each client's GA4 property
+  and Search Console site.
+
+Ahrefs also feeds the monthly technical SEO metrics (Site Audit health
+score, DR, open-issue counts) with history carried forward so
+month-over-month deltas keep working. The curated issue register stays a
+manual upload — it holds the agency's judgement, which an API can't supply.
+The site health score also appears as a tile on the report cover.
+
+Similarweb was retired: GA4 geography feeds the report's Geography section
+with real measured country data. Old months built from Similarweb uploads
+still render.
 
 Save → Test connection → connected sources grow a **Sync** button in the
 workspace (plus "Sync all connected"). A sync pulls the period's data from

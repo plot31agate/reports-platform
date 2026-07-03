@@ -107,6 +107,18 @@
     <div class="score__value">{{ ga4_sessions | thousands if ga4_sessions is not none else '—' }}</div>
     <div class="score__sub">all channels</div>
   </div>
+  {% set health = technical_seo.current.health_score if technical_seo and technical_seo.current else none %}
+  {% if health is not none %}
+  <div class="score score--ink">
+    <div class="score__label">Site health</div>
+    <div class="score__value">{{ health }}<span class="score__unit">/100</span>
+      {%- if technical_seo.health_delta is not none and technical_seo.health_delta != 0 %}
+      <span class="score__delta {{ 'score__delta--up' if technical_seo.health_delta > 0 else 'score__delta--down' }}">{{ '{:+d}'.format(technical_seo.health_delta) }}</span>
+      {%- endif %}
+    </div>
+    <div class="score__sub">technical SEO score</div>
+  </div>
+  {% endif %}
 </div>
 
 {# ================== MEDIA COVERAGE ================== #}
@@ -286,24 +298,26 @@
 {% endif %}
 
 {# ================== GEOGRAPHY ================== #}
-{% set sw = data.similarweb_traffic.data %}
-{% if editable or sw or notes.get('campaigns') %}
+{# GA4 country data preferred; Similarweb kept as fallback for old months. #}
+{% set geo = data.ga4_geography.data if data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries else data.similarweb_traffic.data %}
+{% set geo_label = 'GA4' if (data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries) else 'SimilarWeb' %}
+{% if editable or geo or notes.get('campaigns') %}
 <div class="band band--flip">
   <div class="band__aside">
     <div class="kicker">/ Geography</div>
     <h2 class="band__title">Where visits come from.</h2>
     {{ note('campaigns') }}
-    {% if editable and not sw %}
-    <p class="muted muted--internal">No SimilarWeb data uploaded for this period. This section will not appear in the published report.</p>
+    {% if editable and not (geo and geo.top_countries) %}
+    <p class="muted muted--internal">No geography data for this period — sync or upload GA4 geography (countries). This section will not appear in the published report.</p>
     {% endif %}
   </div>
-  {% if sw and sw.top_countries %}
+  {% if geo and geo.top_countries %}
   <div class="band__body card">
-    <div class="card__label">Visits by country · SimilarWeb</div>
+    <div class="card__label">Visits by country · {{ geo_label }}</div>
     <div class="bars">
-      {% set maxc = sw.top_countries[0].share or 1 %}
+      {% set maxc = geo.top_countries[0].share or 1 %}
       {% set regions = client.regions_of_interest or [] %}
-      {% for c in sw.top_countries[:8] %}
+      {% for c in geo.top_countries[:8] %}
       {% set hot = c.country in regions %}
       <div class="bar">
         <div class="bar__head">
@@ -314,7 +328,7 @@
       </div>
       {% endfor %}
     </div>
-    {% if sw.total_visits %}<div class="card__footnote">{{ sw.total_visits | thousands }} total visits this month.</div>{% endif %}
+    {% if geo.total_visits %}<div class="card__footnote">{{ geo.total_visits | thousands }} total {{ 'sessions' if geo_label == 'GA4' else 'visits' }} this month.</div>{% endif %}
   </div>
   {% endif %}
 </div>

@@ -11,7 +11,7 @@ format the matching ingestion parser already understands, into the same
 data/{client}/{period}/ folder an upload would land in. Everything downstream
 (checklist, build, report) is identical for synced and uploaded data.
 """
-from app.connectors import ahrefs, similarweb, google
+from app.connectors import ahrefs, google
 
 
 # Drives the Agency API keys page, the per-client workspace panel, and the
@@ -21,14 +21,17 @@ CONNECTOR_DEFS = [
     {
         "provider": "ahrefs",
         "label": "Ahrefs",
-        "sources": ["ahrefs_backlinks"],
-        "blurb": "Pulls the live backlink profile — replaces the ahrefs_backlinks CSV export.",
+        "sources": ["ahrefs_backlinks", "technical_seo_metrics"],
+        "blurb": "Pulls the live backlink profile and the monthly technical SEO metrics (Site Audit health score, DR, open issues). The curated issue register stays a manual upload.",
         "agency_fields": [
             {"key": "api_key", "label": "API key", "type": "password", "secret": True},
         ],
         "client_fields": [
             {"key": "target", "label": "Target domain", "type": "text",
              "placeholder": "example.com"},
+            {"key": "audit_project_id", "label": "Site Audit project ID", "type": "text",
+             "placeholder": "e.g. 123456",
+             "hint": "The number in the Site Audit URL: app.ahrefs.com/site-audit/<id>. Leave blank to skip technical SEO sync."},
         ],
         "key_help": [
             "Log in to Ahrefs on the agency account",
@@ -37,30 +40,14 @@ CONNECTOR_DEFS = [
             "Copy the key and paste it here. Note: API v3 access needs an Enterprise plan or the API add-on — a 403 on test means plan, not key",
         ],
     },
-    {
-        "provider": "similarweb",
-        "label": "Similarweb",
-        "sources": ["similarweb_traffic"],
-        "blurb": "Pulls monthly visits — replaces the similarweb_traffic CSV export.",
-        "agency_fields": [
-            {"key": "api_key", "label": "API key", "type": "password", "secret": True},
-        ],
-        "client_fields": [
-            {"key": "domain", "label": "Domain", "type": "text",
-             "placeholder": "example.com"},
-        ],
-        "key_help": [
-            "Log in to Similarweb on the agency account",
-            "Account (avatar menu) → API management",
-            "Create or copy an API key and paste it here",
-            "Data for a month is published a few days after the month ends — a sync too early says so rather than failing silently",
-        ],
-    },
+    # Similarweb was retired in favour of GA4 geography: real measured
+    # country data from an account we already have, instead of paying for
+    # panel estimates. The connector module remains if it's ever wanted back.
     {
         "provider": "google",
         "label": "Google — GA4 + Search Console",
-        "sources": ["ga4_export", "search_console"],
-        "blurb": "One service account covers GA4 and Search Console for every client.",
+        "sources": ["ga4_export", "ga4_geography", "search_console"],
+        "blurb": "One service account covers GA4 traffic, GA4 geography, and Search Console for every client.",
         "agency_fields": [
             {"key": "service_account_json", "label": "Service account JSON", "type": "textarea", "secret": True},
         ],
@@ -82,7 +69,7 @@ CONNECTOR_DEFS = [
     },
 ]
 
-_MODULES = {"ahrefs": ahrefs, "similarweb": similarweb, "google": google}
+_MODULES = {"ahrefs": ahrefs, "google": google}
 
 # source_key -> provider that can feed it
 SOURCE_PROVIDERS = {
