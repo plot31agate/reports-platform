@@ -15,7 +15,8 @@ REPORT_CSS_PATH = STATIC_DIR / "css" / "report.css"
 
 _VAR_DECL = re.compile(r"--([a-zA-Z0-9-]+)\s*:\s*([^;}]+)")
 _VAR_REF = re.compile(r"var\(\s*--([a-zA-Z0-9-]+)\s*\)")
-_CSS_LINK = re.compile(r'<link[^>]+href="/static/css/report\.css"[^>]*>')
+# Tolerate a cache-busting query string (?v=...) on the stylesheet link.
+_CSS_LINK = re.compile(r'<link[^>]+href="/static/css/report\.css[^"]*"[^>]*>')
 
 
 def _collect_variables(*sources: str) -> dict:

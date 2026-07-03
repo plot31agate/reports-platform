@@ -159,34 +159,93 @@
 {% endif %}
 
 {# ================== SHARE OF VOICE ================== #}
-{% if editable or notes.get('sov') %}
+{% set sov = data.competitor_benchmark.data if data.competitor_benchmark else none %}
+{% set has_sov = sov and sov.rows %}
+{% if editable or has_sov or notes.get('sov') %}
 <div class="band band--flip">
   <div class="band__aside">
     <div class="kicker">/ Share of voice</div>
-    <h2 class="band__title">Share of tracked coverage.</h2>
+    <h2 class="band__title">Your slice of the search market.</h2>
     {{ note('sov') }}
-    {% if editable %}
-    <p class="muted muted--internal">Share of voice benchmarks vs {{ client.competitors|length }} tracked competitors ({{ client.competitors|join(', ') }}). Populate by adding a <code>sov.csv</code> file with columns: brand, mentions. Only your intro above is published.</p>
+    {% if editable and not has_sov %}
+    <p class="muted muted--internal">No benchmark data yet — add competitor domains on the client's Ahrefs card and sync "Competitor benchmark". This section will not appear in the published report.</p>
     {% endif %}
   </div>
+  {% if has_sov %}
+  <div class="band__body card">
+    <div class="card__label">Share of estimated organic search traffic · Ahrefs</div>
+    <div class="bars">
+      {% set maxs = sov.rows[0].share or 1 %}
+      {% for r in sov.rows %}
+      <div class="bar">
+        <div class="bar__head">
+          <span class="bar__name {% if r.is_client %}bar__name--strong{% endif %}">{{ r.brand }}</span>
+          <span class="bar__value {% if r.is_client %}bar__value--strong{% endif %}">
+            {{ r.share }}%
+            {%- if r.share_delta is defined and r.share_delta and r.is_client %}
+            <span class="sov-delta {{ 'sov-delta--up' if r.share_delta > 0 else 'sov-delta--down' }}">{{ '{:+g}'.format(r.share_delta) }}</span>
+            {%- endif %}
+          </span>
+        </div>
+        <div class="bar__track"><div class="bar__fill {% if r.is_client %}bar__fill--accent{% endif %}" style="width:{{ ((r.share / maxs * 100) | round | int) if maxs else 0 }}%;"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    <table class="bench">
+      <thead>
+        <tr><th>Brand</th><th>DR</th><th>Ref. domains</th><th>Organic traffic</th></tr>
+      </thead>
+      <tbody>
+        {% for r in sov.rows %}
+        <tr class="{% if r.is_client %}bench__row--client{% endif %}">
+          <td>{{ r.brand }}</td>
+          <td>{{ r.domain_rating if r.domain_rating is not none else '—' }}</td>
+          <td>{{ r.referring_domains | thousands if r.referring_domains is not none else '—' }}</td>
+          <td>{{ r.organic_traffic | thousands }}/mo</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="card__footnote">
+      {{ sov.rows | length }} brands benchmarked
+      {%- if sov.months_tracked and sov.months_tracked > 1 %} · share change vs previous month{% endif %} · estimates by Ahrefs
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
 {# ================== EXECUTIVE MENTIONS ================== #}
-{% if editable or notes.get('execs') %}
+{% if editable or exec_mentions or notes.get('execs') %}
 <div class="band">
   <div class="band__aside">
     <div class="kicker">/ Executive mentions</div>
     <h2 class="band__title">Executive visibility.</h2>
     {{ note('execs') }}
-    {% if editable %}
+    {% if editable and not exec_mentions %}
       {% if client.executives %}
-      <p class="muted muted--internal">Tracking mentions of: {{ client.executives|join(', ') }}. Executive auto-detection lands in v2. Only your intro above is published.</p>
+      <p class="muted muted--internal">Tracking {{ client.executives|length }} executives ({{ client.executives|join(', ') }}) — none detected in this month's coverage. This section will not appear in the published report.</p>
       {% else %}
       <p class="muted muted--internal">No executives configured for this client. Only your intro above is published.</p>
       {% endif %}
     {% endif %}
   </div>
+  {% if exec_mentions %}
+  <div class="band__body card">
+    <div class="card__label">People in the news · from tracked coverage</div>
+    {% for e in exec_mentions %}
+    <div class="execrow">
+      <div class="execrow__head">
+        <span class="execrow__name">{{ e.name }}</span>
+        <span class="execrow__chip">{{ e.count }} mention{{ 's' if e.count != 1 }}</span>
+      </div>
+      {% for m in e.examples[:1] %}
+      <div class="execrow__example">"{{ m.title[:100] }}"{% if m.source %} — {{ m.source }}{% endif %}</div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -365,11 +424,11 @@
       </span>
       {%- endif %}
     </div>
-    <div class="trend__bars">
-      {% for p in tr.points[-12:] %}
-      <div class="trend__bar" style="height:{{ (((p.get(key) or 0) / maxv * 100) | round | int) or 2 }}%;" title="{{ p.month }}: {{ p.get(key) }}"></div>
-      {% endfor %}
-    </div>
+    {# SVG data-URI image: renders identically in browsers and WeasyPrint
+       (which ignores inline <svg> and mishandles %-height flex bars). #}
+    {% if tr.svgs and tr.svgs.get(key) %}
+    <img class="trend__bars" src="{{ tr.svgs[key] }}" alt="{{ label }} 12-month trend">
+    {% endif %}
     <div class="trend__span">{{ tr.points[0].month }} → {{ tr.points[-1].month }}</div>
   </div>
   {% endif %}

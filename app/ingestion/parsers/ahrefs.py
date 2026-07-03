@@ -81,6 +81,67 @@ def parse_ahrefs_trends(path: Path) -> dict:
     return {"points": points, "latest": latest, "deltas": deltas, "max": maxes}
 
 
+def parse_competitor_benchmark(path: Path) -> dict:
+    """Benchmark CSV (month, is_client, brand, domain, dr, refdomains,
+    org_traffic) -> latest month's rows with share-of-voice percentages and
+    month-over-month share deltas."""
+    df = pd.read_csv(path, encoding="utf-8", on_bad_lines="skip")
+    df.columns = [c.strip().lower() for c in df.columns]
+    needed = {"month", "brand", "domain", "organic_traffic"}
+    if not needed.issubset(df.columns):
+        return {"month": None, "rows": [], "months_tracked": 0}
+
+    def month_rows(month):
+        sub = df[df["month"].astype(str).str.strip() == month]
+        rows = []
+        for _, r in sub.iterrows():
+            try:
+                traffic = int(float(r["organic_traffic"]))
+            except (ValueError, TypeError):
+                traffic = 0
+            rows.append({
+                "brand": str(r["brand"]).strip(),
+                "domain": str(r["domain"]).strip(),
+                "is_client": str(r.get("is_client", "0")).strip() in ("1", "1.0", "true", "True"),
+                "domain_rating": _num(r.get("domain_rating")),
+                "referring_domains": _int(r.get("referring_domains")),
+                "organic_traffic": traffic,
+            })
+        total = sum(r["organic_traffic"] for r in rows)
+        for r in rows:
+            r["share"] = round(r["organic_traffic"] / total * 100, 1) if total else 0.0
+        rows.sort(key=lambda r: -r["organic_traffic"])
+        return rows
+
+    months = sorted(df["month"].astype(str).str.strip().dropna().unique())
+    months = [m for m in months if m and m != "nan"]
+    if not months:
+        return {"month": None, "rows": [], "months_tracked": 0}
+
+    latest = months[-1]
+    rows = month_rows(latest)
+    if len(months) > 1:
+        prev_share = {r["domain"]: r["share"] for r in month_rows(months[-2])}
+        for r in rows:
+            if r["domain"] in prev_share:
+                r["share_delta"] = round(r["share"] - prev_share[r["domain"]], 1)
+    return {"month": latest, "rows": rows, "months_tracked": len(months)}
+
+
+def _num(v):
+    try:
+        return round(float(v), 1)
+    except (ValueError, TypeError):
+        return None
+
+
+def _int(v):
+    try:
+        return int(float(v))
+    except (ValueError, TypeError):
+        return None
+
+
 def _find_col(df, candidates):
     for c in candidates:
         if c in df.columns:

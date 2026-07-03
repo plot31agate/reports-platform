@@ -5,7 +5,7 @@ Missing files return an empty structure so the report still renders.
 """
 from pathlib import Path
 
-from app.ingestion.parsers.ahrefs import parse_ahrefs, parse_ahrefs_trends
+from app.ingestion.parsers.ahrefs import parse_ahrefs, parse_ahrefs_trends, parse_competitor_benchmark
 from app.ingestion.parsers.similarweb import parse_similarweb
 from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_geography
 from app.ingestion.parsers.search_console import parse_search_console
@@ -20,6 +20,7 @@ from app.ingestion.parsers.technical_seo import (
 PARSER_MAP = {
     "ahrefs_backlinks":        ("Ahrefs backlinks",            parse_ahrefs),
     "ahrefs_trends":           ("Ahrefs trends",               parse_ahrefs_trends),
+    "competitor_benchmark":    ("Competitor benchmark",        parse_competitor_benchmark),
     # similarweb_traffic stays parseable so months built from old uploads
     # still render, but it's no longer an upload card (GA4 geography
     # replaced it - real measured data instead of estimates).
@@ -42,6 +43,7 @@ SOURCE_DEFS = [
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
     {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
+    {"key": "competitor_benchmark",   "title": "Competitor benchmark",  "purpose": "Share of voice vs competitors",               "cols": "month, brand, domain, organic_traffic"},
     {"key": "linkedin_company",       "title": "LinkedIn (company)",    "purpose": "Impressions, followers, top posts",           "cols": "date, impressions, clicks, followers"},
     {"key": "technical_seo_metrics",  "title": "Technical SEO metrics", "purpose": "Site health score, DR, open issues by month", "cols": "month, health_score, domain_rating, total_open"},
     {"key": "technical_seo_register", "title": "Technical SEO register","purpose": "Issue register with severity and status",     "cols": "issue_id, finding, severity, status"},
@@ -102,6 +104,18 @@ def summarise_parsed(source_key: str, data) -> dict:
         return {"status": "ok" if rd > 0 else "warning", "summary": s,
                 "warnings": [] if rd > 0 else ["No referring domains found - check column names"],
                 "row_count": rd}
+
+    if source_key == "competitor_benchmark":
+        rows = (data or {}).get("rows") or []
+        if not rows:
+            return {"status": "warning", "summary": "No benchmark rows found", "warnings": [], "row_count": 0}
+        client_row = next((r for r in rows if r.get("is_client")), None)
+        s = f"{len(rows)} brands"
+        if client_row:
+            s += f", you: {client_row['share']}% SoV"
+            if client_row.get("share_delta") is not None:
+                s += f" ({client_row['share_delta']:+g} MoM)"
+        return {"status": "ok", "summary": s, "warnings": [], "row_count": len(rows)}
 
     if source_key == "ahrefs_trends":
         points = (data or {}).get("points") or []
