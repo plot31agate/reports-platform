@@ -26,26 +26,26 @@ CONNECTOR_DEFS = [
         "requires": {
             "ahrefs_backlinks": ["target"],
             "ahrefs_trends": ["target"],
-            "competitor_benchmark": ["target", "competitor_domains"],
+            "competitor_benchmark": ["target"],
             "technical_seo_metrics": ["audit_project_id", "target"],
-            "search_console": ["gsc_project_id"],
+            "search_console": ["audit_project_id"],
         },
-        "blurb": "Pulls backlinks, 12-month authority trends, technical SEO metrics (Site Audit), and — when the client's Search Console is connected to Ahrefs — search data too. The curated issue register stays a manual upload.",
+        "blurb": "Pulls backlinks, 12-month authority trends, technical SEO metrics (Site Audit), the competitor benchmark, and — when the client's Search Console is connected to the Ahrefs project — search data too. The curated issue register stays a manual upload.",
         "agency_fields": [
             {"key": "api_key", "label": "API key", "type": "password", "secret": True},
         ],
         "client_fields": [
             {"key": "target", "label": "Target domain", "type": "text",
              "placeholder": "example.com"},
-            {"key": "audit_project_id", "label": "Site Audit project ID", "type": "text",
+            # One ID covers the whole Ahrefs project: Site Audit, GSC
+            # Insights, and the Rank Tracker competitor list all live under
+            # the same project_id (the number in any Ahrefs project URL).
+            {"key": "audit_project_id", "label": "Ahrefs project ID", "type": "text",
              "placeholder": "e.g. 123456",
-             "hint": "The number in the Site Audit URL: app.ahrefs.com/site-audit/<id>. Leave blank to skip technical SEO sync."},
-            {"key": "gsc_project_id", "label": "Ahrefs project ID (GSC Insights)", "type": "text",
-             "placeholder": "e.g. 123456",
-             "hint": "If this client's Search Console is connected to the Ahrefs project, its ID here pulls search data without needing a Google grant. GSC Insights API calls are free."},
+             "hint": "The number in the project's Ahrefs URL, e.g. app.ahrefs.com/site-audit/<id>. Feeds technical SEO, Search Console (GSC Insights - free API calls, needs the client's GSC connected to the project), and the project's competitor list."},
             {"key": "competitor_domains", "label": "Competitor domains", "type": "text",
              "placeholder": "betconstruct.com, altenar.com, kambi.com",
-             "hint": "Comma-separated. Feeds the share-of-voice benchmark - brand names come from the client's competitor list automatically."},
+             "hint": "Optional - leave blank to pull the competitor list straight from the Ahrefs project. Fill in to override. Brand names come from the client's competitor list automatically."},
         ],
         "key_help": [
             "Log in to Ahrefs on the agency account",

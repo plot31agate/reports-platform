@@ -133,18 +133,28 @@ BENCH_COLS = ["month", "is_client", "brand", "domain", "domain_rating",
               "referring_domains", "organic_traffic"]
 
 
+def _normalise_domain(d: str) -> str:
+    d = d.strip().lower().replace("https://", "").replace("http://", "").strip("/")
+    return d[4:] if d.startswith("www.") else d
+
+
+def _project_id(config) -> str:
+    # gsc_project_id kept as a fallback for configs saved before the two
+    # project-ID fields were merged into audit_project_id.
+    return (config.get("audit_project_id") or "").strip() or (config.get("gsc_project_id") or "").strip()
+
+
 def _sync_competitors(config, dest, period):
     target = _target(config)
     raw = config.get("competitor_domains") or ""
-    domains = []
-    for d in re.split(r"[\n,]+", raw):
-        d = d.strip().lower().replace("https://", "").replace("http://", "").strip("/")
-        if d.startswith("www."):
-            d = d[4:]
-        if d:
-            domains.append(d)
+    domains = [d for d in (_normalise_domain(p) for p in re.split(r"[\n,]+", raw)) if d]
     if not domains:
-        raise ConnectorError("No competitor domains saved - add them on this client's Ahrefs card")
+        domains = _project_competitors(config)
+    if not domains:
+        raise ConnectorError(
+            "No competitors found - set the Ahrefs project ID (to pull the project's list) "
+            "or fill in competitor domains on this client's Ahrefs card"
+        )
 
     all_urls = [target] + domains
     body = {
@@ -157,12 +167,7 @@ def _sync_competitors(config, dest, period):
         raise ConnectorError("Ahrefs batch analysis returned no results")
 
     # Results echo the url; map back to our ordered list to keep client first.
-    by_url = {}
-    for r in results:
-        key = (r.get("url") or "").lower().replace("https://", "").replace("http://", "").strip("/")
-        if key.startswith("www."):
-            key = key[4:]
-        by_url[key] = r
+    by_url = {_normalise_domain(r.get("url") or ""): r for r in results}
 
     names = config.get("competitor_names") or []
 
@@ -199,6 +204,28 @@ def _sync_competitors(config, dest, period):
     return len(rows)
 
 
+def _project_competitors(config) -> list:
+    """Competitor domains from the Ahrefs project's Rank Tracker list."""
+    project_id = _project_id(config)
+    if not project_id:
+        return []
+    try:
+        data = _get(config, "/management/project-competitors", {"project_id": project_id})
+    except ConnectorError as e:
+        raise ConnectorError(
+            f"Could not pull the project's competitor list ({e}) - "
+            "fill in competitor domains manually on this client's Ahrefs card"
+        )
+    target = _normalise_domain(_target(config))
+    domains = []
+    for c in data.get("competitors") or []:
+        d = _normalise_domain(c.get("url") or "")
+        d = d.split("/")[0]  # prefix/exact modes carry a path
+        if d and d != target and d not in domains:
+            domains.append(d)
+    return domains
+
+
 def _bench_history(dest, period) -> list:
     rows = []
     data_root = dest.parent.parent
@@ -222,9 +249,9 @@ def _bench_history(dest, period) -> list:
 # ---------- Search Console via GSC Insights (free API calls) ----------
 
 def _sync_gsc(config, dest, period):
-    project_id = (config.get("gsc_project_id") or "").strip()
+    project_id = _project_id(config)
     if not project_id:
-        raise ConnectorError("No Ahrefs project ID for GSC Insights saved")
+        raise ConnectorError("No Ahrefs project ID saved")
     start, end = period_range(period)
     data = _get(config, "/gsc/keywords", {
         "project_id": project_id,
