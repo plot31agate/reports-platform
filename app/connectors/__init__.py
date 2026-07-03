@@ -57,33 +57,32 @@ CONNECTOR_DEFS = [
     # Similarweb was retired in favour of GA4 geography: real measured
     # country data from an account we already have, instead of paying for
     # panel estimates. The connector module remains if it's ever wanted back.
+    # Google's Search Console feed was retired: search data comes from Ahrefs
+    # GSC Insights instead (free API calls, no per-client Google grant).
+    # Google now only covers GA4, which Ahrefs can't supply.
     {
         "provider": "google",
-        "label": "Google — GA4 + Search Console",
-        "sources": ["ga4_export", "ga4_geography", "search_console"],
+        "label": "Google — GA4",
+        "sources": ["ga4_export", "ga4_geography"],
         "requires": {
             "ga4_export": ["ga4_property_id"],
             "ga4_geography": ["ga4_property_id"],
-            "search_console": ["gsc_site_url"],
         },
-        "blurb": "One service account covers GA4 traffic, GA4 geography, and Search Console for every client.",
+        "blurb": "One service account covers GA4 traffic and geography for every client.",
         "agency_fields": [
             {"key": "service_account_json", "label": "Service account JSON", "type": "textarea", "secret": True},
         ],
         "client_fields": [
             {"key": "ga4_property_id", "label": "GA4 property ID", "type": "text",
              "placeholder": "123456789", "hint": "GA4 → Admin → Property settings (numbers only)"},
-            {"key": "gsc_site_url", "label": "Search Console property", "type": "text",
-             "placeholder": "sc-domain:example.com or https://example.com/",
-             "hint": "Exactly as it appears in Search Console"},
         ],
         "key_help": [
             "Go to console.cloud.google.com → create (or pick) a project",
-            "APIs & Services → Enable APIs → enable \"Google Analytics Data API\" and \"Google Search Console API\"",
+            "APIs & Services → Enable APIs → enable \"Google Analytics Data API\"",
             "IAM & Admin → Service accounts → Create service account (any name, no roles needed)",
             "Open the account → Keys → Add key → Create new key → JSON — a file downloads",
             "Paste the whole JSON file here",
-            "Then grant it access per client: in GA4 → Admin → Property access management → add the service account's email as Viewer; in Search Console → Settings → Users → add the same email",
+            "Then grant it access per client: in GA4 → Admin → Property access management → add the service account's email as Viewer",
         ],
     },
 ]
@@ -91,8 +90,8 @@ CONNECTOR_DEFS = [
 _MODULES = {"ahrefs": ahrefs, "google": google}
 
 # source_key -> providers that can feed it, in preference order (defs order).
-# search_console has two: Ahrefs (via GSC Insights, no Google grant needed)
-# preferred, Google service account as fallback.
+# Every source currently has exactly one provider; search_console is Ahrefs
+# (GSC Insights), GA4 sources are Google.
 SOURCE_PROVIDERS: dict = {}
 for _d in CONNECTOR_DEFS:
     for _src in _d["sources"]:

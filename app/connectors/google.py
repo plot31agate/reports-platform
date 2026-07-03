@@ -1,24 +1,21 @@
-"""Google connector — GA4 Data API + Search Console API via one service account.
+"""Google connector — GA4 Data API via one service account.
 
 Feeds:
-  ga4_export     — CSV shaped like a GA4 Traffic acquisition export
-                   (channel group, Sessions, Users, Engaged sessions)
-  search_console — CSV shaped like a Search Console Queries export
-                   (Top queries, Clicks, Impressions, CTR, Position)
+  ga4_export    — CSV shaped like a GA4 Traffic acquisition export
+                  (channel group, Sessions, Users, Engaged sessions)
+  ga4_geography — CSV of Country, Sessions
 
-Both CSVs are read by the existing parsers unchanged. Setup on the Google
-side: create a service account, then add its email as a viewer on the GA4
-property and the Search Console site.
+Search Console is fed by the Ahrefs connector (GSC Insights) instead — no
+per-client Google grant needed. Setup on the Google side: create a service
+account, then add its email as a viewer on each GA4 property.
 """
 import json
-import urllib.parse
 
 from app.connectors._util import ConnectorError, period_range, write_csv
 
 TIMEOUT = 30
 SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly",
-    "https://www.googleapis.com/auth/webmasters.readonly",
 ]
 
 
@@ -70,23 +67,11 @@ def _ga4_report(session, property_id, start, end, dimensions, metrics, limit=100
     return _post(session, url, payload, "GA4")
 
 
-def _gsc_query(session, site_url, start, end, row_limit=1000):
-    encoded = urllib.parse.quote(site_url, safe="")
-    url = f"https://www.googleapis.com/webmasters/v3/sites/{encoded}/searchAnalytics/query"
-    payload = {
-        "startDate": start,
-        "endDate": end,
-        "dimensions": ["query"],
-        "rowLimit": row_limit,
-    }
-    return _post(session, url, payload, "Search Console")
-
-
 def test_key(config) -> tuple[bool, str]:
     """Validate the service account JSON alone (no per-client properties)."""
     try:
         _session_obj, email = _session(config)
-        return True, f"Service account key OK ({email}) - remember to add this email as a viewer on each client's GA4 property and Search Console site"
+        return True, f"Service account key OK ({email}) - remember to add this email as a viewer on each client's GA4 property"
     except ConnectorError as e:
         return False, str(e)
 
@@ -97,26 +82,16 @@ def test(config) -> tuple[bool, str]:
     except ConnectorError as e:
         return False, str(e)
 
-    parts = [f"Key OK ({email})"]
     prop = (config.get("ga4_property_id") or "").strip()
-    site = (config.get("gsc_site_url") or "").strip()
-    if not prop and not site:
-        return False, "Key parses, but add a GA4 property ID and/or Search Console property to connect anything"
+    if not prop:
+        return False, "Key parses, but add a GA4 property ID to connect anything"
 
     start, end = period_range_last_week()
-    if prop:
-        try:
-            _ga4_report(session, prop, start, end, ["sessionDefaultChannelGroup"], ["sessions"], limit=5)
-            parts.append("GA4 OK")
-        except ConnectorError as e:
-            return False, f"GA4: {e}"
-    if site:
-        try:
-            _gsc_query(session, site, start, end, row_limit=1)
-            parts.append("Search Console OK")
-        except ConnectorError as e:
-            return False, f"Search Console: {e}"
-    return True, " - ".join(parts)
+    try:
+        _ga4_report(session, prop, start, end, ["sessionDefaultChannelGroup"], ["sessions"], limit=5)
+    except ConnectorError as e:
+        return False, f"GA4: {e}"
+    return True, f"Key OK ({email}) - GA4 OK"
 
 
 def period_range_last_week():
@@ -151,15 +126,6 @@ def sync(config, source_key, dest, period):
         write_geo_csv(rows, dest)
         return len(rows)
 
-    if source_key == "search_console":
-        site = (config.get("gsc_site_url") or "").strip()
-        if not site:
-            raise ConnectorError("No Search Console property saved")
-        data = _gsc_query(session, site, start, end)
-        rows = data.get("rows") or []
-        write_gsc_csv(rows, dest)
-        return len(rows)
-
     raise ConnectorError(f"Google connector can't feed {source_key}")
 
 
@@ -189,20 +155,3 @@ def write_geo_csv(rows, dest):
         sessions = mets[0].get("value", "0") if mets else "0"
         out.append([country, sessions])
     write_csv(dest, ["Country", "Sessions"], out)
-
-
-def write_gsc_csv(rows, dest):
-    """GSC API rows -> Queries-export-shaped CSV for parse_search_console."""
-    header = ["Top queries", "Clicks", "Impressions", "CTR", "Position"]
-    out = []
-    for r in rows:
-        keys = r.get("keys") or [""]
-        ctr_pct = round(float(r.get("ctr") or 0) * 100, 2)
-        out.append([
-            keys[0],
-            int(r.get("clicks") or 0),
-            int(r.get("impressions") or 0),
-            f"{ctr_pct}%",
-            round(float(r.get("position") or 0), 1),
-        ])
-    write_csv(dest, header, out)
