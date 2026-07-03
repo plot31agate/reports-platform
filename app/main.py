@@ -66,8 +66,15 @@ from app.db import (
     revoke_client_user,
     record_report_view,
     report_view_stats,
+    upsert_connection,
+    get_connections,
+    get_connection,
+    set_connection_status,
+    delete_connection,
 )
 from app.reports import jobs
+from app import connectors
+from app.connectors._util import ConnectorError
 from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
 
 # Sections that accept an optional operator note on the review screen.
@@ -362,6 +369,17 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
 
     portal_members = [u for u in list_client_users(slug) if not u.get("revoked_at")]
 
+    # Which sources can be pulled straight from a connected API?
+    conns = get_connections(slug)
+    connected_sources = {}
+    for source_key, provider in connectors.SOURCE_PROVIDERS.items():
+        if provider in conns:
+            connected_sources[source_key] = {
+                "provider": provider,
+                "label": connectors.get_def(provider)["label"],
+                "status": conns[provider].get("status"),
+            }
+
     return _render(
         "admin/workspace.html",
         active="workspace",
@@ -375,6 +393,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         shares=shares,
         views=views,
         portal_member_count=len(portal_members),
+        connected_sources=connected_sources,
         message=message,
         error=error,
         share_url=share_url,
@@ -571,6 +590,158 @@ async def admin_review_post(request: Request):
 
     # Stay on the review screen so the operator can keep tweaking.
     return RedirectResponse(f"/admin/review?client={client_slug}&period={period}&message=Saved+and+republished", status_code=302)
+
+
+# ------------------- ADMIN API CONNECTIONS -------------------
+
+def _masked_connection_view(conn_row, cdef) -> dict:
+    """Connection state for the UI with secrets masked, never echoed back."""
+    saved = {}
+    if conn_row:
+        try:
+            saved = json.loads(conn_row.get("config_json") or "{}")
+        except (ValueError, TypeError):
+            saved = {}
+    fields = []
+    for f in cdef["fields"]:
+        val = (saved.get(f["key"]) or "").strip()
+        shown = ""
+        has_value = bool(val)
+        if has_value and not f.get("secret"):
+            shown = val
+        fields.append({**f, "value": shown, "has_value": has_value})
+    return {
+        "def": cdef,
+        "configured": bool(conn_row),
+        "status": conn_row.get("status") if conn_row else None,
+        "status_detail": conn_row.get("status_detail") if conn_row else None,
+        "last_synced_at": (conn_row.get("last_synced_at") or "")[:16].replace("T", " ") if conn_row else None,
+        "fields": fields,
+    }
+
+
+@app.get("/admin/connections", response_class=HTMLResponse)
+def admin_connections_get(request: Request, client: str = None, message: str = None, error: str = None):
+    _require_admin_or_redirect(request)
+    clients = list_clients()
+    selected = client if client and any(c["slug"] == client for c in clients) else (clients[0]["slug"] if clients else None)
+    saved = get_connections(selected) if selected else {}
+    cards = [_masked_connection_view(saved.get(d["provider"]), d) for d in connectors.CONNECTOR_DEFS]
+    return _render(
+        "admin/connections.html",
+        active="connections",
+        nav_clients=clients,
+        clients=clients,
+        selected_client=selected,
+        cards=cards,
+        message=message,
+        error=error,
+    )
+
+
+@app.post("/admin/connections/save")
+async def admin_connections_save(request: Request):
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    provider = form.get("provider")
+    try:
+        cdef = connectors.get_def(provider)
+    except KeyError:
+        return RedirectResponse(f"/admin/connections?client={client_slug}&error=Unknown+provider", status_code=302)
+
+    existing = get_connection(client_slug, provider)
+    old = {}
+    if existing:
+        try:
+            old = json.loads(existing.get("config_json") or "{}")
+        except (ValueError, TypeError):
+            old = {}
+
+    config = {}
+    for f in cdef["fields"]:
+        val = (form.get(f["key"]) or "").strip()
+        # Secret fields are write-only in the UI: blank means keep what's saved.
+        if not val and f.get("secret"):
+            val = old.get(f["key"], "")
+        config[f["key"]] = val
+
+    upsert_connection(client_slug, provider, json.dumps(config))
+    return RedirectResponse(
+        f"/admin/connections?client={client_slug}&message={cdef['label']}+saved+—+now+test+it",
+        status_code=302,
+    )
+
+
+@app.post("/admin/connections/test")
+def admin_connections_test(request: Request, client_slug: str = Form(...), provider: str = Form(...)):
+    _require_admin_or_redirect(request)
+    row = get_connection(client_slug, provider)
+    if not row:
+        return RedirectResponse(f"/admin/connections?client={client_slug}&error=Save+the+connection+first", status_code=302)
+    try:
+        config = json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        config = {}
+    ok, msg = connectors.test_connection(provider, config)
+    set_connection_status(client_slug, provider, "ok" if ok else "error", msg)
+    key = "message" if ok else "error"
+    return RedirectResponse(f"/admin/connections?client={client_slug}&{key}={msg[:200]}", status_code=302)
+
+
+@app.post("/admin/connections/delete")
+def admin_connections_delete(request: Request, client_slug: str = Form(...), provider: str = Form(...)):
+    _require_admin_or_redirect(request)
+    delete_connection(client_slug, provider)
+    return RedirectResponse(f"/admin/connections?client={client_slug}&message=Connection+removed", status_code=302)
+
+
+@app.post("/admin/sync-source")
+def admin_sync_source(request: Request, client_slug: str = Form(...), period: str = Form(...), source_key: str = Form(...)):
+    """Pull one source from its connected API and run it through the same
+    parse + record path an uploaded file takes. Returns upload-card JSON."""
+    _require_admin_or_redirect(request)
+
+    provider = connectors.SOURCE_PROVIDERS.get(source_key)
+    if not provider:
+        return JSONResponse({"status": "error", "summary": f"No API connector feeds {source_key}", "warnings": [], "row_count": 0})
+    row = get_connection(client_slug, provider)
+    if not row:
+        return JSONResponse({"status": "error", "summary": "Not connected - set this up in Connections first", "warnings": [], "row_count": 0})
+    try:
+        config = json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        config = {}
+
+    dest_dir = settings.data_dir / client_slug / period
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{source_key}_{period}.csv"
+    filename = f"API sync · {connectors.get_def(provider)['label']}"
+
+    try:
+        connectors.sync_source(provider, config, source_key, dest, period)
+    except ConnectorError as e:
+        err = {"status": "error", "summary": str(e)[:200], "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
+        set_connection_status(client_slug, provider, "error", str(e)[:200])
+        return JSONResponse(err)
+    except Exception as e:
+        err = {"status": "error", "summary": f"Sync failed: {str(e)[:150]}", "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
+        return JSONResponse(err)
+
+    try:
+        label, parser = PARSER_MAP[source_key]
+        data = parser(dest)
+        result = summarise_parsed(source_key, data)
+        upsert_upload(client_slug, period, source_key, filename, str(dest),
+                      result["status"], result.get("row_count", 0), json.dumps(result))
+        set_connection_status(client_slug, provider, "ok", "Last sync OK", synced=True)
+        return JSONResponse(result)
+    except Exception as e:
+        err = {"status": "error", "summary": f"Synced but could not parse ({str(e)[:120]})", "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
+        return JSONResponse(err)
 
 
 # ------------------- ADMIN FETCH MENTIONS -------------------

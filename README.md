@@ -200,6 +200,27 @@ Total human time each month: ~30-45 minutes.
 
 ---
 
+## API connections (skip the CSV exports)
+
+Admin → Connections → pick the client → paste keys:
+
+- **Ahrefs** — API key + target domain (feeds `ahrefs_backlinks`)
+- **Similarweb** — API key + domain (feeds `similarweb_traffic`)
+- **Google** — one service account JSON covers GA4 + Search Console
+  (feeds `ga4_export` and `search_console`). Create the service account in
+  Google Cloud, then add its email as a viewer on the GA4 property and the
+  Search Console site.
+
+Save → Test connection → connected sources grow a **Sync** button in the
+workspace (plus "Sync all connected"). A sync pulls the period's data from
+the API, writes it as the same CSV shape the parser already reads, and the
+rest of the pipeline is identical to an upload. Secret keys are write-only:
+once saved they're never displayed again; leave the field blank to keep the
+stored value. LinkedIn and Google Alerts have no key-based API — those stay
+on upload / auto-fetch.
+
+---
+
 ## Client portal
 
 Each client contact gets a personal access link (Admin → Portal access →

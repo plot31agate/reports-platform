@@ -34,7 +34,13 @@
     <div class="panel">
       <div class="panel__head">
         <h2>This month's data</h2>
-        <span class="ws-filled" id="ws-filled">0/{{ source_defs | length }} sources</span>
+        <div style="display:flex;align-items:center;gap:10px;">
+          {% if connected_sources %}
+          <button class="chip-link chip-link--go" type="button" onclick="syncAll()" id="sync-all-btn">Sync {{ connected_sources | length }} connected</button>
+          {% endif %}
+          <a class="chip-link" href="/admin/connections?client={{ selected_client }}">Connections</a>
+          <span class="ws-filled" id="ws-filled">0/{{ source_defs | length }} sources</span>
+        </div>
       </div>
 
       <div class="ws-drop" id="ws-drop">
@@ -58,6 +64,10 @@
             </div>
           </div>
           <div class="ws-source__actions">
+            {% if src.key in connected_sources %}
+            <button class="chip-link chip-link--go" type="button" onclick="syncSource('{{ src.key }}')"
+                    title="Pull from {{ connected_sources[src.key].label }}">Sync</button>
+            {% endif %}
             {% if src.key == 'mentions' %}
             <form method="post" action="/admin/fetch-mentions" style="display:inline;">
               <input type="hidden" name="client_slug" value="{{ selected_client }}">
@@ -309,6 +319,37 @@
     drop.classList.remove('ws-drop--active');
     handleFiles(e.dataTransfer.files);
   });
+
+  // API sync for connected sources
+  var CONNECTED = [{% for key in connected_sources %}{{ key | tojson }}{{ "," if not loop.last }}{% endfor %}];
+
+  window.syncSource = function(key) {
+    setSourceState(key, 'uploading', 'API sync', '', []);
+    var fd = new FormData();
+    fd.append('client_slug', CLIENT);
+    fd.append('period', PERIOD);
+    fd.append('source_key', key);
+    return fetch('/admin/sync-source', { method: 'POST', body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        filled[key] = (d.status === 'ok' || d.status === 'warning');
+        setSourceState(key, d.status, 'API sync', d.summary, d.warnings || []);
+      })
+      .catch(function() { setSourceState(key, 'error', 'API sync', 'Sync failed — try again', []); });
+  };
+
+  window.syncAll = function() {
+    var btn = document.getElementById('sync-all-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+    // Sequential so one slow provider doesn't hammer the rest in parallel.
+    var chain = Promise.resolve();
+    CONNECTED.forEach(function(key) {
+      chain = chain.then(function() { return syncSource(key); });
+    });
+    chain.then(function() {
+      if (btn) { btn.disabled = false; btn.textContent = 'Sync ' + CONNECTED.length + ' connected'; }
+    });
+  };
 
   // Per-row browse
   window.browseFor = function(key) {

@@ -1,0 +1,88 @@
+{% extends "admin/_shell.html" %}
+{% block title %}Connections — Admin{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">Connections</h1>
+    <div class="page-head__sub">Paste API keys once per client — connected sources sync straight into the month's workspace, no CSV exports.</div>
+  </div>
+  <a class="button button--ghost" href="/admin/workspace?client={{ selected_client }}">← Workspace</a>
+</div>
+
+{% if message %}<div class="flash flash--ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+<div class="upload-controls">
+  <div class="field" style="margin:0;min-width:220px;">
+    <label>Client</label>
+    <select onchange="window.location='/admin/connections?client='+this.value">
+      {% for c in clients %}
+      <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div class="conn-grid">
+  {% for card in cards %}
+  <div class="panel conn-card">
+    <div class="panel__head">
+      <div>
+        <h2>{{ card.def.label }}</h2>
+        <div class="conn-card__sources">
+          feeds:
+          {% for s in card.def.sources %}<span class="conn-chip">{{ s }}</span>{% endfor %}
+        </div>
+      </div>
+      {% if card.configured %}
+      <span class="conn-status conn-status--{{ card.status or 'untested' }}">
+        {% if card.status == 'ok' %}Connected{% elif card.status == 'error' %}Error{% else %}Untested{% endif %}
+      </span>
+      {% endif %}
+    </div>
+
+    <p class="ws-hint">{{ card.def.blurb }}</p>
+
+    {% if card.status_detail %}
+    <div class="conn-detail conn-detail--{{ card.status or 'untested' }}">{{ card.status_detail }}</div>
+    {% endif %}
+    {% if card.last_synced_at %}
+    <div class="conn-detail">Last synced {{ card.last_synced_at }}</div>
+    {% endif %}
+
+    <form method="post" action="/admin/connections/save">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+      <input type="hidden" name="provider" value="{{ card.def.provider }}">
+      {% for f in card.fields %}
+      <div class="field">
+        <label>{{ f.label }}{% if f.secret and f.has_value %} <span class="conn-saved">saved — leave blank to keep</span>{% endif %}</label>
+        {% if f.type == 'textarea' %}
+        <textarea name="{{ f.key }}" rows="4" placeholder="{{ '•••••• (saved)' if f.has_value and f.secret else (f.placeholder or '') }}"></textarea>
+        {% elif f.type == 'password' %}
+        <input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ '•••••• (saved)' if f.has_value else (f.placeholder or '') }}">
+        {% else %}
+        <input type="text" name="{{ f.key }}" value="{{ f.value }}" placeholder="{{ f.placeholder or '' }}">
+        {% endif %}
+        {% if f.hint %}<div class="field__hint">{{ f.hint }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="conn-actions">
+        <button class="button button--primary button--sm" type="submit">Save</button>
+        {% if card.configured %}
+        <button class="button button--ghost button--sm" type="submit" formaction="/admin/connections/test">Test connection</button>
+        <button class="chip-link chip-link--danger" type="submit" formaction="/admin/connections/delete"
+                onclick="return confirm('Remove this connection? Saved keys are deleted.');">Remove</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="ws-hint" style="margin-top:18px;">
+  Keys are stored in the app database on your server and are never shown again once saved.
+  LinkedIn and Google Alerts don't offer key-based APIs — those sources stay on upload / auto-fetch.
+</p>
+
+{% endblock %}

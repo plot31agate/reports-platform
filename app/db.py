@@ -94,6 +94,18 @@ CREATE TABLE IF NOT EXISTS sentiment_cache (
     created_at   TEXT NOT NULL,
     UNIQUE(client_slug, content_hash)
 );
+
+CREATE TABLE IF NOT EXISTS client_connections (
+    client_slug    TEXT NOT NULL,
+    provider       TEXT NOT NULL,
+    config_json    TEXT NOT NULL,
+    status         TEXT DEFAULT 'untested',   -- untested | ok | error
+    status_detail  TEXT,
+    last_synced_at TEXT,
+    updated_at     TEXT NOT NULL,
+    UNIQUE(client_slug, provider),
+    FOREIGN KEY(client_slug) REFERENCES clients(slug)
+);
 """
 
 
@@ -392,6 +404,63 @@ def get_sentiment_cached(client_slug: str, content_hash: str):
             return json.loads(row["result_json"])
         except (ValueError, TypeError):
             return None
+
+
+# ------------------- API connections -------------------
+
+def upsert_connection(client_slug: str, provider: str, config_json: str):
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO client_connections (client_slug, provider, config_json, status, updated_at)
+               VALUES (?, ?, ?, 'untested', ?)
+               ON CONFLICT(client_slug, provider) DO UPDATE SET
+                   config_json = excluded.config_json, status = 'untested',
+                   status_detail = NULL, updated_at = excluded.updated_at""",
+            (client_slug, provider, config_json, now),
+        )
+
+
+def get_connections(client_slug: str) -> dict:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM client_connections WHERE client_slug = ?", (client_slug,)
+        ).fetchall()
+        return {r["provider"]: dict(r) for r in rows}
+
+
+def get_connection(client_slug: str, provider: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM client_connections WHERE client_slug = ? AND provider = ?",
+            (client_slug, provider),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def set_connection_status(client_slug: str, provider: str, status: str, detail: str = None, synced: bool = False):
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        if synced:
+            conn.execute(
+                """UPDATE client_connections SET status=?, status_detail=?, last_synced_at=?, updated_at=?
+                   WHERE client_slug=? AND provider=?""",
+                (status, detail, now, now, client_slug, provider),
+            )
+        else:
+            conn.execute(
+                """UPDATE client_connections SET status=?, status_detail=?, updated_at=?
+                   WHERE client_slug=? AND provider=?""",
+                (status, detail, now, client_slug, provider),
+            )
+
+
+def delete_connection(client_slug: str, provider: str):
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM client_connections WHERE client_slug = ? AND provider = ?",
+            (client_slug, provider),
+        )
 
 
 def put_sentiment_cache(client_slug: str, content_hash: str, result: dict):

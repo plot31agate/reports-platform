@@ -551,3 +551,29 @@
 @media (max-width: 1100px) {
   .ws-grid { grid-template-columns: 1fr; }
 }
+
+/* -------- API connections -------- */
+.conn-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px;
+  align-items: start;
+}
+.conn-card__sources { font-size: 11px; color: var(--grey-400); margin-top: 3px; display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.conn-chip {
+  font-family: 'SF Mono', ui-monospace, monospace; font-size: 10px;
+  background: var(--grey-100); color: var(--grey-600);
+  padding: 2px 7px; border-radius: 6px;
+}
+.conn-status {
+  font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px; white-space: nowrap;
+}
+.conn-status--ok { background: rgba(34,197,94,0.12); color: #15803D; }
+.conn-status--error { background: rgba(255,79,64,0.12); color: var(--negative); }
+.conn-status--untested { background: rgba(245,158,11,0.14); color: var(--amber-strong, #B45309); }
+.conn-detail {
+  font-size: 12px; color: var(--grey-600); background: var(--grey-50);
+  border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;
+}
+.conn-detail--error { background: rgba(255,79,64,0.07); color: var(--negative); }
+.conn-detail--ok { background: rgba(34,197,94,0.07); color: #15803D; }
+.conn-saved { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--grey-400); }
+.conn-actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
