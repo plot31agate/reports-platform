@@ -199,6 +199,29 @@ Total human time each month: ~30-45 minutes.
 
 ---
 
+## PDF engine
+
+PDFs render with the best engine available (`PDF_ENGINE=auto`):
+
+1. **Chromium** (recommended) — pixel-identical to the web report. On the
+   AlmaLinux 8 VPS, install once:
+
+   ```bash
+   sudo dnf install -y epel-release && sudo dnf install -y chromium-headless
+   ```
+
+   then set `CHROMIUM_BINARY=/usr/lib64/chromium-browser/headless_shell` in
+   `.env` and restart the service.
+2. **WeasyPrint >= 53** — used when no Chromium is found (needs Pango >= 1.44,
+   which AlmaLinux 8 doesn't ship).
+3. **WeasyPrint 52.5** — legacy fallback with var() substitution, so PDFs
+   keep working before any setup.
+
+Print pagination flows sections to fill pages (short sections share a page);
+the navy panels open fresh pages as chapter breaks.
+
+---
+
 ## API connections (skip the CSV exports)
 
 Two halves, reflecting how the accounts actually work:

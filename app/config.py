@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     claude_model_sentiment: str = "claude-haiku-4-5"
     claude_model_synthesis: str = "claude-sonnet-4-6"
 
+    # PDF engine: "auto" prefers Chromium when a binary is found, then falls
+    # back to whatever WeasyPrint is installed. "chromium" makes a missing
+    # browser a hard error instead of silently degrading.
+    pdf_engine: str = "auto"
+    chromium_binary: str = ""
+
     data_dir: Path = Path(__file__).parent.parent / "data"
     reports_out_dir: Path = Path(__file__).parent.parent / "reports_out"
     db_path: Path = Path(__file__).parent.parent / "reporting.db"

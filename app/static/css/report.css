@@ -658,26 +658,31 @@ a { color: inherit; }
 .moves--edit .move { min-width: 300px; }
 
 /* -------- Print (PDF export) --------
-   The PDF gets its own paged layout: a cover page, then one section per
-   page in a single column. Two-column flex bands don't survive paging
-   (and WeasyPrint mishandles flex gap and baseline rows), so bands stack
-   and decorated rows fall back to block/absolute layouts. */
+   Paged layout: a cover page, then sections FLOW and fill pages in a
+   single column (no forced one-section-per-page - short sections like
+   Geography share a page with their neighbours instead of leaving
+   three-quarters of a page empty). Navy panels still open a fresh page:
+   they're full-bleed chapter breaks. Bands stack single-column because
+   two-column flex doesn't survive paging. */
 @media print {
   @page { size: A4; margin: 0; }
+  :root { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .edit-bar, .edit-message, .edit-tag, .foot__actions { display: none; }
   .card, .move, .score { border: 1px solid var(--line); }
   a { text-decoration: none; }
 
-  /* Page 1: cover + scorecards. */
+  /* Page 1: cover + scorecards, then the report starts fresh. */
   .cover__inner { padding: 72px 48px 150px; }
   .cover__title { font-size: 62px; }
   .cover__prepared { display: block; text-align: right; }
   .cover__prepared-label { display: block; margin: 0 0 10px; white-space: nowrap; }
+  .score-row { page-break-after: always; }
 
-  /* Every section starts on its own page and stacks single-column:
-     narrative block on top, content full-width below. */
-  .band { display: block; page-break-before: always; padding: 72px 48px 0; }
-  .band__aside { width: auto; max-width: none; margin-bottom: 36px; page-break-inside: avoid; page-break-after: avoid; }
+  /* Sections flow and stack single-column: narrative block on top,
+     content full-width below. A section's title never strands at a page
+     bottom away from its content. */
+  .band { display: block; padding: 52px 48px 26px; }
+  .band__aside { width: auto; max-width: none; margin-bottom: 32px; page-break-inside: avoid; page-break-after: avoid; }
   .band__body { display: block; }
   .band__lede { max-width: 620px; }
   .navy-band { margin-top: 0; page-break-before: always; }
@@ -690,6 +695,7 @@ a { color: inherit; }
   .mention { page-break-inside: avoid; }
   .duo { page-break-inside: avoid; }
   .foot { page-break-inside: avoid; }
+  .trend-strip, .trend, .bench, .bars, .execrow { page-break-inside: avoid; }
 
   /* Action cards stack full-width. */
   .moves { display: block; margin-top: 36px; }
@@ -714,8 +720,9 @@ a { color: inherit; }
   .navy-list__tag { float: right; margin-left: 12px; }
 }
 
-/* -------- Small screens -------- */
-@media (max-width: 900px) {
+/* -------- Small screens (screen only: A4 print width is ~794px and must
+   not trigger the mobile layout) -------- */
+@media screen and (max-width: 900px) {
   .band, .navy-band__inner { flex-direction: column; gap: 32px; }
   .band__aside { flex: none; }
   .band--flip .band__aside { order: 0; }
