@@ -40,6 +40,38 @@ def parse_ga4(path: Path) -> dict:
     }
 
 
+def parse_ga4_geography(path: Path) -> dict:
+    """Sessions by country — from the API sync or a GA4 UI countries export.
+
+    Expected columns: Country + Sessions (or Active users / Users).
+    Returns the same shape the Geography report section renders:
+    {top_countries: [{country, share}], total_visits}.
+    """
+    df = _read_ga4_csv(path)
+    if df is None or df.empty:
+        return {"top_countries": [], "total_visits": None}
+    df.columns = [c.strip() for c in df.columns]
+
+    country_col = _find_col(df, ["Country", "Country ID"])
+    value_col = _find_col(df, ["Sessions", "Active users", "Users", "Total users"])
+    if not country_col or not value_col:
+        return {"top_countries": [], "total_visits": None}
+
+    sub = df[[country_col, value_col]].dropna().copy()
+    sub[value_col] = sub[value_col].astype(str).str.replace(",", "").astype(float)
+    sub = sub[sub[country_col].astype(str).str.strip().ne("")]
+    total = float(sub[value_col].sum())
+    top = sub.sort_values(value_col, ascending=False).head(10)
+
+    return {
+        "top_countries": [
+            {"country": r[country_col], "share": round(r[value_col] / total * 100, 1) if total else 0}
+            for _, r in top.iterrows()
+        ],
+        "total_visits": int(total) if total else None,
+    }
+
+
 def _read_ga4_csv(path: Path):
     """Try reading GA4 CSV with various skip-row counts."""
     for skip in [0, 6, 7, 8, 9, 10]:
@@ -51,6 +83,7 @@ def _read_ga4_csv(path: Path):
                 "Session primary channel group (Default Channel Group)",
                 "First user primary channel group (Default Channel Group)",
                 "Page title and screen class",
+                "Country",
             ]):
                 return df
         except Exception:

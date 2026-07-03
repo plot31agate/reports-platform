@@ -137,6 +137,15 @@ a { color: inherit; }
 .score--magenta { border-top-color: var(--magenta); }
 .score--yellow { border-top-color: var(--yellow); }
 .score--orange { border-top-color: var(--orange); }
+.score--ink { border-top-color: var(--ink); }
+.score__unit { font-size: 0.45em; font-weight: 700; color: var(--faint); margin-left: 2px; }
+.score__delta {
+  font-size: 13px; font-weight: 800; vertical-align: middle; margin-left: 8px;
+  padding: 2px 8px; border-radius: 12px;
+}
+.score__delta--up { background: #e2f6ec; color: #157a52; }
+.score__delta--down { background: #fde8ec; color: #b3324b; }
+
 .score__label {
   font-family: var(--font-mono);
   font-size: 11px;
