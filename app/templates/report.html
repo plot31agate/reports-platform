@@ -337,15 +337,50 @@
 {# ================== AUTHORITY & SOCIAL ================== #}
 {% set ah = data.ahrefs_backlinks.data %}
 {% set li = data.linkedin_company.data %}
-{% if editable or ah or li or notes.get('backlinks') or notes.get('linkedin') %}
+{% set tr = data.ahrefs_trends.data if data.ahrefs_trends else none %}
+{% set has_trends = tr and tr.points and tr.points | length > 1 %}
+{% if editable or ah or li or has_trends or notes.get('backlinks') or notes.get('linkedin') %}
 <div class="band band--stack">
   <div class="kicker">/ Authority &amp; social</div>
   <h2 class="band__title">New links, new followers.</h2>
   {{ note('backlinks') }}
   {{ note('linkedin') }}
-  {% if editable and not (ah or li) %}
+  {% if editable and not (ah or li or has_trends) %}
   <p class="muted muted--internal">No Ahrefs or LinkedIn data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
+
+  {% if has_trends %}
+  {% macro trendcard(label, key, unit='') %}
+  {% set latest = tr.latest.get(key) %}
+  {% set delta = tr.deltas.get(key) %}
+  {% set maxv = tr.max.get(key) or 1 %}
+  {% if latest is not none %}
+  <div class="trend">
+    <div class="trend__label">{{ label }}</div>
+    <div class="trend__value">
+      {{ latest | thousands }}{{ unit }}
+      {%- if delta %}
+      <span class="trend__delta {{ 'trend__delta--up' if delta > 0 else 'trend__delta--down' }}">
+        {%- if key == 'domain_rating' %}{{ '{:+g}'.format(delta) }}{% else %}{{ '{:+,}'.format(delta) }}{% endif -%}
+      </span>
+      {%- endif %}
+    </div>
+    <div class="trend__bars">
+      {% for p in tr.points[-12:] %}
+      <div class="trend__bar" style="height:{{ (((p.get(key) or 0) / maxv * 100) | round | int) or 2 }}%;" title="{{ p.month }}: {{ p.get(key) }}"></div>
+      {% endfor %}
+    </div>
+    <div class="trend__span">{{ tr.points[0].month }} → {{ tr.points[-1].month }}</div>
+  </div>
+  {% endif %}
+  {% endmacro %}
+  <div class="trend-strip">
+    {{ trendcard('Domain rating', 'domain_rating') }}
+    {{ trendcard('Referring domains', 'referring_domains') }}
+    {{ trendcard('Organic traffic (est.)', 'organic_traffic') }}
+  </div>
+  {% endif %}
+
   {% if ah or li %}
   <div class="duo duo--in-band">
     {% if ah %}

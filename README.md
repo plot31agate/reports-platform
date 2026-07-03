@@ -213,11 +213,21 @@ Two halves, reflecting how the accounts actually work:
   account's email must be added as a viewer on each client's GA4 property
   and Search Console site.
 
-Ahrefs also feeds the monthly technical SEO metrics (Site Audit health
-score, DR, open-issue counts) with history carried forward so
-month-over-month deltas keep working. The curated issue register stays a
-manual upload — it holds the agency's judgement, which an API can't supply.
-The site health score also appears as a tile on the report cover.
+Ahrefs also feeds:
+
+- **Technical SEO metrics** (Site Audit health score, DR, open-issue
+  counts) with history carried forward so month-over-month deltas keep
+  working. The curated issue register stays a manual upload — it holds the
+  agency's judgement, which an API can't supply. The site health score
+  also appears as a tile on the report cover.
+- **Search Console** via Ahrefs GSC Insights (free API calls) when the
+  client's GSC is connected to an Ahrefs project — set the project ID on
+  the client's Ahrefs card and no Google grant is needed for search data.
+  The Google service account remains the fallback (and is still required
+  for GA4).
+- **12-month authority trends** (domain rating, referring domains,
+  estimated organic traffic) rendered as sparklines with month-over-month
+  deltas in the report's Authority section.
 
 Similarweb was retired: GA4 geography feeds the report's Geography section
 with real measured country data. Old months built from Similarweb uploads

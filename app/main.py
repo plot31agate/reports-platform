@@ -385,13 +385,16 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
 
     portal_members = [u for u in list_client_users(slug) if not u.get("revoked_at")]
 
-    # Which sources can be pulled straight from an API? Needs both the agency
-    # key (shared) and this client's settings (which domain/property to pull).
+    # Which sources can be pulled straight from an API? A source is connected
+    # when some provider has both its agency key and this client's required
+    # settings; search_console prefers Ahrefs GSC Insights over Google.
     conns = get_connections(slug)
     agency_creds = get_agency_credentials()
+    client_cfgs = {p: _parse_config(conns.get(p)) for p in conns}
     connected_sources = {}
-    for source_key, provider in connectors.SOURCE_PROVIDERS.items():
-        if provider in conns and provider in agency_creds:
+    for source_key in connectors.SOURCE_PROVIDERS:
+        provider = connectors.pick_provider(source_key, agency_creds, client_cfgs)
+        if provider:
             connected_sources[source_key] = {
                 "provider": provider,
                 "label": connectors.get_def(provider)["label"],
@@ -789,13 +792,23 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
     parse + record path an uploaded file takes. Returns upload-card JSON."""
     _require_admin_or_redirect(request)
 
-    provider = connectors.SOURCE_PROVIDERS.get(source_key)
-    if not provider:
+    candidates = connectors.SOURCE_PROVIDERS.get(source_key) or []
+    if not candidates:
         return JSONResponse({"status": "error", "summary": f"No API connector feeds {source_key}", "warnings": [], "row_count": 0})
-    if not get_agency_credential(provider):
-        return JSONResponse({"status": "error", "summary": "No agency key for this provider - add it on the API keys page", "warnings": [], "row_count": 0})
-    if not get_connection(client_slug, provider):
-        return JSONResponse({"status": "error", "summary": "No client settings yet - fill them in under API connections below", "warnings": [], "row_count": 0})
+    agency_creds = get_agency_credentials()
+    client_conns = get_connections(client_slug)
+    client_cfgs = {p: _parse_config(client_conns.get(p)) for p in candidates}
+    provider = connectors.pick_provider(source_key, agency_creds, client_cfgs)
+    if not provider:
+        if not any(p in agency_creds for p in candidates):
+            msg = "No agency key for this source - add one on the API keys page"
+        else:
+            needed = ", ".join(
+                k for p in candidates if p in agency_creds
+                for k in connectors.get_def(p).get("requires", {}).get(source_key, [])
+            )
+            msg = f"Missing client settings ({needed}) - fill them in under API connections below"
+        return JSONResponse({"status": "error", "summary": msg, "warnings": [], "row_count": 0})
     config = _merged_config(provider, client_slug)
 
     dest_dir = settings.data_dir / client_slug / period
