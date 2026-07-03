@@ -32,11 +32,14 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.auth import (
     COOKIE_NAME,
+    PORTAL_COOKIE_NAME,
+    create_portal_cookie,
     create_session_cookie,
     get_current_user,
+    get_portal_session,
     verify_password,
 )
-from app.clients import CLIENTS, get_client
+from app.clients import get_client
 from app.config import settings
 from app.db import (
     create_share_token,
@@ -53,7 +56,25 @@ from app.db import (
     upsert_commentary,
     create_client,
     get_client_row,
+    list_share_tokens,
+    revoke_share_token,
+    create_client_user,
+    list_client_users,
+    get_client_user,
+    get_client_user_by_invite,
+    touch_client_user_login,
+    revoke_client_user,
+    record_report_view,
+    report_view_stats,
+    upsert_connection,
+    get_connections,
+    get_connection,
+    set_connection_status,
+    delete_connection,
 )
+from app.reports import jobs
+from app import connectors
+from app.connectors._util import ConnectorError
 from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
 
 # Sections that accept an optional operator note on the review screen.
@@ -122,6 +143,7 @@ def share_link(token: str, format: str = None):
     report = get_report_by_token(token)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found or link expired")
+    record_report_view(report["client_slug"], report["period"], "share", token[:8])
     if format == "pdf":
         if not report.get("pdf_path") or not Path(report["pdf_path"]).exists():
             raise HTTPException(status_code=404, detail="PDF not available for this report")
@@ -283,7 +305,7 @@ async def admin_new_client_post(request: Request):
         return RedirectResponse("/admin/clients/new?error=Enter+a+client+name", status_code=302)
 
     slug = _slugify(form.get("slug") or display_name)
-    if slug in CLIENTS or get_client_row(slug):
+    if get_client_row(slug):
         return RedirectResponse(f"/admin/clients/new?error=Client+{slug}+already+exists", status_code=302)
 
     def _lines(key):
@@ -310,19 +332,71 @@ async def admin_new_client_post(request: Request):
 
 # ------------------- ADMIN UPLOAD -------------------
 
-@app.get("/admin/upload", response_class=HTMLResponse)
+@app.get("/admin/upload")
 def admin_upload_get(request: Request, client: str = None):
+    """Old per-card upload page — superseded by the month workspace."""
     _require_admin_or_redirect(request)
-    default_period = datetime.utcnow().strftime("%Y-%m")
+    suffix = f"?client={client}" if client else ""
+    return RedirectResponse(f"/admin/workspace{suffix}", status_code=302)
+
+
+@app.get("/admin/workspace", response_class=HTMLResponse)
+def admin_workspace(request: Request, client: str = None, period: str = None,
+                    message: str = None, error: str = None, share_url: str = None):
+    """One screen per client+month: sources, build, review, share, portal."""
+    _require_admin_or_redirect(request)
     clients = list_clients()
+    if not clients:
+        return RedirectResponse("/admin/clients/new", status_code=302)
+    slug = client if client and any(c["slug"] == client for c in clients) else clients[0]["slug"]
+    period = period if period and re.match(r"^\d{4}-\d{2}$", period) else datetime.utcnow().strftime("%Y-%m")
+
+    client_config = get_client(slug)
+    report = next((r for r in list_reports(slug) if r["period"] == period), None)
+
+    shares = []
+    views = {"total": 0, "last_viewed": None}
+    if report:
+        views = report_view_stats(slug, period)
+        now = datetime.utcnow().isoformat()
+        for t in list_share_tokens(report["id"]):
+            expired = bool(t["expires_at"] and t["expires_at"] <= now)
+            shares.append({
+                **t,
+                "url": f"{settings.app_url}/r/{t['token']}",
+                "active": not t["revoked_at"] and not expired,
+            })
+
+    portal_members = [u for u in list_client_users(slug) if not u.get("revoked_at")]
+
+    # Which sources can be pulled straight from a connected API?
+    conns = get_connections(slug)
+    connected_sources = {}
+    for source_key, provider in connectors.SOURCE_PROVIDERS.items():
+        if provider in conns:
+            connected_sources[source_key] = {
+                "provider": provider,
+                "label": connectors.get_def(provider)["label"],
+                "status": conns[provider].get("status"),
+            }
+
     return _render(
-        "admin/upload.html",
-        active="upload",
+        "admin/workspace.html",
+        active="workspace",
         nav_clients=clients,
         clients=clients,
-        selected_client=client or (clients[0]["slug"] if clients else "sportingtech"),
-        default_period=default_period,
+        client=client_config,
+        selected_client=slug,
+        period=period,
         source_defs=SOURCE_DEFS,
+        report=report,
+        shares=shares,
+        views=views,
+        portal_member_count=len(portal_members),
+        connected_sources=connected_sources,
+        message=message,
+        error=error,
+        share_url=share_url,
     )
 
 
@@ -405,13 +479,22 @@ def admin_clear_uploads(request: Request, client_slug: str = Form(...), period: 
 
 @app.post("/admin/build-report")
 async def admin_build_report_post(request: Request, client_slug: str = Form(...), period: str = Form(...)):
+    """Start a build in the background. The workspace polls /admin/build-status."""
     _require_admin_or_redirect(request)
-    try:
-        build_report(client_slug, period)
-        # Hand off to the review + edit commentary screen.
-        return RedirectResponse(f"/admin/review?client={client_slug}&period={period}", status_code=302)
-    except Exception as e:
-        return RedirectResponse(f"/admin?error=Build+failed:+{str(e)[:200]}", status_code=302)
+    data_dir = settings.data_dir / client_slug / period
+    if not data_dir.exists() or not any(data_dir.iterdir()):
+        return JSONResponse({"status": "error", "error": "No data uploaded for this period yet."})
+    job = jobs.start_build(client_slug, period)
+    return JSONResponse(job)
+
+
+@app.get("/admin/build-status")
+def admin_build_status(request: Request, client: str, period: str):
+    _require_admin_or_redirect(request)
+    job = jobs.get_job(client, period)
+    if not job:
+        return JSONResponse({"status": "idle"})
+    return JSONResponse(job)
 
 
 # ------------------- ADMIN REVIEW & EDIT COMMENTARY -------------------
@@ -509,6 +592,158 @@ async def admin_review_post(request: Request):
     return RedirectResponse(f"/admin/review?client={client_slug}&period={period}&message=Saved+and+republished", status_code=302)
 
 
+# ------------------- ADMIN API CONNECTIONS -------------------
+
+def _masked_connection_view(conn_row, cdef) -> dict:
+    """Connection state for the UI with secrets masked, never echoed back."""
+    saved = {}
+    if conn_row:
+        try:
+            saved = json.loads(conn_row.get("config_json") or "{}")
+        except (ValueError, TypeError):
+            saved = {}
+    fields = []
+    for f in cdef["fields"]:
+        val = (saved.get(f["key"]) or "").strip()
+        shown = ""
+        has_value = bool(val)
+        if has_value and not f.get("secret"):
+            shown = val
+        fields.append({**f, "value": shown, "has_value": has_value})
+    return {
+        "def": cdef,
+        "configured": bool(conn_row),
+        "status": conn_row.get("status") if conn_row else None,
+        "status_detail": conn_row.get("status_detail") if conn_row else None,
+        "last_synced_at": (conn_row.get("last_synced_at") or "")[:16].replace("T", " ") if conn_row else None,
+        "fields": fields,
+    }
+
+
+@app.get("/admin/connections", response_class=HTMLResponse)
+def admin_connections_get(request: Request, client: str = None, message: str = None, error: str = None):
+    _require_admin_or_redirect(request)
+    clients = list_clients()
+    selected = client if client and any(c["slug"] == client for c in clients) else (clients[0]["slug"] if clients else None)
+    saved = get_connections(selected) if selected else {}
+    cards = [_masked_connection_view(saved.get(d["provider"]), d) for d in connectors.CONNECTOR_DEFS]
+    return _render(
+        "admin/connections.html",
+        active="connections",
+        nav_clients=clients,
+        clients=clients,
+        selected_client=selected,
+        cards=cards,
+        message=message,
+        error=error,
+    )
+
+
+@app.post("/admin/connections/save")
+async def admin_connections_save(request: Request):
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    provider = form.get("provider")
+    try:
+        cdef = connectors.get_def(provider)
+    except KeyError:
+        return RedirectResponse(f"/admin/connections?client={client_slug}&error=Unknown+provider", status_code=302)
+
+    existing = get_connection(client_slug, provider)
+    old = {}
+    if existing:
+        try:
+            old = json.loads(existing.get("config_json") or "{}")
+        except (ValueError, TypeError):
+            old = {}
+
+    config = {}
+    for f in cdef["fields"]:
+        val = (form.get(f["key"]) or "").strip()
+        # Secret fields are write-only in the UI: blank means keep what's saved.
+        if not val and f.get("secret"):
+            val = old.get(f["key"], "")
+        config[f["key"]] = val
+
+    upsert_connection(client_slug, provider, json.dumps(config))
+    return RedirectResponse(
+        f"/admin/connections?client={client_slug}&message={cdef['label']}+saved+—+now+test+it",
+        status_code=302,
+    )
+
+
+@app.post("/admin/connections/test")
+def admin_connections_test(request: Request, client_slug: str = Form(...), provider: str = Form(...)):
+    _require_admin_or_redirect(request)
+    row = get_connection(client_slug, provider)
+    if not row:
+        return RedirectResponse(f"/admin/connections?client={client_slug}&error=Save+the+connection+first", status_code=302)
+    try:
+        config = json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        config = {}
+    ok, msg = connectors.test_connection(provider, config)
+    set_connection_status(client_slug, provider, "ok" if ok else "error", msg)
+    key = "message" if ok else "error"
+    return RedirectResponse(f"/admin/connections?client={client_slug}&{key}={msg[:200]}", status_code=302)
+
+
+@app.post("/admin/connections/delete")
+def admin_connections_delete(request: Request, client_slug: str = Form(...), provider: str = Form(...)):
+    _require_admin_or_redirect(request)
+    delete_connection(client_slug, provider)
+    return RedirectResponse(f"/admin/connections?client={client_slug}&message=Connection+removed", status_code=302)
+
+
+@app.post("/admin/sync-source")
+def admin_sync_source(request: Request, client_slug: str = Form(...), period: str = Form(...), source_key: str = Form(...)):
+    """Pull one source from its connected API and run it through the same
+    parse + record path an uploaded file takes. Returns upload-card JSON."""
+    _require_admin_or_redirect(request)
+
+    provider = connectors.SOURCE_PROVIDERS.get(source_key)
+    if not provider:
+        return JSONResponse({"status": "error", "summary": f"No API connector feeds {source_key}", "warnings": [], "row_count": 0})
+    row = get_connection(client_slug, provider)
+    if not row:
+        return JSONResponse({"status": "error", "summary": "Not connected - set this up in Connections first", "warnings": [], "row_count": 0})
+    try:
+        config = json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        config = {}
+
+    dest_dir = settings.data_dir / client_slug / period
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{source_key}_{period}.csv"
+    filename = f"API sync · {connectors.get_def(provider)['label']}"
+
+    try:
+        connectors.sync_source(provider, config, source_key, dest, period)
+    except ConnectorError as e:
+        err = {"status": "error", "summary": str(e)[:200], "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
+        set_connection_status(client_slug, provider, "error", str(e)[:200])
+        return JSONResponse(err)
+    except Exception as e:
+        err = {"status": "error", "summary": f"Sync failed: {str(e)[:150]}", "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
+        return JSONResponse(err)
+
+    try:
+        label, parser = PARSER_MAP[source_key]
+        data = parser(dest)
+        result = summarise_parsed(source_key, data)
+        upsert_upload(client_slug, period, source_key, filename, str(dest),
+                      result["status"], result.get("row_count", 0), json.dumps(result))
+        set_connection_status(client_slug, provider, "ok", "Last sync OK", synced=True)
+        return JSONResponse(result)
+    except Exception as e:
+        err = {"status": "error", "summary": f"Synced but could not parse ({str(e)[:120]})", "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
+        return JSONResponse(err)
+
+
 # ------------------- ADMIN FETCH MENTIONS -------------------
 
 @app.post("/admin/fetch-mentions")
@@ -524,29 +759,34 @@ def admin_fetch_mentions(request: Request, client_slug: str = Form(...), period:
             timeout=60,
         )
         output = result.stdout.strip()
+        back = f"/admin/workspace?client={client_slug}&period={period}"
         if result.returncode != 0 or "ERROR" in result.stderr:
             error_msg = result.stderr.strip() or "Fetch failed"
-            return RedirectResponse(
-                f"/admin?error=Mentions+fetch+failed:+{error_msg[:150]}",
-                status_code=302,
-            )
+            return RedirectResponse(f"{back}&error=Mentions+fetch+failed:+{error_msg[:150]}", status_code=302)
         # Extract count from last output line e.g. "8 mentions written to ..."
         count_line = [l for l in output.splitlines() if "mentions written" in l]
         count = count_line[0].split()[0] if count_line else "0"
-        return RedirectResponse(
-            f"/admin?message=Fetched+{count}+mentions+for+{client_slug}/{period}+—+ready+to+build",
-            status_code=302,
-        )
+        # Register the fetched file as an upload so the workspace checklist reflects it.
+        dest = settings.data_dir / client_slug / period / f"mentions_{period}.csv"
+        if dest.exists():
+            try:
+                data = PARSER_MAP["mentions"][1](dest)
+                res = summarise_parsed("mentions", data)
+                upsert_upload(client_slug, period, "mentions", dest.name, str(dest),
+                              res["status"], res.get("row_count", 0), json.dumps(res))
+            except Exception:
+                pass
+        return RedirectResponse(f"{back}&message=Fetched+{count}+mentions+—+ready+to+build", status_code=302)
     except subprocess.TimeoutExpired:
-        return RedirectResponse("/admin?error=Mentions+fetch+timed+out", status_code=302)
+        return RedirectResponse(f"/admin/workspace?client={client_slug}&period={period}&error=Mentions+fetch+timed+out", status_code=302)
     except Exception as e:
-        return RedirectResponse(f"/admin?error=Fetch+error:+{str(e)[:150]}", status_code=302)
+        return RedirectResponse(f"/admin/workspace?client={client_slug}&period={period}&error=Fetch+error:+{str(e)[:150]}", status_code=302)
 
 
 # ------------------- ADMIN SHARE LINK -------------------
 
 @app.post("/admin/share")
-def admin_share(request: Request, report_id: int = Form(...)):
+def admin_share(request: Request, report_id: int = Form(...), redirect: str = Form(None)):
     _require_admin_or_redirect(request)
     report = get_report(report_id)
     if not report:
@@ -556,4 +796,166 @@ def admin_share(request: Request, report_id: int = Form(...)):
     expires = (datetime.utcnow() + timedelta(days=90)).isoformat()
     create_share_token(report_id, token, expires)
     share_url = f"{settings.app_url}/r/{token}"
+    if redirect == "workspace":
+        return RedirectResponse(
+            f"/admin/workspace?client={report['client_slug']}&period={report['period']}&share_url={share_url}",
+            status_code=302,
+        )
     return RedirectResponse(f"/admin?share_url={share_url}", status_code=302)
+
+
+@app.post("/admin/share/revoke")
+def admin_share_revoke(request: Request, token: str = Form(...), client: str = Form(None), period: str = Form(None)):
+    _require_admin_or_redirect(request)
+    revoke_share_token(token)
+    if client and period:
+        return RedirectResponse(f"/admin/workspace?client={client}&period={period}&message=Link+revoked", status_code=302)
+    return RedirectResponse("/admin?message=Link+revoked", status_code=302)
+
+
+# ------------------- CLIENT PORTAL -------------------
+
+def _portal_user(request: Request):
+    """Resolve the portal cookie to a live (non-revoked) client user, or None."""
+    sess = get_portal_session(request)
+    if not sess:
+        return None
+    user = get_client_user(sess["uid"])
+    if not user or user.get("revoked_at") or user["client_slug"] != sess["c"]:
+        return None
+    return user
+
+
+@app.get("/portal/join/{token}")
+def portal_join(token: str):
+    user = get_client_user_by_invite(token)
+    if not user:
+        return _render("portal/locked.html", reason="expired")
+    touch_client_user_login(user["id"])
+    resp = RedirectResponse("/portal", status_code=302)
+    resp.set_cookie(
+        PORTAL_COOKIE_NAME,
+        create_portal_cookie(user["id"], user["client_slug"]),
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
+    return resp
+
+
+@app.get("/portal", response_class=HTMLResponse)
+def portal_home(request: Request):
+    user = _portal_user(request)
+    if not user:
+        return _render("portal/locked.html", reason="signed_out")
+
+    slug = user["client_slug"]
+    client = get_client(slug)
+    reports = []
+    for r in list_reports(slug):
+        html_path = r.get("html_path")
+        if not html_path or not Path(html_path).exists():
+            continue
+        commentary = get_commentary(slug, r["period"]) or {}
+        try:
+            dt = datetime.strptime(r["period"], "%Y-%m")
+            month_abbr, year = dt.strftime("%b"), dt.strftime("%Y")
+        except ValueError:
+            month_abbr, year = r["period"], ""
+        reports.append({
+            **r,
+            "period_display": _period_display_safe(r["period"]),
+            "month_abbr": month_abbr,
+            "year": year,
+            "headline": commentary.get("headline") or "Performance Report",
+            "standfirst": commentary.get("standfirst") or "",
+            "has_pdf": bool(r.get("pdf_path") and Path(r["pdf_path"]).exists()),
+        })
+
+    return _render("portal/home.html", client=client, user=user, reports=reports)
+
+
+@app.get("/portal/report/{period}", response_class=HTMLResponse)
+def portal_report(request: Request, period: str):
+    user = _portal_user(request)
+    if not user:
+        return _render("portal/locked.html", reason="signed_out")
+    slug = user["client_slug"]
+    html_path = settings.reports_out_dir / slug / f"{period}.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Report not found")
+    record_report_view(slug, period, "portal", user["email"])
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+@app.get("/portal/report/{period}/pdf")
+def portal_report_pdf(request: Request, period: str):
+    user = _portal_user(request)
+    if not user:
+        return _render("portal/locked.html", reason="signed_out")
+    slug = user["client_slug"]
+    pdf_path = settings.reports_out_dir / slug / f"{period}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF not available")
+    record_report_view(slug, period, "portal", user["email"])
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{slug}-{period}.pdf")
+
+
+@app.get("/portal/logout")
+def portal_logout():
+    resp = RedirectResponse("/portal", status_code=302)
+    resp.delete_cookie(PORTAL_COOKIE_NAME)
+    return resp
+
+
+def _period_display_safe(period: str) -> str:
+    try:
+        return datetime.strptime(period, "%Y-%m").strftime("%B %Y")
+    except ValueError:
+        return period
+
+
+# ------------------- ADMIN PORTAL MANAGEMENT -------------------
+
+@app.get("/admin/portal", response_class=HTMLResponse)
+def admin_portal_get(request: Request, client: str = None, message: str = None, error: str = None, invite_url: str = None):
+    _require_admin_or_redirect(request)
+    clients = list_clients()
+    selected = client or (clients[0]["slug"] if clients else None)
+    members = list_client_users(selected) if selected else []
+    for m in members:
+        m["invite_url"] = f"{settings.app_url}/portal/join/{m['invite_token']}"
+    return _render(
+        "admin/portal.html",
+        active="portal",
+        nav_clients=clients,
+        clients=clients,
+        selected_client=selected,
+        members=members,
+        message=message,
+        error=error,
+        invite_url=invite_url,
+    )
+
+
+@app.post("/admin/portal/add")
+def admin_portal_add(request: Request, client_slug: str = Form(...), email: str = Form(...), name: str = Form(None)):
+    _require_admin_or_redirect(request)
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return RedirectResponse(f"/admin/portal?client={client_slug}&error=Enter+a+valid+email", status_code=302)
+    token = secrets.token_urlsafe(24)
+    try:
+        create_client_user(client_slug, email, (name or "").strip(), token)
+    except Exception:
+        return RedirectResponse(f"/admin/portal?client={client_slug}&error=That+email+already+has+access", status_code=302)
+    invite_url = f"{settings.app_url}/portal/join/{token}"
+    return RedirectResponse(f"/admin/portal?client={client_slug}&invite_url={invite_url}", status_code=302)
+
+
+@app.post("/admin/portal/revoke")
+def admin_portal_revoke(request: Request, user_id: int = Form(...), client_slug: str = Form(...)):
+    _require_admin_or_redirect(request)
+    revoke_client_user(user_id)
+    return RedirectResponse(f"/admin/portal?client={client_slug}&message=Access+revoked", status_code=302)

@@ -25,11 +25,16 @@ def _env() -> Environment:
     return env
 
 
-def build_context(client_slug: str, period: str) -> dict:
+def build_context(client_slug: str, period: str, progress=None) -> dict:
     """Assemble the full render context for a report (parse, sentiment, synthesis, commentary).
 
     Shared by build_report (writes HTML + PDF) and the review screen (renders editable).
+    `progress(stage, detail)` is called as stages advance, when provided.
     """
+    def _progress(stage, detail=""):
+        if progress:
+            progress(stage, detail)
+
     client_config = get_client(client_slug)
 
     data_dir = settings.data_dir / client_slug / period
@@ -37,25 +42,71 @@ def build_context(client_slug: str, period: str) -> dict:
         raise FileNotFoundError(f"No data folder for {client_slug}/{period}")
 
     # 1. Parse everything in the data folder
+    _progress("parsing")
     parsed = parse_all(data_dir)
 
-    # 2. Sentiment classification on mentions
+    # 2. Sentiment classification on mentions (cached per mention)
     mentions_data = parsed.get("mentions", {}).get("data") or {}
+    mention_list = mentions_data.get("mentions", [])
+    _progress("sentiment", f"0/{len(mention_list)}" if mention_list else "no mentions")
     sentiment = classify_mentions(
-        mentions_data.get("mentions", []),
+        mention_list,
         client_config,
+        progress=lambda i, n: _progress("sentiment", f"{i}/{n}"),
     )
 
-    # 3. Next month's actions via synthesis
-    assembled = {**parsed, "sentiment": sentiment}
-    actions = synthesise_actions(assembled, client_config)
+    # 3. Next month's actions. Once the operator has saved edits, those win —
+    #    skip the synthesis call entirely so review loads and republishes are
+    #    fast and don't burn API calls regenerating text that gets overridden.
+    saved = get_commentary(client_slug, period)
+    saved_actions = None
+    if saved and saved.get("actions_json"):
+        try:
+            saved_actions = json.loads(saved["actions_json"])
+        except (ValueError, TypeError):
+            saved_actions = None
+
+    synthesis_health = {"ran": False, "ok": None, "error": None}
+    if saved_actions:
+        actions = {"configured": True, "content": saved_actions}
+    else:
+        _progress("synthesis")
+        assembled = {**parsed, "sentiment": sentiment}
+        actions = synthesise_actions(assembled, client_config)
+        synthesis_health = {
+            "ran": True,
+            "ok": bool(actions.get("configured") and actions.get("content")),
+            "error": actions.get("error"),
+        }
 
     # 3b. Commentary — seed from AI actions on first build, then use saved edits.
     commentary = _load_or_seed_commentary(client_slug, period, actions)
-
-    # If the operator has edited the recommendations, override the AI output.
     if commentary.get("actions"):
         actions = {"configured": True, "content": commentary["actions"]}
+
+    # AI health — surfaced in the admin UI so a degraded build is loud, not
+    # silently rendered as "neutral" sentiment and a blank actions section.
+    ai_health = {
+        "configured": bool(settings.anthropic_api_key),
+        "sentiment_total": sentiment.get("total", 0),
+        "sentiment_failed": sentiment.get("failed", 0),
+        "sentiment_cached": sentiment.get("from_cache", 0),
+        "synthesis": synthesis_health,
+        "warnings": [],
+    }
+    if not ai_health["configured"]:
+        ai_health["warnings"].append(
+            "ANTHROPIC_API_KEY is not set - sentiment and recommendations were skipped."
+        )
+    if ai_health["sentiment_failed"]:
+        ai_health["warnings"].append(
+            f"{ai_health['sentiment_failed']} of {ai_health['sentiment_total']} mentions could not be classified - they are excluded from the sentiment score."
+        )
+    if synthesis_health["ran"] and not synthesis_health["ok"]:
+        ai_health["warnings"].append(
+            "Recommendation synthesis failed - the next-month actions section is empty."
+            + (f" ({synthesis_health['error'][:120]})" if synthesis_health.get("error") else "")
+        )
 
     # Client logo for the cover chip, if one exists in static/img/clients/
     logo_path = Path(__file__).parent.parent / "static" / "img" / "clients" / f"{client_slug}.png"
@@ -74,14 +125,20 @@ def build_context(client_slug: str, period: str) -> dict:
         "actions": actions,
         "commentary": commentary,
         "technical_seo": _build_technical_seo(parsed, period),
+        "ai_health": ai_health,
         "editable": False,
     }
 
 
-def build_report(client_slug: str, period: str) -> dict:
+def build_report(client_slug: str, period: str, progress=None) -> dict:
     """Build the report for one client+period. Returns dict with paths and report id."""
-    context = build_context(client_slug, period)
+    def _progress(stage, detail=""):
+        if progress:
+            progress(stage, detail)
 
+    context = build_context(client_slug, period, progress=progress)
+
+    _progress("rendering")
     env = _env()
     html = env.get_template("report.html").render(**context)
 
@@ -96,6 +153,7 @@ def build_report(client_slug: str, period: str) -> dict:
     render_pdf(html, pdf_path)
 
     # 7. Save to DB
+    _progress("saving")
     report_id = upsert_report(client_slug, period, str(html_path), str(pdf_path))
 
     return {
@@ -104,6 +162,7 @@ def build_report(client_slug: str, period: str) -> dict:
         "pdf_path": str(pdf_path),
         "period": period,
         "client_slug": client_slug,
+        "ai_health": context.get("ai_health"),
     }
 
 

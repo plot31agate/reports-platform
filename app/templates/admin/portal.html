@@ -1,0 +1,91 @@
+{% extends "admin/_shell.html" %}
+{% block title %}Portal access — Admin{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">Portal access</h1>
+    <div class="page-head__sub">Give client contacts a personal link to their own branded report portal. Revoke any time — it takes effect immediately.</div>
+  </div>
+  <a class="button button--ghost" href="/admin/workspace?client={{ selected_client }}">← Workspace</a>
+</div>
+
+{% if message %}<div class="flash flash--ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+{% if invite_url %}
+<div class="share-box">
+  <strong style="font-size:13px;">Access link created — send it to the client (it's their login, treat it like a password)</strong>
+  <input value="{{ invite_url }}" readonly onclick="this.select()">
+</div>
+{% endif %}
+
+<div class="upload-controls">
+  <div class="field" style="margin:0;min-width:220px;">
+    <label>Client</label>
+    <select onchange="window.location='/admin/portal?client='+this.value">
+      {% for c in clients %}
+      <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel__head">
+    <h2>Members</h2>
+    <span class="count">{{ members | length }}</span>
+  </div>
+
+  {% for m in members %}
+  <div class="member-row {% if m.revoked_at %}member-row--revoked{% endif %}">
+    <div class="member-row__id">
+      <span class="member-row__email">{{ m.email }}</span>
+      {% if m.name %}<span class="member-row__name">{{ m.name }}</span>{% endif %}
+    </div>
+    <span class="member-row__meta">
+      {% if m.revoked_at %}
+        Revoked {{ m.revoked_at[:10] }}
+      {% elif m.last_login_at %}
+        Last opened {{ m.last_login_at[:10] }}
+      {% else %}
+        Never opened
+      {% endif %}
+    </span>
+    {% if not m.revoked_at %}
+    <button class="chip-link" type="button" onclick="copyInvite(this)" data-url="{{ m.invite_url }}">Copy link</button>
+    <form method="post" action="/admin/portal/revoke" onsubmit="return confirm('Revoke portal access for {{ m.email }}?');">
+      <input type="hidden" name="user_id" value="{{ m.id }}">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+      <button class="chip-link chip-link--danger" type="submit">Revoke</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="client-card__empty">No portal members yet. Add a client contact below.</div>
+  {% endfor %}
+
+  <form class="member-add" method="post" action="/admin/portal/add">
+    <input type="hidden" name="client_slug" value="{{ selected_client }}">
+    <div class="field" style="margin:0;flex:1;">
+      <label>Email</label>
+      <input name="email" type="email" placeholder="name@client.com" required>
+    </div>
+    <div class="field" style="margin:0;flex:1;">
+      <label>Name (optional)</label>
+      <input name="name" type="text" placeholder="Jane Smith">
+    </div>
+    <button class="button button--primary" type="submit">Create access link</button>
+  </form>
+</div>
+
+<script>
+function copyInvite(btn) {
+  navigator.clipboard.writeText(btn.dataset.url).then(function() {
+    var old = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = old; }, 1500);
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,178 @@
+"""Google connector — GA4 Data API + Search Console API via one service account.
+
+Feeds:
+  ga4_export     — CSV shaped like a GA4 Traffic acquisition export
+                   (channel group, Sessions, Users, Engaged sessions)
+  search_console — CSV shaped like a Search Console Queries export
+                   (Top queries, Clicks, Impressions, CTR, Position)
+
+Both CSVs are read by the existing parsers unchanged. Setup on the Google
+side: create a service account, then add its email as a viewer on the GA4
+property and the Search Console site.
+"""
+import json
+import urllib.parse
+
+from app.connectors._util import ConnectorError, period_range, write_csv
+
+TIMEOUT = 30
+SCOPES = [
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/webmasters.readonly",
+]
+
+
+def _session(config):
+    try:
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import AuthorizedSession
+    except ImportError:
+        raise ConnectorError("google-auth is not installed - run pip install -r requirements.txt")
+
+    raw = (config.get("service_account_json") or "").strip()
+    if not raw:
+        raise ConnectorError("No service account JSON saved")
+    try:
+        info = json.loads(raw)
+    except ValueError:
+        raise ConnectorError("Service account JSON does not parse - paste the whole key file")
+    if info.get("type") != "service_account" or not info.get("client_email"):
+        raise ConnectorError("That JSON is not a service account key (needs type=service_account)")
+    try:
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    except Exception as e:
+        raise ConnectorError(f"Service account key rejected: {e}")
+    return AuthorizedSession(creds), info["client_email"]
+
+
+def _post(session, url, payload, provider_label):
+    try:
+        resp = session.post(url, json=payload, timeout=TIMEOUT)
+    except Exception as e:
+        raise ConnectorError(f"Could not reach {provider_label}: {e}")
+    if resp.status_code == 403:
+        raise ConnectorError(
+            f"{provider_label} says no access (403) - add the service account email as a viewer and retry"
+        )
+    if resp.status_code != 200:
+        raise ConnectorError(f"{provider_label} error {resp.status_code}: {resp.text[:150]}")
+    return resp.json()
+
+
+def _ga4_report(session, property_id, start, end, dimensions, metrics, limit=100):
+    url = f"https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport"
+    payload = {
+        "dateRanges": [{"startDate": start, "endDate": end}],
+        "dimensions": [{"name": d} for d in dimensions],
+        "metrics": [{"name": m} for m in metrics],
+        "limit": limit,
+    }
+    return _post(session, url, payload, "GA4")
+
+
+def _gsc_query(session, site_url, start, end, row_limit=1000):
+    encoded = urllib.parse.quote(site_url, safe="")
+    url = f"https://www.googleapis.com/webmasters/v3/sites/{encoded}/searchAnalytics/query"
+    payload = {
+        "startDate": start,
+        "endDate": end,
+        "dimensions": ["query"],
+        "rowLimit": row_limit,
+    }
+    return _post(session, url, payload, "Search Console")
+
+
+def test(config) -> tuple[bool, str]:
+    try:
+        session, email = _session(config)
+    except ConnectorError as e:
+        return False, str(e)
+
+    parts = [f"Key OK ({email})"]
+    prop = (config.get("ga4_property_id") or "").strip()
+    site = (config.get("gsc_site_url") or "").strip()
+    if not prop and not site:
+        return False, "Key parses, but add a GA4 property ID and/or Search Console property to connect anything"
+
+    start, end = period_range_last_week()
+    if prop:
+        try:
+            _ga4_report(session, prop, start, end, ["sessionDefaultChannelGroup"], ["sessions"], limit=5)
+            parts.append("GA4 OK")
+        except ConnectorError as e:
+            return False, f"GA4: {e}"
+    if site:
+        try:
+            _gsc_query(session, site, start, end, row_limit=1)
+            parts.append("Search Console OK")
+        except ConnectorError as e:
+            return False, f"Search Console: {e}"
+    return True, " - ".join(parts)
+
+
+def period_range_last_week():
+    from datetime import date, timedelta
+    today = date.today()
+    return (today - timedelta(days=8)).isoformat(), (today - timedelta(days=1)).isoformat()
+
+
+def sync(config, source_key, dest, period):
+    session, _email = _session(config)
+    start, end = period_range(period)
+
+    if source_key == "ga4_export":
+        prop = (config.get("ga4_property_id") or "").strip()
+        if not prop:
+            raise ConnectorError("No GA4 property ID saved")
+        data = _ga4_report(
+            session, prop, start, end,
+            ["sessionDefaultChannelGroup"],
+            ["sessions", "totalUsers", "engagedSessions"],
+        )
+        rows = data.get("rows") or []
+        write_ga4_csv(rows, dest)
+        return len(rows)
+
+    if source_key == "search_console":
+        site = (config.get("gsc_site_url") or "").strip()
+        if not site:
+            raise ConnectorError("No Search Console property saved")
+        data = _gsc_query(session, site, start, end)
+        rows = data.get("rows") or []
+        write_gsc_csv(rows, dest)
+        return len(rows)
+
+    raise ConnectorError(f"Google connector can't feed {source_key}")
+
+
+def write_ga4_csv(rows, dest):
+    """GA4 API rows -> Traffic-acquisition-export-shaped CSV for parse_ga4."""
+    header = [
+        "Session primary channel group (Default Channel Group)",
+        "Sessions", "Users", "Engaged sessions",
+    ]
+    out = []
+    for r in rows:
+        dims = r.get("dimensionValues") or []
+        mets = r.get("metricValues") or []
+        channel = dims[0].get("value", "") if dims else ""
+        vals = [m.get("value", "0") for m in mets] + ["0", "0", "0"]
+        out.append([channel, vals[0], vals[1], vals[2]])
+    write_csv(dest, header, out)
+
+
+def write_gsc_csv(rows, dest):
+    """GSC API rows -> Queries-export-shaped CSV for parse_search_console."""
+    header = ["Top queries", "Clicks", "Impressions", "CTR", "Position"]
+    out = []
+    for r in rows:
+        keys = r.get("keys") or [""]
+        ctr_pct = round(float(r.get("ctr") or 0) * 100, 2)
+        out.append([
+            keys[0],
+            int(r.get("clicks") or 0),
+            int(r.get("impressions") or 0),
+            f"{ctr_pct}%",
+            round(float(r.get("position") or 0), 1),
+        ])
+    write_csv(dest, header, out)

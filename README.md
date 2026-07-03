@@ -181,11 +181,53 @@ see the login page.
 
 2. **Log in** at https://reports.digital-footprints.co.uk/admin
 
-3. **Click "New report"** → pick client, enter period, drop files, click **"Upload & build report"**
+3. **Open the month's workspace** (client card → "Open workspace", or sidebar).
+   Drop all export files onto the single dropzone — each routes to its source
+   automatically and confirms what was parsed. Unrecognised filenames get a
+   manual "which source is this?" prompt instead of failing silently.
 
-4. **View the report** from the dashboard, generate a shareable link if sending to a client, export PDF for offline delivery
+4. **Build** — runs in the background with live progress (parsing → sentiment →
+   recommendations → render). Sentiment results are cached per mention, so
+   rebuilds are near-instant. If the AI layer is unavailable or partially
+   fails, the build finishes but flags it loudly instead of shipping silent
+   neutral scores.
+
+5. **Review & edit** the commentary in place, then deliver: clients with
+   portal access see the published report immediately at `/portal`, or send a
+   90-day share link (revocable, view-tracked) / PDF.
 
 Total human time each month: ~30-45 minutes.
+
+---
+
+## API connections (skip the CSV exports)
+
+Admin → Connections → pick the client → paste keys:
+
+- **Ahrefs** — API key + target domain (feeds `ahrefs_backlinks`)
+- **Similarweb** — API key + domain (feeds `similarweb_traffic`)
+- **Google** — one service account JSON covers GA4 + Search Console
+  (feeds `ga4_export` and `search_console`). Create the service account in
+  Google Cloud, then add its email as a viewer on the GA4 property and the
+  Search Console site.
+
+Save → Test connection → connected sources grow a **Sync** button in the
+workspace (plus "Sync all connected"). A sync pulls the period's data from
+the API, writes it as the same CSV shape the parser already reads, and the
+rest of the pipeline is identical to an upload. Secret keys are write-only:
+once saved they're never displayed again; leave the field blank to keep the
+stored value. LinkedIn and Google Alerts have no key-based API — those stay
+on upload / auto-fetch.
+
+---
+
+## Client portal
+
+Each client contact gets a personal access link (Admin → Portal access →
+add email → copy link). Opening it signs them into a branded portal listing
+every published report for their company — web + PDF, no password. Access is
+revocable per person and takes effect immediately. Report opens (portal and
+share links) are tracked per viewer.
 
 ---
 
@@ -210,10 +252,9 @@ and `sportingtech_ahrefs_backlinks.csv` all match.
 
 ## Adding a new client
 
-1. Create `app/clients/newclient.py` following the shape of `sportingtech.py`
-2. Register it in `app/clients/__init__.py`
-3. Seed the client in `app/db.py` init (or add via SQL)
-4. Push. GitHub Actions redeploys.
+Admin → "New client". No deploy needed — clients live in the DB (the
+`clients` table is the single source of truth; code modules like
+`sportingtech.py` are seed data only, copied in on first boot).
 
 Brand tokens (colours, tagline, sentiment context) are per-client, so
 each report renders with the correct brand identity.

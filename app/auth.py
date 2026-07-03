@@ -14,6 +14,7 @@ from app.config import settings
 
 
 COOKIE_NAME = "df_session"
+PORTAL_COOKIE_NAME = "df_portal"
 
 
 def hash_password(plain: str) -> str:
@@ -50,6 +51,33 @@ def get_current_user(request: Request) -> Optional[str]:
     if not cookie:
         return None
     return read_session_cookie(cookie)
+
+
+# ------------------- client portal sessions -------------------
+# Portal users authenticate via an admin-issued invite link. Visiting it sets
+# this signed cookie; every portal request re-checks the user row so a revoke
+# takes effect immediately.
+
+def _portal_serializer() -> URLSafeSerializer:
+    return URLSafeSerializer(settings.secret_key, salt="df-portal")
+
+
+def create_portal_cookie(user_id: int, client_slug: str) -> str:
+    return _portal_serializer().dumps({"uid": user_id, "c": client_slug})
+
+
+def get_portal_session(request: Request) -> Optional[dict]:
+    """Return {'uid': int, 'c': slug} for a valid portal cookie, else None."""
+    cookie = request.cookies.get(PORTAL_COOKIE_NAME)
+    if not cookie:
+        return None
+    try:
+        data = _portal_serializer().loads(cookie)
+    except BadSignature:
+        return None
+    if not isinstance(data, dict) or "uid" not in data or "c" not in data:
+        return None
+    return data
 
 
 def require_admin(request: Request) -> str:
