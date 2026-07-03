@@ -202,14 +202,17 @@ Total human time each month: ~30-45 minutes.
 
 ## API connections (skip the CSV exports)
 
-Workspace → "API connections" panel (bottom of the data column) → paste keys:
+Two halves, reflecting how the accounts actually work:
 
-- **Ahrefs** — API key + target domain (feeds `ahrefs_backlinks`)
-- **Similarweb** — API key + domain (feeds `similarweb_traffic`)
-- **Google** — one service account JSON covers GA4 + Search Console
-  (feeds `ga4_export` and `search_console`). Create the service account in
-  Google Cloud, then add its email as a viewer on the GA4 property and the
-  Search Console site.
+- **Agency keys** (Admin → API keys, one per provider, shared by every
+  client): the Ahrefs API key, the Similarweb API key, and one Google
+  service account JSON that covers both GA4 and Search Console. Each card
+  has a "How do I get this key?" walkthrough.
+- **Client settings** (workspace → "API connections" panel): which target
+  domain (Ahrefs), domain (Similarweb), GA4 property ID and Search Console
+  property to pull for that client. For Google, the service account's email
+  must be added as a viewer on each client's GA4 property and Search
+  Console site.
 
 Save → Test connection → connected sources grow a **Sync** button in the
 workspace (plus "Sync all connected"). A sync pulls the period's data from

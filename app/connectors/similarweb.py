@@ -51,6 +51,21 @@ def _get(config, path, params):
     return resp.json()
 
 
+def test_key(config) -> tuple[bool, str]:
+    """Validate the agency API key alone."""
+    try:
+        _key(config)
+        data = _get(config, "/capabilities", {})
+        remaining = (data.get("remaining_hits")
+                     or (data.get("user_data") or {}).get("remaining_hits"))
+        msg = "API key works"
+        if remaining is not None:
+            msg += f" - {remaining} API hits remaining"
+        return True, msg
+    except ConnectorError as e:
+        return False, str(e)
+
+
 def test(config) -> tuple[bool, str]:
     try:
         _key(config)

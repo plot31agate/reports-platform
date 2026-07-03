@@ -82,6 +82,15 @@ def _gsc_query(session, site_url, start, end, row_limit=1000):
     return _post(session, url, payload, "Search Console")
 
 
+def test_key(config) -> tuple[bool, str]:
+    """Validate the service account JSON alone (no per-client properties)."""
+    try:
+        _session_obj, email = _session(config)
+        return True, f"Service account key OK ({email}) - remember to add this email as a viewer on each client's GA4 property and Search Console site"
+    except ConnectorError as e:
+        return False, str(e)
+
+
 def test(config) -> tuple[bool, str]:
     try:
         session, email = _session(config)

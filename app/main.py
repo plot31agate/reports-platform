@@ -71,6 +71,11 @@ from app.db import (
     get_connection,
     set_connection_status,
     delete_connection,
+    upsert_agency_credential,
+    get_agency_credentials,
+    get_agency_credential,
+    set_agency_credential_status,
+    delete_agency_credential,
 )
 from app.reports import jobs
 from app import connectors
@@ -380,17 +385,22 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
 
     portal_members = [u for u in list_client_users(slug) if not u.get("revoked_at")]
 
-    # Which sources can be pulled straight from a connected API?
+    # Which sources can be pulled straight from an API? Needs both the agency
+    # key (shared) and this client's settings (which domain/property to pull).
     conns = get_connections(slug)
+    agency_creds = get_agency_credentials()
     connected_sources = {}
     for source_key, provider in connectors.SOURCE_PROVIDERS.items():
-        if provider in conns:
+        if provider in conns and provider in agency_creds:
             connected_sources[source_key] = {
                 "provider": provider,
                 "label": connectors.get_def(provider)["label"],
                 "status": conns[provider].get("status"),
             }
-    connection_cards = [_masked_connection_view(conns.get(d["provider"]), d) for d in connectors.CONNECTOR_DEFS]
+    connection_cards = [
+        _masked_connection_view(conns.get(d["provider"]), d, agency_creds.get(d["provider"]))
+        for d in connectors.CONNECTOR_DEFS
+    ]
 
     return _render(
         "admin/workspace.html",
@@ -606,23 +616,29 @@ async def admin_review_post(request: Request):
 
 
 # ------------------- ADMIN API CONNECTIONS -------------------
+# Secrets (API keys, service account JSON) are agency-wide and live on the
+# API keys page. The workspace panel only holds per-client settings (which
+# domain / property to pull). Sync and Test merge the two.
 
-def _masked_connection_view(conn_row, cdef) -> dict:
-    """Connection state for the UI with secrets masked, never echoed back."""
-    saved = {}
-    if conn_row:
-        try:
-            saved = json.loads(conn_row.get("config_json") or "{}")
-        except (ValueError, TypeError):
-            saved = {}
-    fields = []
-    for f in cdef["fields"]:
-        val = (saved.get(f["key"]) or "").strip()
-        shown = ""
-        has_value = bool(val)
-        if has_value and not f.get("secret"):
-            shown = val
-        fields.append({**f, "value": shown, "has_value": has_value})
+def _parse_config(row) -> dict:
+    if not row:
+        return {}
+    try:
+        return json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        return {}
+
+
+def _merged_config(provider: str, client_slug: str) -> dict:
+    agency = _parse_config(get_agency_credential(provider))
+    client = _parse_config(get_connection(client_slug, provider))
+    return {**agency, **client}
+
+
+def _masked_connection_view(conn_row, cdef, agency_row) -> dict:
+    """Per-client connection state for the workspace panel."""
+    saved = _parse_config(conn_row)
+    fields = [{**f, "value": (saved.get(f["key"]) or "").strip()} for f in cdef["client_fields"]]
     return {
         "def": cdef,
         "configured": bool(conn_row),
@@ -630,7 +646,81 @@ def _masked_connection_view(conn_row, cdef) -> dict:
         "status_detail": conn_row.get("status_detail") if conn_row else None,
         "last_synced_at": (conn_row.get("last_synced_at") or "")[:16].replace("T", " ") if conn_row else None,
         "fields": fields,
+        "agency_key_set": bool(agency_row),
+        "agency_key_status": agency_row.get("status") if agency_row else None,
     }
+
+
+def _masked_key_view(agency_row, cdef) -> dict:
+    """Agency credential state for the API keys page — secrets never echoed."""
+    saved = _parse_config(agency_row)
+    fields = [{**f, "has_value": bool((saved.get(f["key"]) or "").strip())} for f in cdef["agency_fields"]]
+    return {
+        "def": cdef,
+        "configured": bool(agency_row),
+        "status": agency_row.get("status") if agency_row else None,
+        "status_detail": agency_row.get("status_detail") if agency_row else None,
+        "fields": fields,
+    }
+
+
+# ---- agency keys page ----
+
+@app.get("/admin/keys", response_class=HTMLResponse)
+def admin_keys_get(request: Request, message: str = None, error: str = None):
+    _require_admin_or_redirect(request)
+    saved = get_agency_credentials()
+    cards = [_masked_key_view(saved.get(d["provider"]), d) for d in connectors.CONNECTOR_DEFS]
+    return _render(
+        "admin/keys.html",
+        active="keys",
+        nav_clients=list_clients(),
+        cards=cards,
+        message=message,
+        error=error,
+    )
+
+
+@app.post("/admin/keys/save")
+async def admin_keys_save(request: Request):
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    provider = form.get("provider")
+    try:
+        cdef = connectors.get_def(provider)
+    except KeyError:
+        return RedirectResponse("/admin/keys?error=Unknown+provider", status_code=302)
+
+    old = _parse_config(get_agency_credential(provider))
+    config = {}
+    for f in cdef["agency_fields"]:
+        val = (form.get(f["key"]) or "").strip()
+        # Secrets are write-only: blank means keep what's saved.
+        if not val and f.get("secret"):
+            val = old.get(f["key"], "")
+        config[f["key"]] = val
+    upsert_agency_credential(provider, json.dumps(config))
+    return RedirectResponse(f"/admin/keys?message={cdef['label']}+key+saved+—+now+test+it", status_code=302)
+
+
+@app.post("/admin/keys/test")
+def admin_keys_test(request: Request, provider: str = Form(...)):
+    _require_admin_or_redirect(request)
+    row = get_agency_credential(provider)
+    if not row:
+        return RedirectResponse("/admin/keys?error=Save+the+key+first", status_code=302)
+    ok, msg = connectors.test_key(provider, _parse_config(row))
+    set_agency_credential_status(provider, "ok" if ok else "error", msg)
+    from urllib.parse import quote
+    key = "message" if ok else "error"
+    return RedirectResponse(f"/admin/keys?{key}={quote(msg[:250])}", status_code=302)
+
+
+@app.post("/admin/keys/delete")
+def admin_keys_delete(request: Request, provider: str = Form(...)):
+    _require_admin_or_redirect(request)
+    delete_agency_credential(provider)
+    return RedirectResponse("/admin/keys?message=Key+removed", status_code=302)
 
 
 @app.get("/admin/connections")
@@ -663,25 +753,10 @@ async def admin_connections_save(request: Request):
     except KeyError:
         return RedirectResponse(f"/admin/connections?client={client_slug}&error=Unknown+provider", status_code=302)
 
-    existing = get_connection(client_slug, provider)
-    old = {}
-    if existing:
-        try:
-            old = json.loads(existing.get("config_json") or "{}")
-        except (ValueError, TypeError):
-            old = {}
-
-    config = {}
-    for f in cdef["fields"]:
-        val = (form.get(f["key"]) or "").strip()
-        # Secret fields are write-only in the UI: blank means keep what's saved.
-        if not val and f.get("secret"):
-            val = old.get(f["key"], "")
-        config[f["key"]] = val
-
+    config = {f["key"]: (form.get(f["key"]) or "").strip() for f in cdef["client_fields"]}
     upsert_connection(client_slug, provider, json.dumps(config))
     return _connections_redirect(client_slug, form.get("period"),
-                                 message=f"{cdef['label']}+saved+—+now+test+it")
+                                 message=f"{cdef['label']}+settings+saved")
 
 
 @app.post("/admin/connections/test")
@@ -689,12 +764,11 @@ def admin_connections_test(request: Request, client_slug: str = Form(...), provi
     _require_admin_or_redirect(request)
     row = get_connection(client_slug, provider)
     if not row:
-        return _connections_redirect(client_slug, period, error="Save+the+connection+first")
-    try:
-        config = json.loads(row.get("config_json") or "{}")
-    except (ValueError, TypeError):
-        config = {}
-    ok, msg = connectors.test_connection(provider, config)
+        return _connections_redirect(client_slug, period, error="Save+the+settings+first")
+    if not get_agency_credential(provider):
+        return _connections_redirect(client_slug, period,
+                                     error="No+agency+key+for+this+provider+yet+—+add+it+on+the+API+keys+page")
+    ok, msg = connectors.test_connection(provider, _merged_config(provider, client_slug))
     set_connection_status(client_slug, provider, "ok" if ok else "error", msg)
     from urllib.parse import quote
     if ok:
@@ -718,13 +792,11 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
     provider = connectors.SOURCE_PROVIDERS.get(source_key)
     if not provider:
         return JSONResponse({"status": "error", "summary": f"No API connector feeds {source_key}", "warnings": [], "row_count": 0})
-    row = get_connection(client_slug, provider)
-    if not row:
-        return JSONResponse({"status": "error", "summary": "Not connected - set this up in Connections first", "warnings": [], "row_count": 0})
-    try:
-        config = json.loads(row.get("config_json") or "{}")
-    except (ValueError, TypeError):
-        config = {}
+    if not get_agency_credential(provider):
+        return JSONResponse({"status": "error", "summary": "No agency key for this provider - add it on the API keys page", "warnings": [], "row_count": 0})
+    if not get_connection(client_slug, provider):
+        return JSONResponse({"status": "error", "summary": "No client settings yet - fill them in under API connections below", "warnings": [], "row_count": 0})
+    config = _merged_config(provider, client_slug)
 
     dest_dir = settings.data_dir / client_slug / period
     dest_dir.mkdir(parents=True, exist_ok=True)
