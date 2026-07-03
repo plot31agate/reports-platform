@@ -202,7 +202,7 @@ Total human time each month: ~30-45 minutes.
 
 ## API connections (skip the CSV exports)
 
-Admin → Connections → pick the client → paste keys:
+Workspace → "API connections" panel (bottom of the data column) → paste keys:
 
 - **Ahrefs** — API key + target domain (feeds `ahrefs_backlinks`)
 - **Similarweb** — API key + domain (feeds `similarweb_traffic`)
