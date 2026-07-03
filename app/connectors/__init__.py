@@ -21,8 +21,15 @@ CONNECTOR_DEFS = [
     {
         "provider": "ahrefs",
         "label": "Ahrefs",
-        "sources": ["ahrefs_backlinks", "technical_seo_metrics"],
-        "blurb": "Pulls the live backlink profile and the monthly technical SEO metrics (Site Audit health score, DR, open issues). The curated issue register stays a manual upload.",
+        "sources": ["ahrefs_backlinks", "ahrefs_trends", "technical_seo_metrics", "search_console"],
+        # Which client fields each source needs before it can sync.
+        "requires": {
+            "ahrefs_backlinks": ["target"],
+            "ahrefs_trends": ["target"],
+            "technical_seo_metrics": ["audit_project_id", "target"],
+            "search_console": ["gsc_project_id"],
+        },
+        "blurb": "Pulls backlinks, 12-month authority trends, technical SEO metrics (Site Audit), and — when the client's Search Console is connected to Ahrefs — search data too. The curated issue register stays a manual upload.",
         "agency_fields": [
             {"key": "api_key", "label": "API key", "type": "password", "secret": True},
         ],
@@ -32,6 +39,9 @@ CONNECTOR_DEFS = [
             {"key": "audit_project_id", "label": "Site Audit project ID", "type": "text",
              "placeholder": "e.g. 123456",
              "hint": "The number in the Site Audit URL: app.ahrefs.com/site-audit/<id>. Leave blank to skip technical SEO sync."},
+            {"key": "gsc_project_id", "label": "Ahrefs project ID (GSC Insights)", "type": "text",
+             "placeholder": "e.g. 123456",
+             "hint": "If this client's Search Console is connected to the Ahrefs project, its ID here pulls search data without needing a Google grant. GSC Insights API calls are free."},
         ],
         "key_help": [
             "Log in to Ahrefs on the agency account",
@@ -47,6 +57,11 @@ CONNECTOR_DEFS = [
         "provider": "google",
         "label": "Google — GA4 + Search Console",
         "sources": ["ga4_export", "ga4_geography", "search_console"],
+        "requires": {
+            "ga4_export": ["ga4_property_id"],
+            "ga4_geography": ["ga4_property_id"],
+            "search_console": ["gsc_site_url"],
+        },
         "blurb": "One service account covers GA4 traffic, GA4 geography, and Search Console for every client.",
         "agency_fields": [
             {"key": "service_account_json", "label": "Service account JSON", "type": "textarea", "secret": True},
@@ -71,10 +86,30 @@ CONNECTOR_DEFS = [
 
 _MODULES = {"ahrefs": ahrefs, "google": google}
 
-# source_key -> provider that can feed it
-SOURCE_PROVIDERS = {
-    src: d["provider"] for d in CONNECTOR_DEFS for src in d["sources"]
-}
+# source_key -> providers that can feed it, in preference order (defs order).
+# search_console has two: Ahrefs (via GSC Insights, no Google grant needed)
+# preferred, Google service account as fallback.
+SOURCE_PROVIDERS: dict = {}
+for _d in CONNECTOR_DEFS:
+    for _src in _d["sources"]:
+        SOURCE_PROVIDERS.setdefault(_src, []).append(_d["provider"])
+
+
+def pick_provider(source_key: str, agency_creds: dict, client_configs: dict):
+    """Choose the first provider for a source that has both its agency key
+    and this client's required settings filled in. Returns provider or None.
+
+    agency_creds: {provider: row} (from get_agency_credentials)
+    client_configs: {provider: parsed client config dict}
+    """
+    for provider in SOURCE_PROVIDERS.get(source_key, []):
+        if provider not in agency_creds:
+            continue
+        cfg = client_configs.get(provider) or {}
+        required = get_def(provider).get("requires", {}).get(source_key, [])
+        if all((cfg.get(k) or "").strip() for k in required):
+            return provider
+    return None
 
 
 def get_def(provider: str) -> dict:

@@ -5,7 +5,7 @@ Missing files return an empty structure so the report still renders.
 """
 from pathlib import Path
 
-from app.ingestion.parsers.ahrefs import parse_ahrefs
+from app.ingestion.parsers.ahrefs import parse_ahrefs, parse_ahrefs_trends
 from app.ingestion.parsers.similarweb import parse_similarweb
 from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_geography
 from app.ingestion.parsers.search_console import parse_search_console
@@ -19,6 +19,7 @@ from app.ingestion.parsers.technical_seo import (
 
 PARSER_MAP = {
     "ahrefs_backlinks":        ("Ahrefs backlinks",            parse_ahrefs),
+    "ahrefs_trends":           ("Ahrefs trends",               parse_ahrefs_trends),
     # similarweb_traffic stays parseable so months built from old uploads
     # still render, but it's no longer an upload card (GA4 geography
     # replaced it - real measured data instead of estimates).
@@ -40,6 +41,7 @@ SOURCE_DEFS = [
     {"key": "ga4_geography",          "title": "GA4 geography",         "purpose": "Visits by country",                           "cols": "Country, Sessions"},
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
+    {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
     {"key": "linkedin_company",       "title": "LinkedIn (company)",    "purpose": "Impressions, followers, top posts",           "cols": "date, impressions, clicks, followers"},
     {"key": "technical_seo_metrics",  "title": "Technical SEO metrics", "purpose": "Site health score, DR, open issues by month", "cols": "month, health_score, domain_rating, total_open"},
     {"key": "technical_seo_register", "title": "Technical SEO register","purpose": "Issue register with severity and status",     "cols": "issue_id, finding, severity, status"},
@@ -100,6 +102,23 @@ def summarise_parsed(source_key: str, data) -> dict:
         return {"status": "ok" if rd > 0 else "warning", "summary": s,
                 "warnings": [] if rd > 0 else ["No referring domains found - check column names"],
                 "row_count": rd}
+
+    if source_key == "ahrefs_trends":
+        points = (data or {}).get("points") or []
+        latest = (data or {}).get("latest") or {}
+        deltas = (data or {}).get("deltas") or {}
+        if not points:
+            return {"status": "warning", "summary": "No history rows found", "warnings": [], "row_count": 0}
+        s = f"{len(points)} months"
+        if latest.get("domain_rating") is not None:
+            s += f", DR {latest['domain_rating']}"
+            if deltas.get("domain_rating"):
+                s += f" ({deltas['domain_rating']:+g})"
+        if latest.get("referring_domains") is not None:
+            s += f", {latest['referring_domains']:,} ref domains"
+            if deltas.get("referring_domains"):
+                s += f" ({deltas['referring_domains']:+,})"
+        return {"status": "ok", "summary": s, "warnings": [], "row_count": len(points)}
 
     if source_key == "ga4_geography":
         countries = (data or {}).get("top_countries") or []

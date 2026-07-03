@@ -99,7 +99,98 @@ def sync(config, source_key, dest, period):
     if source_key == "technical_seo_metrics":
         return _sync_technical_seo(config, dest, period)
 
+    if source_key == "search_console":
+        return _sync_gsc(config, dest, period)
+
+    if source_key == "ahrefs_trends":
+        return _sync_trends(config, dest, period)
+
     raise ConnectorError(f"Ahrefs connector can't feed {source_key}")
+
+
+# ---------- Search Console via GSC Insights (free API calls) ----------
+
+def _sync_gsc(config, dest, period):
+    project_id = (config.get("gsc_project_id") or "").strip()
+    if not project_id:
+        raise ConnectorError("No Ahrefs project ID for GSC Insights saved")
+    start, end = period_range(period)
+    data = _get(config, "/gsc/keywords", {
+        "project_id": project_id,
+        "date_from": start,
+        "date_to": end,
+        "limit": 1000,
+    })
+    rows = data.get("keywords") or []
+    if not rows:
+        raise ConnectorError(
+            f"Ahrefs returned no GSC keywords for {period} - check the project has Search Console connected"
+        )
+    write_gsc_keywords_csv(rows, dest)
+    return len(rows)
+
+
+def write_gsc_keywords_csv(rows, dest):
+    """GSC Insights rows -> Queries-export-shaped CSV for parse_search_console.
+
+    CTR is recomputed from clicks/impressions so we never depend on whether
+    the API reports it as a fraction or a percentage.
+    """
+    header = ["Top queries", "Clicks", "Impressions", "CTR", "Position"]
+    out = []
+    for r in rows:
+        clicks = int(r.get("clicks") or 0)
+        impressions = int(r.get("impressions") or 0)
+        ctr = round(clicks / impressions * 100, 2) if impressions else 0.0
+        out.append([
+            r.get("keyword", ""),
+            clicks,
+            impressions,
+            f"{ctr}%",
+            round(float(r.get("position") or 0), 1),
+        ])
+    write_csv(dest, header, out)
+
+
+# ---------- 12-month authority trends ----------
+
+def _sync_trends(config, dest, period):
+    target = _target(config)
+    _start, end = period_range(period)
+    try:
+        year, month = int(period[:4]), int(period[5:7])
+    except ValueError:
+        raise ConnectorError(f"Period must be YYYY-MM, got {period}")
+    from_month = month - 11
+    from_year = year + (from_month - 1) // 12
+    from_month = ((from_month - 1) % 12) + 1
+    date_from = f"{from_year:04d}-{from_month:02d}-01"
+    span = {"target": target, "date_from": date_from, "date_to": end, "history_grouping": "monthly"}
+
+    dr_rows = _get(config, "/site-explorer/domain-rating-history", span).get("domain_ratings") or []
+    rd_rows = _get(config, "/site-explorer/refdomains-history", span).get("refdomains") or []
+    mt_rows = _get(config, "/site-explorer/metrics-history",
+                   {**span, "select": "date,org_traffic"}).get("metrics") or []
+
+    months: dict = {}
+    for r in dr_rows:
+        months.setdefault(r["date"][:7], {})["domain_rating"] = round(float(r.get("domain_rating") or 0), 1)
+    for r in rd_rows:
+        months.setdefault(r["date"][:7], {})["referring_domains"] = int(r.get("refdomains") or 0)
+    for r in mt_rows:
+        months.setdefault(r["date"][:7], {})["organic_traffic"] = int(r.get("org_traffic") or 0)
+
+    if not months:
+        raise ConnectorError(f"Ahrefs returned no history for {target}")
+
+    header = ["month", "domain_rating", "referring_domains", "organic_traffic"]
+    out = [[m,
+            months[m].get("domain_rating", ""),
+            months[m].get("referring_domains", ""),
+            months[m].get("organic_traffic", "")]
+           for m in sorted(months)]
+    write_csv(dest, header, out)
+    return len(out)
 
 
 # ---------- technical SEO metrics (Site Audit + domain rating) ----------
