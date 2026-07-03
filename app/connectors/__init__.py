@@ -21,11 +21,12 @@ CONNECTOR_DEFS = [
     {
         "provider": "ahrefs",
         "label": "Ahrefs",
-        "sources": ["ahrefs_backlinks", "ahrefs_trends", "technical_seo_metrics", "search_console"],
+        "sources": ["ahrefs_backlinks", "ahrefs_trends", "competitor_benchmark", "technical_seo_metrics", "search_console"],
         # Which client fields each source needs before it can sync.
         "requires": {
             "ahrefs_backlinks": ["target"],
             "ahrefs_trends": ["target"],
+            "competitor_benchmark": ["target", "competitor_domains"],
             "technical_seo_metrics": ["audit_project_id", "target"],
             "search_console": ["gsc_project_id"],
         },
@@ -42,6 +43,9 @@ CONNECTOR_DEFS = [
             {"key": "gsc_project_id", "label": "Ahrefs project ID (GSC Insights)", "type": "text",
              "placeholder": "e.g. 123456",
              "hint": "If this client's Search Console is connected to the Ahrefs project, its ID here pulls search data without needing a Google grant. GSC Insights API calls are free."},
+            {"key": "competitor_domains", "label": "Competitor domains", "type": "text",
+             "placeholder": "betconstruct.com, altenar.com, kambi.com",
+             "hint": "Comma-separated. Feeds the share-of-voice benchmark - brand names come from the client's competitor list automatically."},
         ],
         "key_help": [
             "Log in to Ahrefs on the agency account",

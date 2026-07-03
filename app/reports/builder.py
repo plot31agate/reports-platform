@@ -1,4 +1,5 @@
 """Report builder — orchestrates parsing, sentiment, synthesis, and rendering."""
+import base64
 import json
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +51,16 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
     # 1. Parse everything in the data folder
     _progress("parsing")
     parsed = parse_all(data_dir)
+
+    # Pre-render trend sparklines as SVG images: inline <svg> is invisible to
+    # WeasyPrint, but SVG data-URI <img> renders in browsers and PDF alike.
+    trends = (parsed.get("ahrefs_trends") or {}).get("data")
+    if trends and trends.get("points"):
+        pts = trends["points"][-12:]
+        trends["svgs"] = {
+            key: _trend_svg(pts, key, (trends.get("max") or {}).get(key) or 1)
+            for key in ("domain_rating", "referring_domains", "organic_traffic")
+        }
 
     # 2. Sentiment classification on mentions (cached per mention)
     mentions_data = parsed.get("mentions", {}).get("data") or {}
@@ -120,6 +131,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
 
     return {
         "client": client_config,
+        "exec_mentions": _detect_exec_mentions(parsed, client_config),
         "client_slug": client_slug,
         "client_logo": client_logo,
         "period": period,
@@ -196,6 +208,44 @@ def _load_or_seed_commentary(client_slug: str, period: str, actions: dict) -> di
         "notes": json.loads(row["notes_json"]) if row.get("notes_json") else {},
         "actions": json.loads(row["actions_json"]) if row.get("actions_json") else None,
     }
+
+
+def _trend_svg(points: list, key: str, maxv) -> str:
+    """12-bar sparkline as a base64 SVG data URI. Current month highlighted."""
+    n = len(points)
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n * 10} 46" preserveAspectRatio="none">']
+    for i, p in enumerate(points):
+        v = p.get(key) or 0
+        h = max(1.5, (v / maxv) * 42) if maxv else 1.5
+        fill = "#fb0ba8" if i == n - 1 else "#01d0da"
+        opacity = "" if i == n - 1 else ' opacity="0.5"'
+        parts.append(
+            f'<rect x="{i * 10}" y="{round(46 - h, 1)}" width="8" height="{round(h, 1)}" rx="1" fill="{fill}"{opacity}/>'
+        )
+    parts.append("</svg>")
+    return "data:image/svg+xml;base64," + base64.b64encode("".join(parts).encode()).decode()
+
+
+def _detect_exec_mentions(parsed: dict, client_config: dict) -> list:
+    """Scan the month's mentions for the client's executive names.
+
+    The Google Alerts feeds already include exec-name alerts, so the raw
+    coverage is in the mentions corpus - this surfaces who appeared where.
+    """
+    mentions = ((parsed.get("mentions") or {}).get("data") or {}).get("mentions") or []
+    out = []
+    for name in client_config.get("executives") or []:
+        needle = name.lower().strip()
+        if not needle:
+            continue
+        hits = [
+            m for m in mentions
+            if needle in f"{m.get('title', '')} {m.get('snippet', '')}".lower()
+        ]
+        if hits:
+            out.append({"name": name, "count": len(hits), "examples": hits[:2]})
+    out.sort(key=lambda e: -e["count"])
+    return out
 
 
 def _build_technical_seo(parsed: dict, period: str) -> dict | None:

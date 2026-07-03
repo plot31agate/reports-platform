@@ -810,6 +810,10 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
             msg = f"Missing client settings ({needed}) - fill them in under API connections below"
         return JSONResponse({"status": "error", "summary": msg, "warnings": [], "row_count": 0})
     config = _merged_config(provider, client_slug)
+    # Brand context for connectors that report on the client by name.
+    client_cfg = get_client(client_slug)
+    config["competitor_names"] = client_cfg.get("competitors") or []
+    config["client_display_name"] = client_cfg.get("display_name") or client_slug
 
     dest_dir = settings.data_dir / client_slug / period
     dest_dir.mkdir(parents=True, exist_ok=True)

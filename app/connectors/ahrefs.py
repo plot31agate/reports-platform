@@ -12,6 +12,7 @@ it carries the agency's judgement (status, recommendation, owner), which an
 API can't supply.
 """
 import csv as _csv
+import re
 from datetime import date
 
 from app.connectors._util import ConnectorError, period_range, write_csv
@@ -42,6 +43,21 @@ def _target(config):
     if not target:
         raise ConnectorError("No target domain saved")
     return target
+
+
+def _post(config, path, body):
+    requests = _requests()
+    try:
+        resp = requests.post(f"{API}{path}", headers=_headers(config), json=body, timeout=TIMEOUT)
+    except requests.RequestException as e:
+        raise ConnectorError(f"Could not reach Ahrefs: {e}")
+    if resp.status_code == 401:
+        raise ConnectorError("Ahrefs rejected the API key (401) - check it and that API v3 access is enabled")
+    if resp.status_code == 403:
+        raise ConnectorError("Ahrefs key lacks access to this endpoint (403) - check your plan's API rows")
+    if resp.status_code != 200:
+        raise ConnectorError(f"Ahrefs error {resp.status_code}: {resp.text[:150]}")
+    return resp.json()
 
 
 def _get(config, path, params):
@@ -105,7 +121,102 @@ def sync(config, source_key, dest, period):
     if source_key == "ahrefs_trends":
         return _sync_trends(config, dest, period)
 
+    if source_key == "competitor_benchmark":
+        return _sync_competitors(config, dest, period)
+
     raise ConnectorError(f"Ahrefs connector can't feed {source_key}")
+
+
+# ---------- competitor benchmark / share of voice ----------
+
+BENCH_COLS = ["month", "is_client", "brand", "domain", "domain_rating",
+              "referring_domains", "organic_traffic"]
+
+
+def _sync_competitors(config, dest, period):
+    target = _target(config)
+    raw = config.get("competitor_domains") or ""
+    domains = []
+    for d in re.split(r"[\n,]+", raw):
+        d = d.strip().lower().replace("https://", "").replace("http://", "").strip("/")
+        if d.startswith("www."):
+            d = d[4:]
+        if d:
+            domains.append(d)
+    if not domains:
+        raise ConnectorError("No competitor domains saved - add them on this client's Ahrefs card")
+
+    all_urls = [target] + domains
+    body = {
+        "select": ["url", "domain_rating", "refdomains", "org_traffic"],
+        "targets": [{"url": u, "mode": "subdomains", "protocol": "both"} for u in all_urls],
+    }
+    data = _post(config, "/batch-analysis/batch-analysis", body)
+    results = data.get("targets") or []
+    if not results:
+        raise ConnectorError("Ahrefs batch analysis returned no results")
+
+    # Results echo the url; map back to our ordered list to keep client first.
+    by_url = {}
+    for r in results:
+        key = (r.get("url") or "").lower().replace("https://", "").replace("http://", "").strip("/")
+        if key.startswith("www."):
+            key = key[4:]
+        by_url[key] = r
+
+    names = config.get("competitor_names") or []
+
+    def pretty(domain, is_client):
+        if is_client:
+            return config.get("client_display_name") or domain
+        squashed = domain.replace("-", "").replace(".", "")
+        for n in names:
+            if n.lower().replace(" ", "").replace("-", "") in squashed:
+                return n
+        return domain.split(".")[0].capitalize()
+
+    rows = []
+    for i, u in enumerate(all_urls):
+        r = by_url.get(u)
+        if not r:
+            continue
+        rows.append({
+            "month": period,
+            "is_client": 1 if i == 0 else 0,
+            "brand": pretty(u, i == 0),
+            "domain": u,
+            "domain_rating": round(float(r.get("domain_rating") or 0), 1),
+            "referring_domains": int(r.get("refdomains") or 0),
+            "organic_traffic": int(r.get("org_traffic") or 0),
+        })
+    if not rows:
+        raise ConnectorError("Could not match any batch analysis results back to the requested domains")
+
+    # Carry forward prior months so share-of-voice trends build up over time.
+    history = _bench_history(dest, period)
+    out = history + [[r[c] for c in BENCH_COLS] for r in rows]
+    write_csv(dest, BENCH_COLS, out)
+    return len(rows)
+
+
+def _bench_history(dest, period) -> list:
+    rows = []
+    data_root = dest.parent.parent
+    if not data_root.exists():
+        return rows
+    seen_months = set()
+    for path in sorted(data_root.glob("*/competitor_benchmark*.csv")):
+        try:
+            with open(path, newline="", encoding="utf-8") as f:
+                for r in _csv.DictReader(f):
+                    month = (r.get("month") or "").strip()
+                    if month and month != period and (month, r.get("domain")) not in seen_months:
+                        seen_months.add((month, r.get("domain")))
+                        rows.append([(r.get(c) or "").strip() for c in BENCH_COLS])
+        except OSError:
+            continue
+    rows.sort(key=lambda r: r[0])
+    return rows
 
 
 # ---------- Search Console via GSC Insights (free API calls) ----------
