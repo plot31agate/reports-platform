@@ -3,12 +3,19 @@
 Feeds: similarweb_traffic — writes a CSV with a "Visits" column the existing
 parse_similarweb reads unchanged.
 """
-import requests
-
 from app.connectors._util import ConnectorError, write_csv
 
 API = "https://api.similarweb.com"
 TIMEOUT = 30
+
+
+def _requests():
+    # Lazy import so a VPS that hasn't installed new deps yet still boots.
+    try:
+        import requests
+        return requests
+    except ImportError:
+        raise ConnectorError("The 'requests' package is not installed - run pip install -r requirements.txt")
 
 
 def _key(config):
@@ -29,6 +36,7 @@ def _domain(config):
 
 
 def _get(config, path, params):
+    requests = _requests()
     params = {**params, "api_key": _key(config), "format": "json"}
     try:
         resp = requests.get(f"{API}{path}", params=params, timeout=TIMEOUT)

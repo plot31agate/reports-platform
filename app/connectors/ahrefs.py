@@ -6,12 +6,20 @@ unchanged.
 """
 from datetime import date
 
-import requests
-
 from app.connectors._util import ConnectorError, write_csv
 
 API = "https://api.ahrefs.com/v3"
 TIMEOUT = 30
+
+
+def _requests():
+    # Lazy import so a VPS that hasn't installed new deps yet still boots -
+    # the connector fails with a clear message instead of crashing the app.
+    try:
+        import requests
+        return requests
+    except ImportError:
+        raise ConnectorError("The 'requests' package is not installed - run pip install -r requirements.txt")
 
 
 def _headers(config):
@@ -29,6 +37,7 @@ def _target(config):
 
 
 def _get(config, path, params):
+    requests = _requests()
     try:
         resp = requests.get(f"{API}{path}", headers=_headers(config), params=params, timeout=TIMEOUT)
     except requests.RequestException as e:
