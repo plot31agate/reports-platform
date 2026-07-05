@@ -83,21 +83,31 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         except (ValueError, TypeError):
             saved_actions = None
 
+    # Synthesis also runs when the saved commentary is still untouched
+    # defaults (months built before AI framing existed): the rebuild then
+    # fills headline, standfirst and section notes without touching edits.
     synthesis_health = {"ran": False, "ok": None, "error": None}
-    if saved_actions:
+    synth_content = None
+    if saved_actions and not _framing_blank(saved) and _has_intro(saved):
         actions = {"configured": True, "content": saved_actions}
     else:
         _progress("synthesis")
         assembled = {**parsed, "sentiment": sentiment}
-        actions = synthesise_actions(assembled, client_config)
+        result = synthesise_actions(assembled, client_config)
+        synth_content = result.get("content")
         synthesis_health = {
             "ran": True,
-            "ok": bool(actions.get("configured") and actions.get("content")),
-            "error": actions.get("error"),
+            "ok": bool(result.get("configured") and result.get("content")),
+            "error": result.get("error"),
         }
+        if saved_actions:
+            actions = {"configured": True, "content": saved_actions}
+        else:
+            actions = result
 
-    # 3b. Commentary — seed from AI actions on first build, then use saved edits.
-    commentary = _load_or_seed_commentary(client_slug, period, actions)
+    # 3b. Commentary — seed from AI framing on first build, fill blanks on
+    #     later builds, and always let saved operator edits win.
+    commentary = _load_or_seed_commentary(client_slug, period, synth_content)
     if commentary.get("actions"):
         actions = {"configured": True, "content": commentary["actions"]}
 
@@ -187,24 +197,49 @@ def build_report(client_slug: str, period: str, progress=None) -> dict:
     }
 
 
-def _load_or_seed_commentary(client_slug: str, period: str, actions: dict) -> dict:
+ACTION_BUCKETS = ("lean_into", "investigate", "fix_urgently", "worked", "watch")
+
+
+def _framing_blank(row: dict | None) -> bool:
+    """True when a commentary row carries no editorial framing yet -
+    default headline, no standfirst, no section notes."""
+    if row is None:
+        return True
+    if (row.get("headline") or "Performance Report").strip() not in ("", "Performance Report"):
+        return False
+    if (row.get("standfirst") or "").strip():
+        return False
+    try:
+        notes = json.loads(row.get("notes_json") or "{}")
+    except (ValueError, TypeError):
+        notes = {}
+    return not any(v.strip() for v in notes.values() if isinstance(v, str))
+
+
+def _has_intro(row: dict | None) -> bool:
+    """True when the commentary already carries an executive-summary intro."""
+    if row is None:
+        return False
+    try:
+        notes = json.loads(row.get("notes_json") or "{}")
+    except (ValueError, TypeError):
+        return False
+    return bool((notes.get("intro") or "").strip())
+
+
+def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict | None) -> dict:
     """Return commentary as a dict {headline, standfirst, notes, actions}.
 
-    On the first build for a period, seed a row from the AI-generated actions so the
-    review screen has something to edit. On later builds, use the saved edits verbatim.
+    On the first build for a period, seed the row from the synthesis output
+    (headline, standfirst, notes, action buckets) so the review screen opens
+    pre-written. On later builds, fresh synthesis fills only fields the
+    operator has left blank - saved edits always win.
     """
+    content = synth_content or {}
+    seed_actions = {k: content[k] for k in ACTION_BUCKETS if content.get(k)} or None
+
     row = get_commentary(client_slug, period)
     if row is None:
-        content = (actions or {}).get("content") or {}
-        # The synthesis response carries editorial framing (headline,
-        # standfirst, per-section notes) alongside the action buckets -
-        # split them into their commentary homes so the review screen
-        # opens pre-written rather than blank.
-        seed_actions = {
-            k: content[k]
-            for k in ("lean_into", "investigate", "fix_urgently", "worked", "watch")
-            if content.get(k)
-        } or None
         upsert_commentary(
             client_slug, period,
             headline=(content.get("headline") or "Performance Report").strip(),
@@ -213,6 +248,42 @@ def _load_or_seed_commentary(client_slug: str, period: str, actions: dict) -> di
             actions_json=json.dumps(seed_actions) if seed_actions else None,
         )
         row = get_commentary(client_slug, period)
+    elif content:
+        headline = (row.get("headline") or "").strip()
+        standfirst = (row.get("standfirst") or "").strip()
+        try:
+            notes = json.loads(row.get("notes_json") or "{}")
+        except (ValueError, TypeError):
+            notes = {}
+        try:
+            actions = json.loads(row["actions_json"]) if row.get("actions_json") else None
+        except (ValueError, TypeError):
+            actions = None
+
+        changed = False
+        if headline in ("", "Performance Report") and (content.get("headline") or "").strip():
+            headline = content["headline"].strip()
+            changed = True
+        if not standfirst and (content.get("standfirst") or "").strip():
+            standfirst = content["standfirst"].strip()
+            changed = True
+        for key, val in (content.get("notes") or {}).items():
+            if isinstance(val, str) and val.strip() and not (notes.get(key) or "").strip():
+                notes[key] = val.strip()
+                changed = True
+        if not actions and seed_actions:
+            actions = seed_actions
+            changed = True
+
+        if changed:
+            upsert_commentary(
+                client_slug, period,
+                headline=headline or "Performance Report",
+                standfirst=standfirst,
+                notes_json=json.dumps(notes),
+                actions_json=json.dumps(actions) if actions else None,
+            )
+            row = get_commentary(client_slug, period)
 
     return {
         "headline": row.get("headline") or "Performance Report",

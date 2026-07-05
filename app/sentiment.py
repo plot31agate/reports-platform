@@ -181,14 +181,17 @@ Also give a read on the month:
 - "worked": three to five bullets on what worked, each a single string of one or two sentences naming the specific result and the numbers behind it
 - "watch": two to four bullets on what to watch, each a single string of one or two sentences flagging a soft spot, risk or caveat in the data
 
-Also write the report's editorial framing:
+Also write the report's editorial framing. This is the part the client's leadership actually reads: it must tell the story of the month, not recite numbers. Every piece should say what happened, what drove it, and what it means for the client - the numbers support the sentence, they never lead it.
+
 - "headline": the report title, 4 to 8 words naming the month's defining story (e.g. "Kenya launch drives record coverage"). Title case only on the first word and proper nouns, no trailing full stop, no colons.
-- "standfirst": one or two sentences framing the month for the client's leadership, leading with the strongest specific result and its number. This sits under the headline on the cover.
-- "notes": an object of section intros, one or two sentences each, written from the data for that section - name the specific numbers, outlets, queries or countries that matter and what they mean. Only include a key when the summary above has data for it. Keys: "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "technical_seo".
+- "standfirst": one or two sentences under the headline framing the month's story - the defining development and its strongest number.
+- "notes": an object of section commentaries keyed as below. ALWAYS include "intro". Include the other keys only when the summary above has data for them.
+  - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month, connect the threads (how coverage, search, traffic, authority and social relate to each other this month), and close with where the focus goes next. This is the executive summary at the top of the report.
+  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
 
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 
-{{"headline":"...","standfirst":"...","notes":{{"media":"..."}},"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]}}"""
+{{"headline":"...","standfirst":"...","notes":{{"intro":"...","media":"..."}},"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]}}"""
 
     try:
         resp = client.messages.create(

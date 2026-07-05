@@ -94,12 +94,26 @@
 
 <div class="wrap">
 
+{# ================== EXECUTIVE SUMMARY (the story of the month) ================== #}
+{% if editable or notes.get('intro') %}
+<div class="section section--intro">
+  <div class="slabel">The month in brief</div>
+  {{ note('intro') }}
+  {% if editable and not notes.get('intro') %}
+  <p class="muted muted--internal">No executive summary yet - it is written by the AI on the next rebuild, or write your own above.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ================== MONTH ON MONTH ================== #}
 {% if mom and mom.metrics and (editable or mom.metrics | length > 0 or notes.get('mom') or notes.get('callout_mom')) %}
 <div class="section">
   <div class="slabel">Month on month</div>
   <h2>{% if mom.has_prev %}{{ mom.month_name }} against {{ mom.prev_name }}{% else %}{{ mom.month_name }} baseline{% endif %}</h2>
   {{ note('mom') }}
+  {% if editable and not mom.has_prev %}
+  <p class="muted muted--internal">No prior-month data found at <code>data/{{ client_slug }}/{{ mom.prev_period }}/</code> - month-on-month deltas appear once that folder has source files.</p>
+  {% endif %}
   <div class="strip">
     {% for m in mom.metrics %}
     <div class="mom">
