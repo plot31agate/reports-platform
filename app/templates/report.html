@@ -53,37 +53,40 @@
 {% endif %}
 
 <div class="keyline"></div>
-<div class="wrap">
 
-{# ================== HEADER ================== #}
-<div class="head">
-  <div class="brand">
-    {% if client_logo %}
-    <img class="brand__logo" src="{{ client_logo }}" alt="{{ client.display_name }}">
-    {% endif %}
-    <div>
-      <h1>{{ client.display_name }}</h1>
-      <div class="sub">Marketing Performance Report</div>
+{# ================== NAVY HERO ================== #}
+<div class="hero">
+  <img class="hero__ghost" src="/static/img/df-mark.png" alt="">
+  <div class="hero__inner">
+    <div class="hero__top">
+      <img class="hero__logo" src="/static/img/df-logo-spectrum-white.png" alt="Digital Footprints">
+      <div class="hero__prepared">
+        <span class="hero__prepared-label">Prepared for</span>
+        <span class="hero__chip">
+          {% if client_logo %}
+          <img src="{{ client_logo }}" alt="{{ client.display_name }}">
+          {% else %}
+          <span class="hero__chip-name">{{ client.display_name }}</span>
+          {% endif %}
+        </span>
+      </div>
     </div>
-  </div>
-  <div class="period">
-    <div><strong>{{ period_display }}</strong></div>
-    <div>Prepared by Digital Footprints</div>
+    <div class="kicker">/ Monthly Performance Report · {{ period_display }}</div>
+    {% if editable %}
+    <span class="edit-tag">Lead — the month in one or two sentences</span>
+    <textarea class="edit-input edit-input--lead" name="standfirst" rows="3" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
+    <span class="edit-tag" style="margin-top:12px;">Headline — used if the lead is blank</span>
+    <textarea class="edit-input edit-input--headline" name="headline" rows="1" placeholder="Performance Report">{{ commentary.headline }}</textarea>
+    {% else %}
+    {% set lead_text = commentary.standfirst if (commentary and commentary.standfirst) else (commentary.headline if (commentary and commentary.headline and commentary.headline != 'Performance Report') else None) %}
+    {% if lead_text %}
+    <div class="lead">{{ lead_text }}</div>
+    {% endif %}
+    {% endif %}
   </div>
 </div>
 
-<div class="kicker">Monthly Performance Report</div>
-{% if editable %}
-<span class="edit-tag">Lead — the month in one or two sentences</span>
-<textarea class="edit-input edit-input--lead" name="standfirst" rows="3" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
-<span class="edit-tag" style="margin-top:12px;">Headline — used if the lead is blank</span>
-<textarea class="edit-input edit-input--headline" name="headline" rows="1" placeholder="Performance Report">{{ commentary.headline }}</textarea>
-{% else %}
-{% set lead_text = commentary.standfirst if (commentary and commentary.standfirst) else (commentary.headline if (commentary and commentary.headline and commentary.headline != 'Performance Report') else None) %}
-{% if lead_text %}
-<div class="lead">{{ lead_text }}</div>
-{% endif %}
-{% endif %}
+<div class="wrap">
 
 {# ================== MONTH ON MONTH ================== #}
 {% if mom and mom.metrics and (editable or mom.metrics | length > 0 or notes.get('mom') or notes.get('callout_mom')) %}
@@ -462,8 +465,11 @@
 </div>
 {% endif %}
 
-{# ================== TECHNICAL SEO ================== #}
+{# ================== TECHNICAL SEO (navy chapter band) ================== #}
+</div>
 {% if editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo') %}
+<div class="navyband">
+<div class="wrap">
 <div class="section">
   <div class="slabel">Technical SEO</div>
   <h2>Site health</h2>
@@ -515,7 +521,10 @@
   {% endif %}
   {% endif %}
 </div>
+</div>
+</div>
 {% endif %}
+<div class="wrap">
 
 {# ================== WHAT WORKED / WHAT TO WATCH ================== #}
 {% set worked_items = (actions.content.worked if (actions.configured and actions.content) else none) or [] %}
@@ -582,7 +591,7 @@
   {% if editable %}
   <div class="focus">
     <div class="ecard" style="margin-bottom:12px;">
-      <h3 style="color:var(--green);">Lean into</h3>
+      <h3 style="color:var(--green-ink);">Lean into</h3>
       {% for item in edit_lean %}
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
@@ -594,7 +603,7 @@
       {% endfor %}
     </div>
     <div class="ecard" style="margin-bottom:12px;">
-      <h3 style="color:var(--amber);">Investigate</h3>
+      <h3 style="color:var(--amber-ink);">Investigate</h3>
       {% for item in edit_invest %}
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
@@ -606,7 +615,7 @@
       {% endfor %}
     </div>
     <div class="ecard">
-      <h3 style="color:var(--red-ink);">Fix urgently</h3>
+      <h3 style="color:var(--magenta);">Fix urgently</h3>
       <div class="rec-slot">
         <span class="rec-slot__num">!</span>
         <div class="rec-slot__fields">
@@ -621,7 +630,7 @@
   <div class="focus">
     {% if actions.content.fix_urgently %}
     {% set ns.counter = ns.counter + 1 %}
-    <div class="fitem">
+    <div class="fitem fitem--fix">
       <div class="fnum">{{ ns.counter }}</div>
       <div class="fbody">
         <h4>{{ actions.content.fix_urgently.action }} <span class="tag red">Fix urgently</span></h4>
@@ -631,20 +640,20 @@
     {% endif %}
     {% for item in actions.content.lean_into or [] %}
     {% set ns.counter = ns.counter + 1 %}
-    <div class="fitem">
+    <div class="fitem fitem--lean">
       <div class="fnum">{{ ns.counter }}</div>
       <div class="fbody">
-        <h4>{{ item.action }} <span class="tag grn">Lean into</span></h4>
+        <h4>{{ item.action }} <span class="tag ylw">Lean into</span></h4>
         <p>{{ item.why }}</p>
       </div>
     </div>
     {% endfor %}
     {% for item in actions.content.investigate or [] %}
     {% set ns.counter = ns.counter + 1 %}
-    <div class="fitem">
+    <div class="fitem fitem--invest">
       <div class="fnum">{{ ns.counter }}</div>
       <div class="fbody">
-        <h4>{{ item.action }} <span class="tag amb">Investigate</span></h4>
+        <h4>{{ item.action }} <span class="tag grn">Investigate</span></h4>
         <p>{{ item.why }}</p>
       </div>
     </div>
@@ -667,11 +676,21 @@ document.querySelectorAll('.edit-input').forEach(function(el) {
 </script>
 {% endif %}
 
-{# ================== FOOTER ================== #}
-<div class="footer">
-  <span>{{ client.display_name }} · Marketing Performance Report · Confidential</span>
-  <span>{{ period_display }} · Prepared by Digital Footprints · Generated {{ generated_at }} <span class="actions">· <a href="?format=pdf">Export PDF</a></span></span>
 </div>
 
-</div>
+{# ================== FOOTER ================== #}
+<footer class="foot">
+  <div class="foot__inner">
+    <div class="foot__row">
+      <div>
+        <img class="foot__logo" src="/static/img/df-logo-spectrum-white.png" alt="Digital Footprints">
+        <div class="foot__mark">Make Your Mark.</div>
+      </div>
+      <div class="foot__meta">
+        {{ client.display_name }} · Marketing Performance Report · Confidential<br>
+        {{ period_display }} · Generated {{ generated_at }} <span class="foot__actions">· <a href="?format=pdf">Export PDF</a></span>
+      </div>
+    </div>
+  </div>
+</footer>
 {% endblock %}
