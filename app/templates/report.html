@@ -14,10 +14,10 @@
 {% if editable %}
 <div class="section__note--edit">
   <span class="edit-tag">Section intro</span>
-  <textarea name="note_{{ key }}" rows="3" placeholder="Optional intro paragraph for this section. Leave blank to omit.">{{ notes.get(key) or '' }}</textarea>
+  <textarea class="edit-input edit-input--note" name="note_{{ key }}" rows="3" placeholder="Optional intro paragraph for this section. Leave blank to omit.">{{ notes.get(key) or '' }}</textarea>
 </div>
 {% elif notes.get(key) %}
-<p class="band__lede">{{ notes.get(key) }}</p>
+<p class="meta">{{ notes.get(key) }}</p>
 {% endif %}
 {% endmacro %}
 
@@ -25,7 +25,7 @@
 {% if editable %}
 <div class="section__note--edit">
   <span class="edit-tag">Data caveat</span>
-  <textarea name="callout_{{ key }}" rows="2" placeholder="Optional caveat shown as an amber callout, e.g. first month on a new platform, treat as baseline. Leave blank to omit.">{{ notes.get('callout_' ~ key) or '' }}</textarea>
+  <textarea class="edit-input edit-input--callout" name="callout_{{ key }}" rows="2" placeholder="Optional caveat shown as an amber callout, e.g. first month on a new platform, treat as baseline. Leave blank to omit.">{{ notes.get('callout_' ~ key) or '' }}</textarea>
 </div>
 {% elif notes.get('callout_' ~ key) %}
 <div class="callout">{{ notes.get('callout_' ~ key) }}</div>
@@ -53,118 +53,158 @@
 {% endif %}
 
 <div class="keyline"></div>
+<div class="wrap">
 
-{# ================== COVER ================== #}
-<div class="cover">
-  <img class="cover__ghost" src="/static/img/df-mark.png" alt="">
-  <div class="cover__inner">
-    <div class="cover__top">
-      <img class="cover__logo" src="/static/img/df-logo-spectrum-white.png" alt="Digital Footprints">
-      <div class="cover__prepared">
-        <span class="cover__prepared-label">Prepared for</span>
-        <span class="cover__chip">
-          {% if client_logo %}
-          <img src="{{ client_logo }}" alt="{{ client.display_name }}">
-          {% else %}
-          <span class="cover__chip-name">{{ client.display_name }}</span>
-          {% endif %}
-        </span>
-      </div>
+{# ================== HEADER ================== #}
+<div class="head">
+  <div class="brand">
+    {% if client_logo %}
+    <img class="brand__logo" src="{{ client_logo }}" alt="{{ client.display_name }}">
+    {% endif %}
+    <div>
+      <h1>{{ client.display_name }}</h1>
+      <div class="sub">Marketing Performance Report</div>
     </div>
-    <div class="cover__kicker">/ Monthly performance · {{ period_display }}</div>
-    {% if editable %}
-    <span class="edit-tag">Headline</span>
-    <textarea class="cover__title-input" name="headline" rows="2" placeholder="Performance Report">{{ commentary.headline }}</textarea>
-    <span class="edit-tag" style="margin-top:16px;">Standfirst</span>
-    <textarea class="cover__standfirst-input" name="standfirst" rows="3" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
-    {% else %}
-    <h1 class="cover__title">
-      {%- if commentary and commentary.headline and commentary.headline != "Performance Report" -%}
-        {{ commentary.headline }}
-      {%- else -%}
-        {{ period_display }}, measured.
-      {%- endif -%}
-    </h1>
-    {% if commentary and commentary.standfirst %}
-    <p class="cover__standfirst">{{ commentary.standfirst }}</p>
-    {% endif %}
-    {% endif %}
+  </div>
+  <div class="period">
+    <div><strong>{{ period_display }}</strong></div>
+    <div>Prepared by Digital Footprints</div>
   </div>
 </div>
 
-{# ================== SCORECARD ================== #}
-{% set mentions_total = (data.mentions.data.total if data.mentions.data else none) %}
-{% set sent_score = sentiment.avg_score if (sentiment.configured and sentiment.total) else none %}
-{% set gsc_clicks = (data.search_console.data.clicks if data.search_console.data else none) %}
-{% set ga4_sessions = (data.ga4_export.data.sessions if data.ga4_export.data else none) %}
-<div class="score-row">
-  <div class="score score--cyan">
-    <div class="score__label">Coverage</div>
-    <div class="score__value">{{ mentions_total | thousands if mentions_total is not none else '—' }}</div>
-    <div class="score__sub">tracked mentions</div>
-  </div>
-  <div class="score score--magenta">
-    <div class="score__label">Sentiment</div>
-    <div class="score__value">{% if sent_score is not none %}{{ '{:+.2f}'.format(sent_score) }}{% else %}—{% endif %}</div>
-    <div class="score__sub">net score, -1 to +1</div>
-  </div>
-  <div class="score score--yellow">
-    <div class="score__label">Clicks</div>
-    <div class="score__value">{{ gsc_clicks | thousands if gsc_clicks is not none else '—' }}</div>
-    <div class="score__sub">organic search</div>
-  </div>
-  <div class="score score--orange">
-    <div class="score__label">Sessions</div>
-    <div class="score__value">{{ ga4_sessions | thousands if ga4_sessions is not none else '—' }}</div>
-    <div class="score__sub">all channels</div>
-  </div>
-  {% set health = technical_seo.current.health_score if technical_seo and technical_seo.current else none %}
-  {% if health is not none %}
-  <div class="score score--ink">
-    <div class="score__label">Site health</div>
-    <div class="score__value">{{ health }}<span class="score__unit">/100</span>
-      {%- if technical_seo.health_delta is not none and technical_seo.health_delta != 0 %}
-      <span class="score__delta {{ 'score__delta--up' if technical_seo.health_delta > 0 else 'score__delta--down' }}">{{ '{:+d}'.format(technical_seo.health_delta) }}</span>
-      {%- endif %}
-    </div>
-    <div class="score__sub">technical SEO score</div>
-  </div>
-  {% endif %}
-</div>
+<div class="kicker">Monthly Performance Report</div>
+{% if editable %}
+<span class="edit-tag">Lead — the month in one or two sentences</span>
+<textarea class="edit-input edit-input--lead" name="standfirst" rows="3" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
+<span class="edit-tag" style="margin-top:12px;">Headline — used if the lead is blank</span>
+<textarea class="edit-input edit-input--headline" name="headline" rows="1" placeholder="Performance Report">{{ commentary.headline }}</textarea>
+{% else %}
+{% set lead_text = commentary.standfirst if (commentary and commentary.standfirst) else (commentary.headline if (commentary and commentary.headline and commentary.headline != 'Performance Report') else None) %}
+{% if lead_text %}
+<div class="lead">{{ lead_text }}</div>
+{% endif %}
+{% endif %}
 
-{# ================== MEDIA COVERAGE ================== #}
-{% if editable or (data.mentions.data and data.mentions.data.total > 0) or notes.get('media') or notes.get('callout_media') %}
-<div class="band">
-  <div class="band__aside">
-    <div class="kicker">/ Media coverage</div>
-    <h2 class="band__title">{% if mentions_total %}{{ mentions_total }} stories this month.{% else %}Media coverage.{% endif %}</h2>
-    {{ note('media') }}
-    {{ callout('media') }}
-    {% if editable and not (data.mentions.data and data.mentions.data.total > 0) %}
-    <p class="muted muted--internal">No mentions data uploaded for this period. This section will not appear in the published report.</p>
-    {% endif %}
-  </div>
-  {% if data.mentions.data and data.mentions.data.total > 0 %}
-  <div class="band__body card card--list">
-    {% for m in data.mentions.data.mentions[:10] %}
-    {% set scored = (sentiment.scored | selectattr('title', 'equalto', m.title) | list | first) if sentiment.scored else none %}
-    <div class="mention">
-      <span class="mention__num">{{ '%02d' | format(loop.index) }}</span>
-      <div class="mention__main">
-        {% if m.url %}
-        <a class="mention__title" href="{{ m.url }}" target="_blank" rel="noopener">{{ m.title }} <span class="mention__arrow">↗</span></a>
-        {% else %}
-        <span class="mention__title">{{ m.title }}</span>
-        {% endif %}
-        <div class="mention__meta">{{ m.source }} · {{ m.date }}</div>
-      </div>
-      {% if scored %}
-        {% if scored.classification == 'positive' %}<span class="pill pill--positive">Positive</span>
-        {% elif scored.classification == 'negative' %}<span class="pill pill--watch">Watch</span>
-        {% else %}<span class="pill pill--neutral">Neutral</span>{% endif %}
+{# ================== MONTH ON MONTH ================== #}
+{% if mom and mom.metrics and (editable or mom.metrics | length > 0 or notes.get('mom') or notes.get('callout_mom')) %}
+<div class="section">
+  <div class="slabel">Month on month</div>
+  <h2>{% if mom.has_prev %}{{ mom.month_name }} against {{ mom.prev_name }}{% else %}{{ mom.month_name }} baseline{% endif %}</h2>
+  {{ note('mom') }}
+  <div class="strip">
+    {% for m in mom.metrics %}
+    <div class="mom">
+      <div class="ml">{{ m.label }}</div>
+      <div class="mv">{{ m.value }}</div>
+      {% if m.prev is not none %}
+      <div class="mp">{{ mom.prev_name }}: <strong>{{ m.prev }}</strong></div>
+        {% if m.direction == 'up' %}<div class="mt up">↑ {{ m.delta }}</div>
+        {% elif m.direction == 'down' %}<div class="mt down">↓ {{ m.delta }}</div>
+        {% else %}<div class="mt flat">— level</div>{% endif %}
+      {% else %}
+      <div class="mp">{{ m.sub or 'No prior month tracked' }}</div>
+      <div class="mt note">◆ New baseline</div>
       {% endif %}
     </div>
     {% endfor %}
+  </div>
+  {{ callout('mom') }}
+</div>
+{% endif %}
+
+{# ================== MEDIA COVERAGE ================== #}
+{% set mentions_total = (data.mentions.data.total if data.mentions.data else none) %}
+{% if editable or (mentions_total and mentions_total > 0) or notes.get('media') or notes.get('callout_media') %}
+<div class="section">
+  <div class="slabel">Media coverage</div>
+  <h2>Earned coverage</h2>
+  {{ note('media') }}
+  {{ callout('media') }}
+  {% if editable and not (mentions_total and mentions_total > 0) %}
+  <p class="muted muted--internal">No mentions data uploaded for this period. This section will not appear in the published report.</p>
+  {% endif %}
+
+  {% if mentions_total and mentions_total > 0 %}
+  <div class="stats">
+    <div class="stat"><div class="n">{{ mentions_total | thousands }}</div><div class="l">Tracked mentions</div></div>
+    {% if sentiment.configured and sentiment.total %}
+    <div class="stat"><div class="n">{{ '{:+.2f}'.format(sentiment.avg_score) if sentiment.avg_score is not none else '—' }}</div><div class="l">Net sentiment, −1 to +1</div></div>
+    {% endif %}
+    {% if exec_mentions %}
+    <div class="stat"><div class="n">{{ exec_mentions | length }}</div><div class="l">Executives in coverage</div></div>
+    {% endif %}
+  </div>
+
+  <div class="grid2">
+    {% if sentiment.configured and sentiment.total > 0 %}
+    <div class="panel">
+      <h3>Sentiment</h3>
+      <div class="senti">
+        <div class="chip pos"><span class="p">{{ (sentiment.positive / sentiment.total * 100) | round(1) }}%</span>Positive</div>
+        <div class="chip neu"><span class="p">{{ (sentiment.neutral / sentiment.total * 100) | round(1) }}%</span>Neutral</div>
+        <div class="chip neg"><span class="p">{{ (sentiment.negative / sentiment.total * 100) | round(1) }}%</span>Watch</div>
+      </div>
+      {{ note('sentiment') }}
+      {{ callout('sentiment') }}
+    </div>
+    {% elif editable %}
+    <div class="panel">
+      <h3>Sentiment</h3>
+      {% if not sentiment.configured %}
+      <p class="muted muted--internal">Claude API not configured. Set <code>ANTHROPIC_API_KEY</code> to enable sentiment scoring.</p>
+      {% else %}
+      <p class="muted muted--internal">No mentions to score this period.</p>
+      {% endif %}
+      {{ note('sentiment') }}
+      {{ callout('sentiment') }}
+    </div>
+    {% endif %}
+
+    {% if exec_mentions or editable %}
+    <div class="panel">
+      <h3>Executive visibility</h3>
+      {{ note('execs') }}
+      {{ callout('execs') }}
+      {% if exec_mentions %}
+      <table>
+        <thead><tr><th>Name</th><th class="num">Mentions</th></tr></thead>
+        <tbody>
+          {% for e in exec_mentions %}
+          <tr><td>{{ e.name }}{% if e.examples %}<div class="meta" style="margin-top:2px;">"{{ e.examples[0].title[:90] }}"{% if e.examples[0].source %} — {{ e.examples[0].source }}{% endif %}</div>{% endif %}</td><td class="num">{{ e.count }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% elif editable %}
+        {% if client.executives %}
+        <p class="muted muted--internal">Tracking {{ client.executives|length }} executives ({{ client.executives|join(', ') }}) — none detected in this month's coverage.</p>
+        {% else %}
+        <p class="muted muted--internal">No executives configured for this client.</p>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="panel panel--wide">
+    <h3>Coverage this month</h3>
+    <table>
+      <thead><tr><th style="width:30px;">#</th><th>Story</th><th>Source</th><th>Date</th><th>Tone</th></tr></thead>
+      <tbody>
+        {% for m in data.mentions.data.mentions[:10] %}
+        {% set scored = (sentiment.scored | selectattr('title', 'equalto', m.title) | list | first) if sentiment.scored else none %}
+        <tr>
+          <td class="num">{{ loop.index }}</td>
+          <td>{% if m.url %}<a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.title }}</a>{% else %}{{ m.title }}{% endif %}</td>
+          <td>{{ m.source }}</td>
+          <td style="white-space:nowrap;">{{ m.date }}</td>
+          <td>{% if scored %}{% if scored.classification == 'positive' %}<span class="tag grn">Positive</span>{% elif scored.classification == 'negative' %}<span class="tag red">Watch</span>{% else %}<span class="tag">Neutral</span>{% endif %}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if mentions_total > 10 %}
+    <p class="meta" style="margin-top:12px;">Showing the first 10 of {{ mentions_total }} tracked mentions.</p>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -174,131 +214,48 @@
 {% set sov = data.competitor_benchmark.data if data.competitor_benchmark else none %}
 {% set has_sov = sov and sov.rows %}
 {% if editable or has_sov or notes.get('sov') or notes.get('callout_sov') %}
-<div class="band band--flip">
-  <div class="band__aside">
-    <div class="kicker">/ Share of voice</div>
-    <h2 class="band__title">Your slice of the search market.</h2>
-    {{ note('sov') }}
-    {{ callout('sov') }}
-    {% if editable and not has_sov %}
-    <p class="muted muted--internal">No benchmark data yet — add competitor domains on the client's Ahrefs card and sync "Competitor benchmark". This section will not appear in the published report.</p>
-    {% endif %}
-  </div>
+<div class="section">
+  <div class="slabel">Competitive landscape</div>
+  <h2>Share of voice</h2>
+  {{ note('sov') }}
+  {{ callout('sov') }}
+  {% if editable and not has_sov %}
+  <p class="muted muted--internal">No benchmark data yet — add competitor domains on the client's Ahrefs card and sync "Competitor benchmark". This section will not appear in the published report.</p>
+  {% endif %}
   {% if has_sov %}
-  <div class="band__body card">
-    <div class="card__label">Share of estimated organic search traffic · Ahrefs</div>
-    <div class="bars">
+  <div class="grid2">
+    <div class="panel">
+      <h3>Share of organic search traffic</h3>
       {% set maxs = sov.rows[0].share or 1 %}
       {% for r in sov.rows %}
       <div class="bar">
-        <div class="bar__head">
-          <span class="bar__name {% if r.is_client %}bar__name--strong{% endif %}">{{ r.brand }}</span>
-          <span class="bar__value {% if r.is_client %}bar__value--strong{% endif %}">
-            {{ r.share }}%
-            {%- if r.share_delta is defined and r.share_delta and r.is_client %}
-            <span class="sov-delta {{ 'sov-delta--up' if r.share_delta > 0 else 'sov-delta--down' }}">{{ '{:+g}'.format(r.share_delta) }}</span>
-            {%- endif %}
-          </span>
+        <div class="bl">
+          <span {% if r.is_client %}class="hot"{% endif %}>{{ r.brand }}</span>
+          <span>{{ r.share }}%{% if r.share_delta is defined and r.share_delta and r.is_client %} ({{ '{:+g}'.format(r.share_delta) }}){% endif %}</span>
         </div>
-        <div class="bar__track"><div class="bar__fill {% if r.is_client %}bar__fill--accent{% endif %}" style="width:{{ ((r.share / maxs * 100) | round | int) if maxs else 0 }}%;"></div></div>
+        <div class="track"><div class="fill {% if not r.is_client %}n{% endif %}" style="width:{{ ((r.share / maxs * 100) | round | int) if maxs else 0 }}%"></div></div>
       </div>
       {% endfor %}
+      <p class="meta">{{ sov.rows | length }} brands benchmarked{% if sov.months_tracked and sov.months_tracked > 1 %} · share change vs previous month{% endif %} · estimates by Ahrefs.</p>
     </div>
-    <table class="bench">
-      <thead>
-        <tr><th>Brand</th><th>DR</th><th>Ref. domains</th><th>Organic traffic</th></tr>
-      </thead>
-      <tbody>
-        {% for r in sov.rows %}
-        <tr class="{% if r.is_client %}bench__row--client{% endif %}">
-          <td>{{ r.brand }}</td>
-          <td>{{ r.domain_rating if r.domain_rating is not none else '—' }}</td>
-          <td>{{ r.referring_domains | thousands if r.referring_domains is not none else '—' }}</td>
-          <td>{{ r.organic_traffic | thousands }}/mo</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="card__footnote">
-      {{ sov.rows | length }} brands benchmarked
-      {%- if sov.months_tracked and sov.months_tracked > 1 %} · share change vs previous month{% endif %} · estimates by Ahrefs
+    <div class="panel">
+      <h3>Benchmark</h3>
+      <table>
+        <thead><tr><th>Brand</th><th class="num">DR</th><th class="num">Ref. domains</th><th class="num">Organic traffic</th></tr></thead>
+        <tbody>
+          {% for r in sov.rows %}
+          <tr {% if r.is_client %}class="hot"{% endif %}>
+            <td>{{ r.brand }}</td>
+            <td class="num">{{ r.domain_rating if r.domain_rating is not none else '—' }}</td>
+            <td class="num">{{ r.referring_domains | thousands if r.referring_domains is not none else '—' }}</td>
+            <td class="num">{{ r.organic_traffic | thousands }}/mo</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
   {% endif %}
-</div>
-{% endif %}
-
-{# ================== EXECUTIVE MENTIONS ================== #}
-{% if editable or exec_mentions or notes.get('execs') or notes.get('callout_execs') %}
-<div class="band">
-  <div class="band__aside">
-    <div class="kicker">/ Executive mentions</div>
-    <h2 class="band__title">Executive visibility.</h2>
-    {{ note('execs') }}
-    {{ callout('execs') }}
-    {% if editable and not exec_mentions %}
-      {% if client.executives %}
-      <p class="muted muted--internal">Tracking {{ client.executives|length }} executives ({{ client.executives|join(', ') }}) — none detected in this month's coverage. This section will not appear in the published report.</p>
-      {% else %}
-      <p class="muted muted--internal">No executives configured for this client. Only your intro above is published.</p>
-      {% endif %}
-    {% endif %}
-  </div>
-  {% if exec_mentions %}
-  <div class="band__body card">
-    <div class="card__label">People in the news · from tracked coverage</div>
-    {% for e in exec_mentions %}
-    <div class="execrow">
-      <div class="execrow__head">
-        <span class="execrow__name">{{ e.name }}</span>
-        <span class="execrow__chip">{{ e.count }} mention{{ 's' if e.count != 1 }}</span>
-      </div>
-      {% for m in e.examples[:1] %}
-      <div class="execrow__example">"{{ m.title[:100] }}"{% if m.source %} — {{ m.source }}{% endif %}</div>
-      {% endfor %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-</div>
-{% endif %}
-
-{# ================== SENTIMENT (navy panel) ================== #}
-{% if editable or (sentiment.configured and sentiment.total > 0) or notes.get('sentiment') or notes.get('callout_sentiment') %}
-<div class="navy-band">
-  <div class="navy-band__inner">
-    <div class="band__aside">
-      <div class="kicker">/ Sentiment</div>
-      <h2 class="band__title">How the market reads you.</h2>
-      {{ note('sentiment') }}
-      {{ callout('sentiment') }}
-      {% if editable and not (sentiment.configured and sentiment.total > 0) %}
-        {% if not sentiment.configured %}
-        <p class="muted muted--internal">Claude API not configured. Set <code>ANTHROPIC_API_KEY</code> to enable sentiment scoring. This section will not appear in the published report.</p>
-        {% else %}
-        <p class="muted muted--internal">No mentions to score this period. This section will not appear in the published report.</p>
-        {% endif %}
-      {% endif %}
-    </div>
-    {% if sentiment.configured and sentiment.total > 0 %}
-    <div class="band__body">
-      <div class="bignum-row">
-        <div class="bignum">{{ '{:+.2f}'.format(sentiment.avg_score) if sentiment.avg_score is not none else '—' }}</div>
-        <div class="bignum-label">net score · {{ sentiment.total }} scored mentions</div>
-      </div>
-      <div class="mixbar mixbar--tall">
-        {% if sentiment.positive %}<div style="width:{{ (sentiment.positive / sentiment.total * 100) | round(1) }}%; background:var(--cyan);"></div>{% endif %}
-        {% if sentiment.neutral %}<div style="width:{{ (sentiment.neutral / sentiment.total * 100) | round(1) }}%; background:rgba(255,255,255,0.24);"></div>{% endif %}
-        {% if sentiment.negative %}<div style="width:{{ (sentiment.negative / sentiment.total * 100) | round(1) }}%; background:var(--magenta);"></div>{% endif %}
-      </div>
-      <div class="navy-legend">
-        <div class="navy-legend__item"><span class="navy-legend__dot" style="background:var(--cyan);"></span>Positive <strong>{{ sentiment.positive }} of {{ sentiment.total }}</strong></div>
-        <div class="navy-legend__item"><span class="navy-legend__dot" style="background:rgba(255,255,255,0.4);"></span>Neutral <strong>{{ sentiment.neutral }}</strong></div>
-        <div class="navy-legend__item"><span class="navy-legend__dot" style="background:var(--magenta);"></span>Watch <strong>{{ sentiment.negative }}</strong></div>
-      </div>
-    </div>
-    {% endif %}
-  </div>
 </div>
 {% endif %}
 
@@ -306,262 +263,257 @@
 {% set gsc = data.search_console.data %}
 {% set ga4 = data.ga4_export.data %}
 {% if editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic') %}
-<div class="band">
-  <div class="band__aside">
-    <div class="kicker">/ Search &amp; traffic</div>
-    <h2 class="band__title">Search and site traffic.</h2>
-    {{ note('traffic') }}
-    {{ callout('traffic') }}
-    {% if editable and not (gsc or ga4) %}
-    <p class="muted muted--internal">No GA4 or Search Console data uploaded for this period. This section will not appear in the published report.</p>
-    {% endif %}
+<div class="section">
+  <div class="slabel">Search &amp; traffic</div>
+  <h2>Search and site performance</h2>
+  {{ note('traffic') }}
+  {{ callout('traffic') }}
+  {% if editable and not (gsc or ga4) %}
+  <p class="muted muted--internal">No GA4 or Search Console data uploaded for this period. This section will not appear in the published report.</p>
+  {% endif %}
+
+  {% if gsc %}
+  <div class="stats stats--4">
+    <div class="stat"><div class="n">{{ (gsc.clicks or 0) | thousands }}</div><div class="l">Organic clicks</div></div>
+    <div class="stat"><div class="n">{{ (gsc.impressions or 0) | thousands }}</div><div class="l">Impressions</div></div>
+    <div class="stat"><div class="n">{% if gsc.avg_ctr %}{{ gsc.avg_ctr | round(2) }}%{% else %}—{% endif %}</div><div class="l">Average CTR</div></div>
+    <div class="stat"><div class="n">{% if gsc.avg_position %}{{ gsc.avg_position | round(1) }}{% else %}—{% endif %}</div><div class="l">Average position</div></div>
   </div>
-  {% if gsc or ga4 %}
-  <div class="band__body card">
-    {% if gsc %}
-    <div class="stat-head">
-      <div class="stat-head__value">{{ (gsc.clicks or 0) | thousands }}</div>
-      <div class="stat-head__label">organic clicks · {{ (gsc.impressions or 0) | thousands }} impressions</div>
-    </div>
-    <div class="statrow"><span class="statrow__label">Average CTR <span class="statrow__source">GSC</span></span><span class="statrow__value">{% if gsc.avg_ctr %}{{ gsc.avg_ctr | round(2) }}%{% else %}—{% endif %}</span></div>
-    <div class="statrow"><span class="statrow__label">Average position <span class="statrow__source">GSC</span></span><span class="statrow__value">{% if gsc.avg_position %}{{ gsc.avg_position | round(1) }}{% else %}—{% endif %}</span></div>
-    {% endif %}
-    {% if ga4 %}
-    <div class="statrow"><span class="statrow__label">Users <span class="statrow__source">GA4</span></span><span class="statrow__value">{{ (ga4.users or 0) | thousands }}</span></div>
-    <div class="statrow"><span class="statrow__label">Sessions <span class="statrow__source">GA4</span></span><span class="statrow__value">{{ (ga4.sessions or 0) | thousands }}</span></div>
+  {% endif %}
+  {% if ga4 %}
+  <div class="stats">
+    <div class="stat"><div class="n">{{ (ga4.users or 0) | thousands }}</div><div class="l">Users</div></div>
+    <div class="stat"><div class="n">{{ (ga4.sessions or 0) | thousands }}</div><div class="l">Sessions</div></div>
     {% if ga4.engaged_sessions %}
-    <div class="statrow"><span class="statrow__label">Engaged sessions <span class="statrow__source">GA4</span></span><span class="statrow__value">{{ ga4.engaged_sessions | thousands }}</span></div>
-    {% endif %}
+    <div class="stat"><div class="n">{{ ga4.engaged_sessions | thousands }}</div><div class="l">Engaged sessions</div></div>
     {% endif %}
   </div>
   {% endif %}
-</div>
 
-{# search & traffic: evidence row #}
-{% if (gsc and gsc.top_queries) or (ga4 and ga4.top_pages) %}
-<div class="duo">
-  {% if gsc and gsc.top_queries %}
-  <div class="card">
-    <div class="card__label">Top queries by clicks · GSC</div>
-    <div class="bars">
+  {% if (gsc and gsc.top_queries) or (ga4 and ga4.top_pages) %}
+  <div class="grid2">
+    {% if gsc and gsc.top_queries %}
+    <div class="panel">
+      <h3>Top queries by clicks</h3>
       {% set maxq = gsc.top_queries[0].clicks or 1 %}
       {% for q in gsc.top_queries[:5] %}
       <div class="bar">
-        <div class="bar__head"><span class="bar__name bar__name--strong">{{ q.query }}</span><span class="bar__value bar__value--strong">{{ q.clicks | thousands }}</span></div>
-        <div class="bar__track"><div class="bar__fill bar__fill--accent" style="width:{{ ((q.clicks / maxq * 100) | round | int) if maxq else 0 }}%;"></div></div>
+        <div class="bl"><span>{{ q.query }}</span><span>{{ q.clicks | thousands }}</span></div>
+        <div class="track"><div class="fill" style="width:{{ ((q.clicks / maxq * 100) | round | int) if maxq else 0 }}%"></div></div>
       </div>
       {% endfor %}
     </div>
-  </div>
-  {% endif %}
-  {% if ga4 and ga4.top_pages %}
-  <div class="card">
-    <div class="card__label">Top pages by views · GA4</div>
-    <div class="bars">
+    {% endif %}
+    {% if ga4 and ga4.top_pages %}
+    <div class="panel">
+      <h3>Top pages by views</h3>
       {% set maxp = ga4.top_pages[0].value or 1 %}
       {% for p in ga4.top_pages[:5] %}
       <div class="bar">
-        <div class="bar__head"><span class="bar__name bar__name--strong">{{ p.name[:44] }}</span><span class="bar__value bar__value--strong">{{ p.value | thousands }}</span></div>
-        <div class="bar__track"><div class="bar__fill bar__fill--navy" style="width:{{ ((p.value / maxp * 100) | round | int) if maxp else 0 }}%;"></div></div>
+        <div class="bl"><span>{{ p.name[:52] }}</span><span>{{ p.value | thousands }}</span></div>
+        <div class="track"><div class="fill ink" style="width:{{ ((p.value / maxp * 100) | round | int) if maxp else 0 }}%"></div></div>
       </div>
       {% endfor %}
     </div>
+    {% endif %}
   </div>
   {% endif %}
 </div>
-{% endif %}
 {% endif %}
 
 {# ================== GEOGRAPHY ================== #}
 {# GA4 country data preferred; Similarweb kept as fallback for old months. #}
 {% set geo = data.ga4_geography.data if data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries else data.similarweb_traffic.data %}
 {% set geo_label = 'GA4' if (data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries) else 'SimilarWeb' %}
-{% if editable or geo or notes.get('campaigns') or notes.get('callout_campaigns') %}
-<div class="band band--flip">
-  <div class="band__aside">
-    <div class="kicker">/ Geography</div>
-    <h2 class="band__title">Where visits come from.</h2>
-    {{ note('campaigns') }}
-    {{ callout('campaigns') }}
-    {% if editable and not (geo and geo.top_countries) %}
-    <p class="muted muted--internal">No geography data for this period — sync or upload GA4 geography (countries). This section will not appear in the published report.</p>
-    {% endif %}
-  </div>
+{% if editable or (geo and geo.top_countries) or notes.get('campaigns') or notes.get('callout_campaigns') %}
+<div class="section">
+  <div class="slabel">Geography</div>
+  <h2>Where visits come from</h2>
+  {{ note('campaigns') }}
+  {{ callout('campaigns') }}
+  {% if editable and not (geo and geo.top_countries) %}
+  <p class="muted muted--internal">No geography data for this period — sync or upload GA4 geography (countries). This section will not appear in the published report.</p>
+  {% endif %}
   {% if geo and geo.top_countries %}
-  <div class="band__body card">
-    <div class="card__label">Visits by country · {{ geo_label }}</div>
-    <div class="bars">
-      {% set maxc = geo.top_countries[0].share or 1 %}
-      {% set regions = client.regions_of_interest or [] %}
-      {% for c in geo.top_countries[:8] %}
-      {% set hot = c.country in regions %}
-      <div class="bar">
-        <div class="bar__head">
-          <span class="bar__name {% if hot %}bar__name--strong{% endif %}">{{ c.country }}</span>
-          <span class="bar__value {% if hot %}bar__value--strong{% endif %}">{{ c.share }}%</span>
-        </div>
-        <div class="bar__track"><div class="bar__fill {% if hot %}bar__fill--accent{% endif %}" style="width:{{ ((c.share / maxc * 100) | round | int) if maxc else 0 }}%;"></div></div>
-      </div>
-      {% endfor %}
+  <div class="panel panel--wide" style="max-width:520px;">
+    <h3>Visits by country · {{ geo_label }}</h3>
+    {% set maxc = geo.top_countries[0].share or 1 %}
+    {% set regions = client.regions_of_interest or [] %}
+    {% for c in geo.top_countries[:8] %}
+    {% set hot = c.country in regions %}
+    <div class="bar">
+      <div class="bl"><span {% if hot %}class="hot"{% endif %}>{{ c.country }}</span><span>{{ c.share }}%</span></div>
+      <div class="track"><div class="fill {% if not hot %}n{% endif %}" style="width:{{ ((c.share / maxc * 100) | round | int) if maxc else 0 }}%"></div></div>
     </div>
-    {% if geo.total_visits %}<div class="card__footnote">{{ geo.total_visits | thousands }} total {{ 'sessions' if geo_label == 'GA4' else 'visits' }} this month.</div>{% endif %}
+    {% endfor %}
+    {% if geo.total_visits %}<p class="meta">{{ geo.total_visits | thousands }} total {{ 'sessions' if geo_label == 'GA4' else 'visits' }} this month.</p>{% endif %}
   </div>
   {% endif %}
 </div>
 {% endif %}
 
-{# ================== AUTHORITY & SOCIAL ================== #}
+{# ================== AUTHORITY & LINKS ================== #}
 {% set ah = data.ahrefs_backlinks.data %}
-{% set li = data.linkedin_company.data %}
 {% set tr = data.ahrefs_trends.data if data.ahrefs_trends else none %}
 {% set has_trends = tr and tr.points and tr.points | length > 1 %}
-{% if editable or ah or li or has_trends or notes.get('backlinks') or notes.get('linkedin') or notes.get('callout_backlinks') %}
-<div class="band band--stack">
-  <div class="kicker">/ Authority &amp; social</div>
-  <h2 class="band__title">New links, new followers.</h2>
+{% if editable or ah or has_trends or notes.get('backlinks') or notes.get('callout_backlinks') %}
+<div class="section">
+  <div class="slabel">Authority &amp; links</div>
+  <h2>Domain authority and backlinks</h2>
   {{ note('backlinks') }}
-  {{ note('linkedin') }}
   {{ callout('backlinks') }}
-  {% if editable and not (ah or li or has_trends) %}
-  <p class="muted muted--internal">No Ahrefs or LinkedIn data uploaded for this period. This section will not appear in the published report.</p>
+  {% if editable and not (ah or has_trends) %}
+  <p class="muted muted--internal">No Ahrefs data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 
   {% if has_trends %}
   {% macro trendcard(label, key, unit='') %}
   {% set latest = tr.latest.get(key) %}
   {% set delta = tr.deltas.get(key) %}
-  {% set maxv = tr.max.get(key) or 1 %}
   {% if latest is not none %}
-  <div class="trend">
-    <div class="trend__label">{{ label }}</div>
-    <div class="trend__value">
-      {{ latest | thousands }}{{ unit }}
-      {%- if delta %}
-      <span class="trend__delta {{ 'trend__delta--up' if delta > 0 else 'trend__delta--down' }}">
-        {%- if key == 'domain_rating' %}{{ '{:+g}'.format(delta) }}{% else %}{{ '{:+,}'.format(delta) }}{% endif -%}
-      </span>
-      {%- endif %}
-    </div>
-    {# SVG data-URI image: renders identically in browsers and WeasyPrint
-       (which ignores inline <svg> and mishandles %-height flex bars). #}
-    {% if tr.svgs and tr.svgs.get(key) %}
-    <img class="trend__bars" src="{{ tr.svgs[key] }}" alt="{{ label }} 12-month trend">
+  <div class="stat trend">
+    <div class="l">{{ label }}</div>
+    <div class="tv">{{ latest | thousands }}{{ unit }}</div>
+    {% if delta %}
+    <div class="mt {{ 'up' if delta > 0 else 'down' }}">{{ '↑' if delta > 0 else '↓' }} {% if key == 'domain_rating' %}{{ '{:+g}'.format(delta) }}{% else %}{{ '{:+,}'.format(delta) }}{% endif %} vs 12 months ago</div>
     {% endif %}
-    <div class="trend__span">{{ tr.points[0].month }} → {{ tr.points[-1].month }}</div>
+    {% if tr.svgs and tr.svgs.get(key) %}
+    <img src="{{ tr.svgs[key] }}" alt="{{ label }} 12-month trend">
+    {% endif %}
+    <div class="tspan">{{ tr.points[0].month }} → {{ tr.points[-1].month }}</div>
   </div>
   {% endif %}
   {% endmacro %}
-  <div class="trend-strip">
+  <div class="stats">
     {{ trendcard('Domain rating', 'domain_rating') }}
     {{ trendcard('Referring domains', 'referring_domains') }}
     {{ trendcard('Organic traffic (est.)', 'organic_traffic') }}
   </div>
   {% endif %}
 
-  {% if ah or li %}
-  <div class="duo duo--in-band">
-    {% if ah %}
-    <div class="card">
-      <div class="card__label">Referring domains · Ahrefs</div>
-      <div class="stat-head stat-head--bare">
-        <div class="stat-head__value">{{ (ah.referring_domains or 0) | thousands }}</div>
-        <div class="stat-head__label">{% if ah.avg_referring_dr %}avg DR {{ ah.avg_referring_dr | round | int }} · {% endif %}{{ (ah.total_backlinks or 0) | thousands }} backlinks</div>
-      </div>
-      <div style="margin-top:18px;">
-        {% for d in ah.top_referring_domains[:6] %}
-        <div class="linkrow">
-          <span class="linkrow__name">{{ d.domain }}{% if d.backlinks and d.backlinks > 1 %} <span class="linkrow__count">× {{ d.backlinks }}</span>{% endif %}</span>
-          <span class="linkrow__chip">{{ d.backlinks }} link{{ 's' if d.backlinks != 1 }}</span>
-        </div>
-        {% endfor %}
-      </div>
+  {% if ah %}
+  <div class="grid2">
+    <div class="panel">
+      <h3>Backlink profile</h3>
+      <table>
+        <tbody>
+          <tr><td>Referring domains</td><td class="num">{{ (ah.referring_domains or 0) | thousands }}</td></tr>
+          <tr><td>Total backlinks</td><td class="num">{{ (ah.total_backlinks or 0) | thousands }}</td></tr>
+          {% if ah.avg_referring_dr %}
+          <tr><td>Average referring domain rating</td><td class="num">{{ ah.avg_referring_dr | round | int }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
     </div>
-    {% endif %}
-    {% if li %}
-    <div class="card">
-      <div class="card__label">LinkedIn · company page</div>
-      <div class="stat-head stat-head--bare">
-        <div class="stat-head__value">{{ (li.followers or 0) | thousands }}</div>
-        <div class="stat-head__label">followers{% if li.follower_growth %} · +{{ li.follower_growth | thousands }} this month{% endif %}</div>
-      </div>
-      <div style="margin-top:18px;">
-        {% for p in li.top_posts[:3] %}
-        <div class="postrow">
-          <div class="postrow__title">{{ p.title[:90] }}</div>
-          <div class="postrow__meta">{{ p.impressions | thousands }} impressions</div>
-        </div>
-        {% endfor %}
-        {% if li.impressions %}
-        <div class="postrow"><div class="postrow__meta">{{ li.impressions | thousands }} post impressions{% if li.engagements %} · {{ li.engagements | thousands }} engagements{% endif %}</div></div>
-        {% endif %}
-      </div>
+    <div class="panel">
+      <h3>Top referring domains</h3>
+      <table>
+        <thead><tr><th>Domain</th><th class="num">Links</th></tr></thead>
+        <tbody>
+          {% for d in ah.top_referring_domains[:6] %}
+          <tr><td>{{ d.domain }}</td><td class="num">{{ d.backlinks }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    {% endif %}
   </div>
   {% endif %}
 </div>
 {% endif %}
 
-{# ================== TECHNICAL SEO (navy panel) ================== #}
-{% if editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo') %}
-<div class="navy-band">
-  <div class="navy-band__inner">
-    <div class="band__aside">
-      <div class="kicker">/ Technical SEO</div>
-      {% if technical_seo %}
-      <h2 class="band__title">Site health, measured.</h2>
-      {% else %}
-      <h2 class="band__title">Technical SEO.</h2>
-      {% endif %}
-      {{ note('technical_seo') }}
-      {{ callout('technical_seo') }}
-      {% if editable and not technical_seo %}
-      <p class="muted muted--internal">No technical SEO data uploaded. Upload <code>technical_seo_metrics.csv</code> and <code>technical_seo_register.csv</code>. This section will not appear in the published report.</p>
-      {% endif %}
-    </div>
-    {% if technical_seo %}
-    {% set tseo = technical_seo %}
-    {% set cur = tseo.current %}
-    <div class="band__body">
-      <div class="bignum-row">
-        <div class="bignum">{{ cur.health_score }}<span class="bignum__unit">/100</span></div>
-        <div class="bignum-label">
-          health score · DR {{ cur.domain_rating }}
-          {% if not tseo.is_baseline and tseo.health_delta is not none %}
-            {% if tseo.health_delta > 0 %}<span class="navy-chip navy-chip--up">+{{ tseo.health_delta }}</span>
-            {% elif tseo.health_delta < 0 %}<span class="navy-chip navy-chip--down">{{ tseo.health_delta }}</span>{% endif %}
-          {% elif tseo.is_baseline %} · baseline month{% endif %}
-        </div>
-      </div>
-      {% if cur.total_open %}
-      <div class="mixbar mixbar--tall" style="margin-top:28px;">
-        {% if cur.high_open %}<div style="width:{{ (cur.high_open / cur.total_open * 100) | round(1) }}%; background:var(--magenta);"></div>{% endif %}
-        {% if cur.medium_open %}<div style="width:{{ (cur.medium_open / cur.total_open * 100) | round(1) }}%; background:var(--yellow);"></div>{% endif %}
-        {% if cur.low_open %}<div style="width:{{ (cur.low_open / cur.total_open * 100) | round(1) }}%; background:rgba(255,255,255,0.24);"></div>{% endif %}
-      </div>
-      <div class="navy-legend" style="margin-top:16px;">
-        <div class="navy-legend__item"><span class="navy-legend__dot" style="background:var(--magenta);"></span>High <strong>{{ cur.high_open }}</strong></div>
-        <div class="navy-legend__item"><span class="navy-legend__dot" style="background:var(--yellow);"></span>Medium <strong>{{ cur.medium_open }}</strong></div>
-        <div class="navy-legend__item"><span class="navy-legend__dot" style="background:rgba(255,255,255,0.4);"></span>Low <strong>{{ cur.low_open }}</strong></div>
-      </div>
-      {% endif %}
-      {% if tseo.high_med_issues %}
-      <div class="navy-list">
-        {% for issue in tseo.high_med_issues[:4] %}
-        <div class="navy-list__row">
-          <span class="navy-list__id">{{ issue.issue_id }}</span>
-          <span class="navy-list__text">{{ issue.finding[:160] }}{% if issue.finding | length > 160 %}…{% endif %}</span>
-          <span class="navy-list__tag">{{ issue.timeframe or issue.severity }}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% if tseo.open_issues | length > 4 %}
-      <div style="margin-top:14px; font-size:12px; color:var(--cover-muted);">+{{ tseo.open_issues | length - 4 }} more open findings tracked in the issue register.</div>
-      {% endif %}
-      {% endif %}
-    </div>
+{# ================== LINKEDIN ================== #}
+{% set li = data.linkedin_company.data %}
+{% if editable or li or notes.get('linkedin') or notes.get('callout_linkedin') %}
+<div class="section">
+  <div class="slabel">LinkedIn performance</div>
+  <h2>Owned channel</h2>
+  {{ note('linkedin') }}
+  {{ callout('linkedin') }}
+  {% if editable and not li %}
+  <p class="muted muted--internal">No LinkedIn data uploaded for this period. This section will not appear in the published report.</p>
+  {% endif %}
+  {% if li %}
+  <div class="stats stats--4">
+    <div class="stat"><div class="n">{{ (li.followers or 0) | thousands }}</div><div class="l">Followers</div></div>
+    {% if li.follower_growth %}
+    <div class="stat"><div class="n">+{{ li.follower_growth | thousands }}</div><div class="l">New followers</div></div>
+    {% endif %}
+    {% if li.impressions %}
+    <div class="stat"><div class="n">{{ li.impressions | thousands }}</div><div class="l">Post impressions</div></div>
+    {% endif %}
+    {% if li.engagements %}
+    <div class="stat"><div class="n">{{ li.engagements | thousands }}</div><div class="l">Engagements</div></div>
     {% endif %}
   </div>
+  {% if li.top_posts %}
+  <div class="panel panel--wide">
+    <h3>Top posts by reach</h3>
+    <table>
+      <thead><tr><th>Post</th><th class="num">Impressions</th></tr></thead>
+      <tbody>
+        {% for p in li.top_posts[:5] %}
+        <tr><td>{{ p.title[:110] }}</td><td class="num">{{ p.impressions | thousands }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+{# ================== TECHNICAL SEO ================== #}
+{% if editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo') %}
+<div class="section">
+  <div class="slabel">Technical SEO</div>
+  <h2>Site health</h2>
+  {{ note('technical_seo') }}
+  {{ callout('technical_seo') }}
+  {% if editable and not technical_seo %}
+  <p class="muted muted--internal">No technical SEO data uploaded. Upload <code>technical_seo_metrics.csv</code> and <code>technical_seo_register.csv</code>. This section will not appear in the published report.</p>
+  {% endif %}
+  {% if technical_seo %}
+  {% set tseo = technical_seo %}
+  {% set cur = tseo.current %}
+  <div class="stats">
+    <div class="stat">
+      <div class="n">{{ cur.health_score }}<span class="u">/100</span></div>
+      <div class="l">Health score</div>
+      {% if not tseo.is_baseline and tseo.health_delta %}
+      <div class="mt {{ 'up' if tseo.health_delta > 0 else 'down' }}">{{ '↑' if tseo.health_delta > 0 else '↓' }} {{ '{:+d}'.format(tseo.health_delta) }} pts</div>
+      {% elif tseo.is_baseline %}
+      <div class="mt note">◆ Baseline month</div>
+      {% endif %}
+    </div>
+    <div class="stat"><div class="n">{{ cur.domain_rating }}</div><div class="l">Domain rating</div></div>
+    <div class="stat">
+      <div class="n">{{ tseo.open_issues | length }}</div>
+      <div class="l">Open findings</div>
+      {% if cur.high_open %}<div class="mt down">{{ cur.high_open }} high severity</div>{% endif %}
+    </div>
+  </div>
+  {% if tseo.high_med_issues %}
+  <div class="panel panel--wide">
+    <h3>Open findings — high and medium severity</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Finding</th><th>Severity</th><th>Timeframe</th></tr></thead>
+      <tbody>
+        {% for issue in tseo.high_med_issues[:6] %}
+        <tr>
+          <td class="num">{{ issue.issue_id }}</td>
+          <td>{{ issue.finding[:180] }}{% if issue.finding | length > 180 %}…{% endif %}</td>
+          <td>{% if issue.severity == 'High' %}<span class="tag red">High</span>{% else %}<span class="tag amb">Medium</span>{% endif %}</td>
+          <td style="white-space:nowrap;">{{ issue.timeframe or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if tseo.low_count %}
+    <p class="meta" style="margin-top:12px;">Plus {{ tseo.low_count }} low-severity findings tracked in the issue register.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
 </div>
 {% endif %}
 
@@ -569,40 +521,38 @@
 {% set worked_items = (actions.content.worked if (actions.configured and actions.content) else none) or [] %}
 {% set watch_items = (actions.content.watch if (actions.configured and actions.content) else none) or [] %}
 {% if editable or worked_items or watch_items %}
-<div class="band band--read">
-  <div class="kicker">/ Read on the month</div>
-  <h2 class="band__title">What worked, what to watch.</h2>
-  {% if editable %}
-  <div class="readout">
-    <div class="readout__card readout__card--worked">
-      <h3 class="readout__head">What worked</h3>
+<div class="section">
+  <div class="slabel">Read on the month</div>
+  <h2>What worked, what to watch</h2>
+  <div class="edit-cards">
+    {% if editable %}
+    <div class="ecard w">
+      <h3>What worked</h3>
       {% for item in edit_worked %}
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
         <div class="rec-slot__fields">
-          <textarea name="worked_{{ loop.index0 }}" rows="2" placeholder="A win from the month, with the numbers behind it. Leave blank to omit.">{{ item }}</textarea>
+          <textarea class="edit-input" name="worked_{{ loop.index0 }}" rows="2" placeholder="A win from the month, with the numbers behind it. Leave blank to omit.">{{ item }}</textarea>
         </div>
       </div>
       {% endfor %}
     </div>
-    <div class="readout__card readout__card--watch">
-      <h3 class="readout__head">What to watch</h3>
+    <div class="ecard watch">
+      <h3>What to watch</h3>
       {% for item in edit_watch %}
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
         <div class="rec-slot__fields">
-          <textarea name="watch_{{ loop.index0 }}" rows="2" placeholder="A soft spot, risk or caveat worth an eye. Leave blank to omit.">{{ item }}</textarea>
+          <textarea class="edit-input" name="watch_{{ loop.index0 }}" rows="2" placeholder="A soft spot, risk or caveat worth an eye. Leave blank to omit.">{{ item }}</textarea>
         </div>
       </div>
       {% endfor %}
     </div>
-  </div>
-  {% else %}
-  <div class="readout">
+    {% else %}
     {% if worked_items %}
-    <div class="readout__card readout__card--worked">
-      <h3 class="readout__head">What worked</h3>
-      <ul class="readout__list">
+    <div class="ecard w">
+      <h3>What worked</h3>
+      <ul>
         {% for item in worked_items %}
         <li>{{ item }}</li>
         {% endfor %}
@@ -610,94 +560,98 @@
     </div>
     {% endif %}
     {% if watch_items %}
-    <div class="readout__card readout__card--watch">
-      <h3 class="readout__head">What to watch</h3>
-      <ul class="readout__list">
+    <div class="ecard watch">
+      <h3>What to watch</h3>
+      <ul>
         {% for item in watch_items %}
         <li>{{ item }}</li>
         {% endfor %}
       </ul>
     </div>
     {% endif %}
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 {% endif %}
 
-{# ================== WHERE TO PUSH NEXT ================== #}
+{# ================== RECOMMENDED FOCUS ================== #}
 {% if editable or (actions.configured and actions.content) %}
-<div class="band band--moves">
-  <div class="kicker">/ Where to push next</div>
-  <h2 class="band__title">Moves for next month.</h2>
+<div class="section">
+  <div class="slabel">Recommended focus</div>
+  <h2>Next month</h2>
   {% if editable %}
-  <div class="moves moves--edit">
-    <div class="move move--yellow">
-      <div class="move__num">Lean into</div>
+  <div class="focus">
+    <div class="ecard" style="margin-bottom:12px;">
+      <h3 style="color:var(--green);">Lean into</h3>
       {% for item in edit_lean %}
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
         <div class="rec-slot__fields">
-          <textarea name="lean_into_{{ loop.index0 }}_action" rows="2" placeholder="Action - what to do">{{ item.action }}</textarea>
-          <textarea name="lean_into_{{ loop.index0 }}_why" rows="2" placeholder="Why - the reason it matters">{{ item.why }}</textarea>
+          <textarea class="edit-input" name="lean_into_{{ loop.index0 }}_action" rows="1" placeholder="Action - what to do">{{ item.action }}</textarea>
+          <textarea class="edit-input" name="lean_into_{{ loop.index0 }}_why" rows="2" placeholder="Why - the reason it matters">{{ item.why }}</textarea>
         </div>
       </div>
       {% endfor %}
     </div>
-    <div class="move move--cyan">
-      <div class="move__num">Investigate</div>
+    <div class="ecard" style="margin-bottom:12px;">
+      <h3 style="color:var(--amber);">Investigate</h3>
       {% for item in edit_invest %}
       <div class="rec-slot">
         <span class="rec-slot__num">{{ loop.index }}</span>
         <div class="rec-slot__fields">
-          <textarea name="investigate_{{ loop.index0 }}_action" rows="2" placeholder="Action - what to do">{{ item.action }}</textarea>
-          <textarea name="investigate_{{ loop.index0 }}_why" rows="2" placeholder="Why - the reason it matters">{{ item.why }}</textarea>
+          <textarea class="edit-input" name="investigate_{{ loop.index0 }}_action" rows="1" placeholder="Action - what to do">{{ item.action }}</textarea>
+          <textarea class="edit-input" name="investigate_{{ loop.index0 }}_why" rows="2" placeholder="Why - the reason it matters">{{ item.why }}</textarea>
         </div>
       </div>
       {% endfor %}
     </div>
-    <div class="move move--pink">
-      <div class="move__num">Fix urgently</div>
+    <div class="ecard">
+      <h3 style="color:var(--red-ink);">Fix urgently</h3>
       <div class="rec-slot">
         <span class="rec-slot__num">!</span>
         <div class="rec-slot__fields">
-          <textarea name="fix_0_action" rows="2" placeholder="Action - what to do">{{ edit_fix.action }}</textarea>
-          <textarea name="fix_0_why" rows="2" placeholder="Why - the reason it matters">{{ edit_fix.why }}</textarea>
+          <textarea class="edit-input" name="fix_0_action" rows="1" placeholder="Action - what to do">{{ edit_fix.action }}</textarea>
+          <textarea class="edit-input" name="fix_0_why" rows="2" placeholder="Why - the reason it matters">{{ edit_fix.why }}</textarea>
         </div>
       </div>
     </div>
   </div>
   {% else %}
   {% set ns = namespace(counter=0) %}
-  <div class="moves">
+  <div class="focus">
+    {% if actions.content.fix_urgently %}
+    {% set ns.counter = ns.counter + 1 %}
+    <div class="fitem">
+      <div class="fnum">{{ ns.counter }}</div>
+      <div class="fbody">
+        <h4>{{ actions.content.fix_urgently.action }} <span class="tag red">Fix urgently</span></h4>
+        <p>{{ actions.content.fix_urgently.why }}</p>
+      </div>
+    </div>
+    {% endif %}
     {% for item in actions.content.lean_into or [] %}
     {% set ns.counter = ns.counter + 1 %}
-    <div class="move move--yellow">
-      <div class="move__num">{{ '%02d' | format(ns.counter) }}</div>
-      <div class="move__title">{{ item.action }}</div>
-      <div class="move__text">{{ item.why }}</div>
+    <div class="fitem">
+      <div class="fnum">{{ ns.counter }}</div>
+      <div class="fbody">
+        <h4>{{ item.action }} <span class="tag grn">Lean into</span></h4>
+        <p>{{ item.why }}</p>
+      </div>
     </div>
     {% endfor %}
     {% for item in actions.content.investigate or [] %}
     {% set ns.counter = ns.counter + 1 %}
-    <div class="move move--cyan">
-      <div class="move__num">{{ '%02d' | format(ns.counter) }}</div>
-      <div class="move__title">{{ item.action }}</div>
-      <div class="move__text">{{ item.why }}</div>
+    <div class="fitem">
+      <div class="fnum">{{ ns.counter }}</div>
+      <div class="fbody">
+        <h4>{{ item.action }} <span class="tag amb">Investigate</span></h4>
+        <p>{{ item.why }}</p>
+      </div>
     </div>
     {% endfor %}
-    {% if actions.content.fix_urgently %}
-    {% set ns.counter = ns.counter + 1 %}
-    <div class="move move--pink">
-      <div class="move__num">{{ '%02d' | format(ns.counter) }}</div>
-      <div class="move__title">{{ actions.content.fix_urgently.action }}</div>
-      <div class="move__text">{{ actions.content.fix_urgently.why }}</div>
-    </div>
-    {% endif %}
   </div>
   {% endif %}
 </div>
-{% else %}
-<div style="height:112px;"></div>
 {% endif %}
 
 {% if editable %}
@@ -705,7 +659,7 @@
 <script>
 // Auto-grow every edit field so Claude-generated text is fully visible
 // (fallback for browsers without CSS field-sizing).
-document.querySelectorAll('.cover__title-input, .cover__standfirst-input, .rec-slot__fields textarea, .section__note--edit textarea').forEach(function(el) {
+document.querySelectorAll('.edit-input').forEach(function(el) {
   function grow() { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
   el.addEventListener('input', grow);
   grow();
@@ -714,20 +668,10 @@ document.querySelectorAll('.cover__title-input, .cover__standfirst-input, .rec-s
 {% endif %}
 
 {# ================== FOOTER ================== #}
-<div class="keyline"></div>
-<footer class="foot">
-  <div class="foot__inner">
-    <div class="foot__row">
-      <div>
-        <img class="foot__logo" src="/static/img/df-logo-spectrum-white.png" alt="Digital Footprints">
-        <div class="foot__mark">Make Your Mark.</div>
-      </div>
-      <div class="foot__meta">
-        Prepared by Digital Footprints · Confidential · {{ period_display }}<br>
-        Generated {{ generated_at }} <span class="foot__actions">· <a href="?format=pdf">Export PDF</a></span>
-      </div>
-    </div>
-  </div>
-</footer>
+<div class="footer">
+  <span>{{ client.display_name }} · Marketing Performance Report · Confidential</span>
+  <span>{{ period_display }} · Prepared by Digital Footprints · Generated {{ generated_at }} <span class="actions">· <a href="?format=pdf">Export PDF</a></span></span>
+</div>
 
+</div>
 {% endblock %}

@@ -1,7 +1,7 @@
 """Report builder — orchestrates parsing, sentiment, synthesis, and rendering."""
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -129,9 +129,12 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
     logo_path = Path(__file__).parent.parent / "static" / "img" / "clients" / f"{client_slug}.png"
     client_logo = f"/static/img/clients/{client_slug}.png" if logo_path.exists() else None
 
+    technical_seo = _build_technical_seo(parsed, period)
+
     return {
         "client": client_config,
         "exec_mentions": _detect_exec_mentions(parsed, client_config),
+        "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
         "client_logo": client_logo,
         "period": period,
@@ -142,7 +145,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         "sentiment": sentiment,
         "actions": actions,
         "commentary": commentary,
-        "technical_seo": _build_technical_seo(parsed, period),
+        "technical_seo": technical_seo,
         "ai_health": ai_health,
         "editable": False,
     }
@@ -224,6 +227,82 @@ def _trend_svg(points: list, key: str, maxv) -> str:
         )
     parts.append("</svg>")
     return "data:image/svg+xml;base64," + base64.b64encode("".join(parts).encode()).decode()
+
+
+def _build_mom(client_slug: str, period: str, parsed: dict, technical_seo: dict | None) -> dict | None:
+    """Month-on-month strip: this month's headline numbers against the prior
+    month's data folder. First tracked month renders as a baseline."""
+    try:
+        dt = datetime.strptime(period, "%Y-%m")
+    except ValueError:
+        return None
+    prev_dt = dt.replace(day=1) - timedelta(days=1)
+    prev_period = prev_dt.strftime("%Y-%m")
+
+    prev_dir = settings.data_dir / client_slug / prev_period
+    has_prev = prev_dir.exists()
+    prev_parsed = {}
+    if has_prev:
+        try:
+            prev_parsed = parse_all(prev_dir)
+        except Exception:
+            prev_parsed = {}
+
+    def dig(tree, src, key):
+        node = ((tree.get(src) or {}).get("data") or {}) if tree else {}
+        val = node.get(key) if isinstance(node, dict) else None
+        return val if isinstance(val, (int, float)) else None
+
+    specs = [
+        ("Media mentions", "mentions", "total"),
+        ("Organic clicks", "search_console", "clicks"),
+        ("Sessions", "ga4_export", "sessions"),
+        ("LinkedIn impressions", "linkedin_company", "impressions"),
+        ("New followers", "linkedin_company", "follower_growth"),
+        ("Referring domains", "ahrefs_backlinks", "referring_domains"),
+    ]
+    metrics = []
+    for label, src, key in specs:
+        cur = dig(parsed, src, key)
+        if cur is None:
+            continue
+        prev_val = dig(prev_parsed, src, key)
+        entry = {"label": label, "value": f"{cur:,}", "prev": None, "delta": None, "direction": None, "sub": None}
+        if prev_val is not None:
+            entry["prev"] = f"{prev_val:,}"
+            if prev_val and cur != prev_val:
+                pct = round((cur - prev_val) / abs(prev_val) * 100)
+                entry["delta"] = f"{abs(pct)}%" if pct else f"{abs(cur - prev_val):,}"
+                entry["direction"] = "up" if cur > prev_val else "down"
+            else:
+                entry["direction"] = "flat"
+        metrics.append(entry)
+
+    # Site health comes from the multi-month metrics file, delta pre-computed.
+    if technical_seo and technical_seo.get("current"):
+        cur_h = technical_seo["current"].get("health_score")
+        if cur_h is not None:
+            entry = {"label": "Site health", "value": f"{cur_h}/100", "prev": None, "delta": None, "direction": None, "sub": None}
+            delta = technical_seo.get("health_delta")
+            if delta is not None and not technical_seo.get("is_baseline"):
+                entry["prev"] = f"{cur_h - delta}/100"
+                if delta:
+                    entry["delta"] = f"{abs(delta)} pts"
+                    entry["direction"] = "up" if delta > 0 else "down"
+                else:
+                    entry["direction"] = "flat"
+            metrics.append(entry)
+
+    if not metrics:
+        return None
+
+    return {
+        "metrics": metrics,
+        "has_prev": any(m["prev"] is not None for m in metrics),
+        "month_name": dt.strftime("%B"),
+        "prev_name": prev_dt.strftime("%B"),
+        "prev_period": prev_period,
+    }
 
 
 def _detect_exec_mentions(parsed: dict, client_config: dict) -> list:

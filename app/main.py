@@ -84,6 +84,7 @@ from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
 
 # Sections that accept an optional operator note on the review screen.
 REVIEW_NOTE_SECTIONS = [
+    ("mom", "Month on month"),
     ("media", "Media coverage"),
     ("sov", "Share of voice"),
     ("execs", "Executive mentions"),
