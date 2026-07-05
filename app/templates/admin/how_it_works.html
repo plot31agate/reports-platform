@@ -1,0 +1,153 @@
+{% extends "admin/_shell.html" %}
+{% block title %}How reports work — Admin{% endblock %}
+{% block head_extra %}
+<style>
+  .doc { max-width: 860px; }
+  .doc-section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 26px; margin-bottom: 16px; }
+  .doc-section h2 { font-size: 16px; font-weight: 800; margin: 0 0 10px; color: var(--ink); }
+  .doc-section h3 { font-size: 13px; font-weight: 700; margin: 18px 0 6px; color: var(--ink); }
+  .doc-section p, .doc-section li { font-size: 13.5px; line-height: 1.65; color: var(--grey-700, #3f4c5a); }
+  .doc-section p { margin: 0 0 10px; }
+  .doc-section ul, .doc-section ol { margin: 0 0 10px; padding-left: 20px; }
+  .doc-section li { margin-bottom: 6px; }
+  .doc-section code { font-size: 12px; background: var(--grey-100, #f1f4f7); border-radius: 4px; padding: 1px 6px; }
+  .doc-pipeline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 6px; }
+  .doc-step { background: var(--grey-100, #f1f4f7); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .doc-arrow { color: var(--grey-600); font-size: 13px; }
+  .doc-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .doc-table th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--grey-600); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); }
+  .doc-table td { font-size: 13px; line-height: 1.5; padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--grey-700, #3f4c5a); }
+  .doc-table tr:last-child td { border-bottom: 0; }
+  .doc-table td:first-child { font-weight: 700; color: var(--ink); white-space: nowrap; }
+</style>
+{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">How reports work</h1>
+    <div class="page-head__sub">Where the data comes from, how every stat is derived, and what the AI writes. Reference for the team.</div>
+  </div>
+</div>
+
+<div class="doc">
+
+  <div class="doc-section">
+    <h2>The pipeline</h2>
+    <div class="doc-pipeline">
+      <span class="doc-step">Pull or upload data</span><span class="doc-arrow">→</span>
+      <span class="doc-step">Parse &amp; normalise</span><span class="doc-arrow">→</span>
+      <span class="doc-step">AI scores &amp; writes</span><span class="doc-arrow">→</span>
+      <span class="doc-step">Review &amp; edit</span><span class="doc-arrow">→</span>
+      <span class="doc-step">Publish HTML + PDF</span>
+    </div>
+    <p>Every source lands as a file in <code>data/{client}/{period}/</code>, named <code>{source}_{period}.csv</code>. API syncs and manual uploads produce identical files, so a month can mix both freely. Building a report parses whatever is in that folder — a missing source simply drops its section from the published report.</p>
+  </div>
+
+  <div class="doc-section">
+    <h2>Where the data comes from</h2>
+    <table class="doc-table">
+      <thead><tr><th>Source</th><th>Provider</th><th>How it arrives</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Media mentions</td>
+          <td>Google Alerts</td>
+          <td>"Fetch mentions" on the workspace reads the client's Google Alerts RSS feeds (brand and executive names) and writes the mentions CSV. Feeds only keep the ~20 most recent items, so historic months are compiled from the Gmail alerts archive. Duplicate stories are removed by matching URL and title.</td>
+        </tr>
+        <tr>
+          <td>Backlinks &amp; authority</td>
+          <td>Ahrefs API</td>
+          <td>One agency-level API key (API keys page). Pulls the backlink snapshot (referring domains, total backlinks, top linking sites) and 12 monthly history points for domain rating, referring domains and estimated organic traffic.</td>
+        </tr>
+        <tr>
+          <td>Search performance</td>
+          <td>Ahrefs GSC Insights</td>
+          <td>Clicks, impressions, CTR, position and top queries come from Google Search Console data read through the client's Ahrefs project (the project must have GSC connected). Set the project ID on the client's Ahrefs card.</td>
+        </tr>
+        <tr>
+          <td>Competitor benchmark</td>
+          <td>Ahrefs API</td>
+          <td>Competitors are read from the client's Ahrefs rank-tracker project. Each brand's domain rating, referring domains and estimated monthly organic traffic are pulled for the share-of-voice section.</td>
+        </tr>
+        <tr>
+          <td>Technical SEO</td>
+          <td>Ahrefs Site Audit + our register</td>
+          <td>The site health score and domain rating come from Ahrefs Site Audit each month. The findings themselves live in our issue register CSV, maintained by us with severity, status and timeframe per finding.</td>
+        </tr>
+        <tr>
+          <td>Site traffic</td>
+          <td>Google Analytics 4</td>
+          <td>A Google service account (agency-level JSON key) reads the client's GA4 property: sessions, users, engaged sessions, top pages, channels, and sessions by country for the geography section. The service account email needs Viewer access on the property.</td>
+        </tr>
+        <tr>
+          <td>LinkedIn</td>
+          <td>Manual export</td>
+          <td>The monthly XLSX export from LinkedIn company analytics, dropped on the workspace card: followers, new followers, post impressions, engagements and top posts.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="doc-section">
+    <h2>How the stats are derived</h2>
+    <table class="doc-table">
+      <thead><tr><th>Stat</th><th>Derivation</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Month on month</td>
+          <td>This month's headline numbers are compared against the same numbers parsed fresh from the previous month's data folder. Chips show the percentage change; a metric with no prior data shows "New baseline". The first tracked month is presented as the baseline.</td>
+        </tr>
+        <tr>
+          <td>Sentiment</td>
+          <td>Claude reads every mention's title and snippet with the client's context brief and classifies it positive, neutral or negative with a score. The net score is the average across all scored mentions, from −1 to +1. Scores are cached per mention, so rebuilds never re-score or change history.</td>
+        </tr>
+        <tr>
+          <td>Share of voice</td>
+          <td>Each brand's Ahrefs estimated monthly organic search traffic as a share of the tracked set's combined total. It measures search visibility, not media coverage. The client's share change vs the previous month is shown once two months are tracked.</td>
+        </tr>
+        <tr>
+          <td>Executive visibility</td>
+          <td>The month's mentions are scanned for the executive names configured on the client. A hit in a story's title or snippet counts as a mention for that person.</td>
+        </tr>
+        <tr>
+          <td>Authority trends</td>
+          <td>Twelve monthly Ahrefs snapshots drawn as sparklines. The delta compares the latest month against twelve months ago.</td>
+        </tr>
+        <tr>
+          <td>Site health</td>
+          <td>Ahrefs Site Audit health score out of 100, with the change vs the prior month. Open findings are register entries with no resolved month, ordered High → Medium → Low; High and Medium appear in the report table, Low as a count.</td>
+        </tr>
+        <tr>
+          <td>Search &amp; traffic</td>
+          <td>Sums and averages over the export rows: total clicks and impressions, average CTR and position from GSC data; sessions, users and engaged sessions from GA4. Top queries and top pages are ranked by clicks and views.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="doc-section">
+    <h2>What the AI writes</h2>
+    <p>After parsing, the full month's data summary is passed to Claude, which writes the report's editorial layer:</p>
+    <ul>
+      <li><strong>Headline and standfirst</strong> — the cover title naming the month's defining story, and the one-to-two sentence frame beneath it.</li>
+      <li><strong>The month in brief</strong> — the executive summary at the top of the report: what defined the month, how coverage, search, traffic, authority and social connect, and where the focus goes next.</li>
+      <li><strong>Section commentary</strong> — a short story-first intro under each section heading, tying that section's numbers to what drove them.</li>
+      <li><strong>What worked, what to watch</strong> — the month's wins with the numbers behind them, and the soft spots worth an eye.</li>
+      <li><strong>Next month</strong> — recommended actions in three buckets: lean into, investigate, fix urgently, each with the reasoning.</li>
+    </ul>
+    <p>The first build seeds all of this into the review screen. Anything you edit there is saved and <strong>always wins</strong> — later rebuilds only fill in fields left blank, and never overwrite your words. Sentiment uses a fast model per mention; the writing uses a stronger model once per build.</p>
+  </div>
+
+  <div class="doc-section">
+    <h2>Review and publishing</h2>
+    <ol>
+      <li>Sync or upload the month's sources on the client workspace — each card parses immediately and shows a status.</li>
+      <li>Build the report. Parsing, sentiment, AI writing and rendering run in the background.</li>
+      <li>Open <strong>Review</strong> to read and edit every piece of commentary in place, then "Save and regenerate".</li>
+      <li>The published report is a web page (<code>/c/{client}/{period}</code>) and a print-grade A4 PDF rendered from the same page. Clients reach it through their portal login or a share link, and every view is recorded.</li>
+    </ol>
+  </div>
+
+</div>
+
+{% endblock %}

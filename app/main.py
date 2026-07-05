@@ -688,6 +688,12 @@ def _masked_key_view(agency_row, cdef) -> dict:
 
 # ---- agency keys page ----
 
+@app.get("/admin/how-it-works", response_class=HTMLResponse)
+def admin_how_it_works(request: Request):
+    _require_admin_or_redirect(request)
+    return _render("admin/how_it_works.html", active="how_it_works", nav_clients=list_clients())
+
+
 @app.get("/admin/keys", response_class=HTMLResponse)
 def admin_keys_get(request: Request, message: str = None, error: str = None):
     _require_admin_or_redirect(request)

@@ -32,6 +32,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="15" r="4"/><path d="M10.9 12.1L21 2M15 8l3 3M18 5l2 2"/></svg>
       API keys
     </a>
+    <a class="side__link {% if active == 'how_it_works' %}side__link--active{% endif %}" href="/admin/how-it-works">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .3c0 1.7-2.5 2.2-2.5 3.7"/><path d="M12 17h.01"/></svg>
+      How reports work
+    </a>
 
     <div class="side__section">Clients</div>
     {% for c in nav_clients or [] %}
