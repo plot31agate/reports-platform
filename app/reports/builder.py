@@ -195,12 +195,21 @@ def _load_or_seed_commentary(client_slug: str, period: str, actions: dict) -> di
     """
     row = get_commentary(client_slug, period)
     if row is None:
-        seed_actions = (actions or {}).get("content") or None
+        content = (actions or {}).get("content") or {}
+        # The synthesis response carries editorial framing (headline,
+        # standfirst, per-section notes) alongside the action buckets -
+        # split them into their commentary homes so the review screen
+        # opens pre-written rather than blank.
+        seed_actions = {
+            k: content[k]
+            for k in ("lean_into", "investigate", "fix_urgently", "worked", "watch")
+            if content.get(k)
+        } or None
         upsert_commentary(
             client_slug, period,
-            headline="Performance Report",
-            standfirst="",
-            notes_json=json.dumps({}),
+            headline=(content.get("headline") or "Performance Report").strip(),
+            standfirst=(content.get("standfirst") or "").strip(),
+            notes_json=json.dumps(content.get("notes") or {}),
             actions_json=json.dumps(seed_actions) if seed_actions else None,
         )
         row = get_commentary(client_slug, period)

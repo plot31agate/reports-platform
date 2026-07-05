@@ -73,14 +73,20 @@
     </div>
     <div class="kicker">/ Monthly Performance Report · {{ period_display }}</div>
     {% if editable %}
-    <span class="edit-tag">Lead — the month in one or two sentences</span>
+    <span class="edit-tag">Headline</span>
+    <textarea class="edit-input edit-input--title" name="headline" rows="2" placeholder="Performance Report">{{ commentary.headline }}</textarea>
+    <span class="edit-tag" style="margin-top:14px;">Standfirst</span>
     <textarea class="edit-input edit-input--lead" name="standfirst" rows="3" placeholder="One or two sentences framing the month.">{{ commentary.standfirst }}</textarea>
-    <span class="edit-tag" style="margin-top:12px;">Headline — used if the lead is blank</span>
-    <textarea class="edit-input edit-input--headline" name="headline" rows="1" placeholder="Performance Report">{{ commentary.headline }}</textarea>
     {% else %}
-    {% set lead_text = commentary.standfirst if (commentary and commentary.standfirst) else (commentary.headline if (commentary and commentary.headline and commentary.headline != 'Performance Report') else None) %}
-    {% if lead_text %}
-    <div class="lead">{{ lead_text }}</div>
+    <h1 class="hero__title">
+      {%- if commentary and commentary.headline and commentary.headline != 'Performance Report' -%}
+        {{ commentary.headline }}
+      {%- else -%}
+        {{ period_display }}, measured.
+      {%- endif -%}
+    </h1>
+    {% if commentary and commentary.standfirst %}
+    <p class="hero__standfirst">{{ commentary.standfirst }}</p>
     {% endif %}
     {% endif %}
   </div>

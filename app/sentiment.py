@@ -147,11 +147,19 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
 
     summary = json.dumps({
         "coverage": (_d("mentions") or {}).get("total"),
+        "mentions": [
+            {"title": m.get("title"), "source": m.get("source")}
+            for m in ((_d("mentions") or {}).get("mentions") or [])[:12]
+        ],
         "sentiment": report_data.get("sentiment", {}),
         "backlinks": _d("ahrefs_backlinks"),
+        "authority_trends": (_d("ahrefs_trends") or {}).get("deltas") if _d("ahrefs_trends") else None,
+        "competitor_benchmark": _d("competitor_benchmark"),
         "traffic": _d("ga4_export"),
+        "geography": _d("ga4_geography"),
         "search_console": _d("search_console"),
         "linkedin": _d("linkedin_company"),
+        "technical_seo": _d("technical_seo_metrics"),
     }, default=str, indent=2)
 
     prompt = f"""You are a senior PR and growth advisor for {client_config['display_name']}, {client_config.get('sentiment_context', '').split('.')[0]}.
@@ -173,14 +181,19 @@ Also give a read on the month:
 - "worked": three to five bullets on what worked, each a single string of one or two sentences naming the specific result and the numbers behind it
 - "watch": two to four bullets on what to watch, each a single string of one or two sentences flagging a soft spot, risk or caveat in the data
 
+Also write the report's editorial framing:
+- "headline": the report title, 4 to 8 words naming the month's defining story (e.g. "Kenya launch drives record coverage"). Title case only on the first word and proper nouns, no trailing full stop, no colons.
+- "standfirst": one or two sentences framing the month for the client's leadership, leading with the strongest specific result and its number. This sits under the headline on the cover.
+- "notes": an object of section intros, one or two sentences each, written from the data for that section - name the specific numbers, outlets, queries or countries that matter and what they mean. Only include a key when the summary above has data for it. Keys: "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "technical_seo".
+
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 
-{{"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]}}"""
+{{"headline":"...","standfirst":"...","notes":{{"media":"..."}},"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]}}"""
 
     try:
         resp = client.messages.create(
             model=settings.claude_model_synthesis,
-            max_tokens=3000,
+            max_tokens=4000,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
