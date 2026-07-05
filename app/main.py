@@ -66,6 +66,7 @@ from app.db import (
     revoke_client_user,
     record_report_view,
     report_view_stats,
+    update_client_config_key,
     upsert_connection,
     get_connections,
     get_connection,
@@ -872,6 +873,26 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
 
 
 # ------------------- ADMIN FETCH MENTIONS -------------------
+
+@app.post("/admin/mention-feeds/save")
+async def admin_mention_feeds_save(request: Request):
+    """Save the client's RSS/Atom mention feed list (one URL per line)."""
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period") or ""
+    back = f"/admin/workspace?client={client_slug}&period={period}"
+
+    urls = [line.strip() for line in (form.get("feeds") or "").splitlines() if line.strip()]
+    bad = [u for u in urls if not u.startswith(("http://", "https://"))]
+    if bad:
+        return RedirectResponse(f"{back}&error=Feed+URLs+must+start+with+http(s)://+-+check:+{bad[0][:60]}", status_code=302)
+    try:
+        update_client_config_key(client_slug, "mention_feeds", urls)
+    except KeyError:
+        return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
+    return RedirectResponse(f"{back}&message=Saved+{len(urls)}+mention+feed{'s' if len(urls) != 1 else ''}", status_code=302)
+
 
 @app.post("/admin/fetch-mentions")
 def admin_fetch_mentions(request: Request, client_slug: str = Form(...), period: str = Form(...)):

@@ -214,6 +214,20 @@ def get_client_row(slug: str):
         return dict(row) if row else None
 
 
+def update_client_config_key(slug: str, key: str, value):
+    """Set one key in a client's config_json, preserving the rest."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT config_json FROM clients WHERE slug = ?", (slug,)).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown client: {slug}")
+        try:
+            cfg = json.loads(row["config_json"]) if row["config_json"] else {}
+        except (ValueError, TypeError):
+            cfg = {}
+        cfg[key] = value
+        conn.execute("UPDATE clients SET config_json = ? WHERE slug = ?", (json.dumps(cfg), slug))
+
+
 def create_client(slug: str, display_name: str, config_json: str):
     with get_conn() as conn:
         conn.execute(

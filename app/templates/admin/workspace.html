@@ -153,8 +153,30 @@
       <p class="ws-hint" style="margin:14px 0 0;">
         API keys are shared across clients and live on the <a href="/admin/keys" style="font-weight:700;text-decoration:underline;">API keys</a> page —
         here you only set what to pull for {{ client.display_name }}.
-        LinkedIn and Google Alerts don't offer key-based APIs — those stay on upload / auto-fetch.
+        LinkedIn doesn't offer a key-based API — that stays on upload. Mentions pull from the RSS feeds below.
       </p>
+    </details>
+
+    <!-- Mention feeds: RSS/Atom URLs pulled by Auto-fetch on the mentions card -->
+    {% set feeds = client.mention_feeds or [] %}
+    <details class="panel ws-connections" id="mention-feeds">
+      <summary>
+        <span class="ws-connections__title">Mention feeds</span>
+        <span class="ws-connections__sub">
+          {% if feeds %}{{ feeds | length }} feed{{ 's' if feeds | length != 1 }} — Auto-fetch pulls these for media mentions{% else %}Add RSS or Atom feeds for Auto-fetch to pull media mentions{% endif %}
+        </span>
+      </summary>
+      <form method="post" action="/admin/mention-feeds/save">
+        <input type="hidden" name="client_slug" value="{{ selected_client }}">
+        <input type="hidden" name="period" value="{{ period }}">
+        <textarea name="feeds" rows="{{ [feeds | length + 2, 6] | max }}" spellcheck="false"
+                  style="width:100%;font-family:monospace;font-size:12px;line-height:1.7;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;"
+                  placeholder="One feed URL per line, e.g.&#10;https://www.google.co.uk/alerts/feeds/...&#10;https://www.example-trade-press.com/rss&#10;https://alerts.talkwalker.com/alerts/rss/...">{{ feeds | join('\n') }}</textarea>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+          <button class="button button--primary button--sm" type="submit">Save feeds</button>
+          <span class="ws-hint" style="margin:0;">Any RSS 2.0 or Atom feed works — Google Alerts, publication RSS, Talkwalker alerts. Entries are filtered to the report month and de-duplicated by URL.</span>
+        </div>
+      </form>
     </details>
   </div>
 

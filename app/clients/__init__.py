@@ -36,6 +36,7 @@ DEFAULT_CLIENT = {
     "executives": [],
     "competitors": [],
     "regions_of_interest": [],
+    "mention_feeds": [],
     "sentiment_context": (
         "You are analysing media mentions of this brand. Score sentiment from the "
         "brand's commercial perspective: launches, market entries, partnerships and "
@@ -72,7 +73,10 @@ def get_client(slug: str) -> dict:
         except (ValueError, TypeError):
             cfg = {}
 
-    merged = _merge(DEFAULT_CLIENT, cfg)
+    # Code seeds act as per-client defaults under the DB config, so a field
+    # added to a seed module after first boot still shows through until it
+    # is overridden in the DB.
+    merged = _merge(_merge(DEFAULT_CLIENT, CLIENTS.get(slug) or {}), cfg)
     merged["slug"] = slug
     merged["display_name"] = row["display_name"]
     # hero/accent mirror the primary colours unless explicitly set

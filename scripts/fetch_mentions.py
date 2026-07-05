@@ -1,14 +1,18 @@
-"""Fetch Google Alerts RSS feeds and write a mentions CSV for the given period.
+"""Fetch a client's mention feeds (RSS or Atom) and write the mentions CSV.
+
+Feeds come from the client's `mention_feeds` config (managed on the
+workspace under "Mention feeds") - Google Alerts, publication RSS,
+Talkwalker alerts, or any other RSS 2.0 / Atom feed.
 
 Usage:
-    python scripts/fetch_mentions.py --period 2026-07
-    python scripts/fetch_mentions.py --period 2026-07 --all   # include all dates, not just that month
+    python scripts/fetch_mentions.py --period 2026-07 --client sportingtech
+    python scripts/fetch_mentions.py --period 2026-07 --client sportingtech --all   # include all dates
 
 Output:
-    data/sportingtech/2026-07/mentions_2026-07.csv
+    data/{client}/{period}/mentions_{period}.csv
 
-Google Alerts RSS feeds only keep the most recent ~20 entries per feed.
-For historical months, compile from Gmail (search: from:googlealerts-noreply@google.com).
+Alert feeds only keep the most recent ~20 entries each. For historical
+months, compile from Gmail (search: from:googlealerts-noreply@google.com).
 """
 import argparse
 import csv
@@ -20,7 +24,10 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Fix macOS SSL certificate verification
 ssl_ctx = ssl.create_default_context()
@@ -31,30 +38,69 @@ except ImportError:
     ssl_ctx.check_hostname = False
     ssl_ctx.verify_mode = ssl.CERT_NONE
 
-FEEDS = [
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/16170668821117914581",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/4360640709969990399",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/1303721399638411999",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/12133739773753703727",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/4664133647478171063",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/18446529224811404312",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/9277082318107763866",
-    "https://www.google.co.uk/alerts/feeds/07184293393273308205/13625659024980385575",
-]
-
-NS = {"a": "http://www.w3.org/2005/Atom"}
+ATOM = "{http://www.w3.org/2005/Atom}"
 
 
 def _text(el):
     if el is None:
         return ""
-    t = el.text or ""
+    t = "".join(el.itertext()) if len(el) else (el.text or "")
     # Strip HTML tags from snippets
     t = re.sub(r"<[^>]+>", "", t)
     return html.unescape(t).strip()
 
 
+def _domain(url: str) -> str:
+    m = re.search(r"https?://(?:www\.)?([^/]+)", url)
+    return m.group(1) if m else ""
+
+
+def _unwrap(url: str) -> str:
+    """Google Alerts wraps the real URL in a redirect (…&url=<real>&…)."""
+    m = re.search(r"[?&]url=([^&]+)", url)
+    return urllib.parse.unquote(m.group(1)) if m else url
+
+
+def _parse_atom(root) -> list[dict]:
+    entries = []
+    for entry in root.iter(f"{ATOM}entry"):
+        link_el = entry.find(f"{ATOM}link")
+        url_val = _unwrap(link_el.attrib.get("href", "") if link_el is not None else "")
+        published = _text(entry.find(f"{ATOM}published")) or _text(entry.find(f"{ATOM}updated"))
+        entries.append({
+            "date": published[:10] if published else "",
+            "source": _domain(url_val),
+            "title": _text(entry.find(f"{ATOM}title")),
+            "url": url_val,
+            "snippet": (_text(entry.find(f"{ATOM}summary")) or _text(entry.find(f"{ATOM}content")))[:300],
+        })
+    return entries
+
+
+def _parse_rss(root) -> list[dict]:
+    entries = []
+    for item in root.iter("item"):
+        url_val = _unwrap(_text(item.find("link")))
+        date = ""
+        pub = _text(item.find("pubDate")) or _text(item.find("{http://purl.org/dc/elements/1.1/}date"))
+        if pub:
+            try:
+                date = parsedate_to_datetime(pub).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                date = pub[:10]
+        entries.append({
+            "date": date,
+            "source": _text(item.find("source")) or _domain(url_val),
+            "title": _text(item.find("title")),
+            "url": url_val,
+            "snippet": _text(item.find("description"))[:300],
+        })
+    return entries
+
+
 def fetch_feed(url: str) -> list[dict]:
+    """Fetch one feed URL and normalise its entries. Handles Atom
+    (Google Alerts et al.) and RSS 2.0 (publications, alert platforms)."""
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
@@ -63,31 +109,15 @@ def fetch_feed(url: str) -> list[dict]:
         print(f"  WARNING: could not fetch {url}: {e}", file=sys.stderr)
         return []
 
-    root = ET.fromstring(body)
-    feed_title = _text(root.find("a:title", NS))
-    entries = []
-    for entry in root.findall("a:entry", NS):
-        title = _text(entry.find("a:title", NS))
-        published = _text(entry.find("a:published", NS))
-        link_el = entry.find("a:link", NS)
-        url_val = link_el.attrib.get("href", "") if link_el is not None else ""
-        # Google wraps the real URL — extract it
-        real_url = re.search(r"url=([^&]+)", url_val)
-        url_val = urllib.parse.unquote(real_url.group(1)) if real_url else url_val
-        snippet = _text(entry.find("a:summary", NS) or entry.find("a:content", NS))
-        # Source: domain from the real URL
-        domain = re.search(r"https?://(?:www\.)?([^/]+)/", url_val)
-        source = domain.group(1) if domain else ""
-        date = published[:10] if published else ""
-        entries.append({
-            "date": date,
-            "source": source,
-            "title": title,
-            "url": url_val,
-            "snippet": snippet[:300],
-            "_feed": feed_title,
-        })
-    return entries
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError as e:
+        print(f"  WARNING: not valid RSS/Atom XML {url}: {e}", file=sys.stderr)
+        return []
+
+    if root.tag == f"{ATOM}feed":
+        return _parse_atom(root)
+    return _parse_rss(root)
 
 
 def main():
@@ -100,27 +130,39 @@ def main():
 
     period = args.period
     try:
-        period_dt = datetime.strptime(period, "%Y-%m")
+        datetime.strptime(period, "%Y-%m")
     except ValueError:
         print("ERROR: --period must be YYYY-MM", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Fetching {len(FEEDS)} Google Alerts feeds for {period}...")
+    from app.clients import get_client
+    try:
+        client = get_client(args.client)
+    except KeyError:
+        print(f"ERROR: unknown client {args.client}", file=sys.stderr)
+        sys.exit(1)
+
+    feeds = client.get("mention_feeds") or []
+    if not feeds:
+        print("ERROR: no mention feeds configured for this client - add RSS/Atom "
+              "feed URLs on the workspace under Mention feeds.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Fetching {len(feeds)} mention feeds for {period}...")
     all_entries = []
-    for feed_url in FEEDS:
+    for feed_url in feeds:
         entries = fetch_feed(feed_url)
-        print(f"  {len(entries):2d} entries — {feed_url.split('/')[-1]}")
+        print(f"  {len(entries):2d} entries — {feed_url[:80]}")
         all_entries.extend(entries)
 
     if not args.all:
-        prefix = period  # "2026-07"
-        all_entries = [e for e in all_entries if e["date"].startswith(prefix)]
+        all_entries = [e for e in all_entries if e["date"].startswith(period)]
 
     # Deduplicate by URL
     seen = set()
     deduped = []
     for e in all_entries:
-        if e["url"] not in seen:
+        if e["url"] and e["url"] not in seen:
             seen.add(e["url"])
             deduped.append(e)
 
@@ -134,12 +176,12 @@ def main():
         writer = csv.DictWriter(f, fieldnames=["date", "source", "title", "url", "snippet"])
         writer.writeheader()
         for e in deduped:
-            writer.writerow({k: e[k] for k in ["date", "source", "title", "url", "snippet"]})
+            writer.writerow(e)
 
     print(f"\n{len(deduped)} mentions written to {out_path}")
     if len(deduped) == 0:
         print("\nNOTE: 0 entries for this period.")
-        print("Google Alerts RSS only keeps the most recent ~20 entries per feed.")
+        print("Alert feeds only keep the most recent ~20 entries each.")
         print("For historical months, export from Gmail:")
         print("  Search: from:googlealerts-noreply@google.com")
         print("  Filter by date range, copy titles/URLs into the CSV manually.")

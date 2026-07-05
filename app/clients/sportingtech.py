@@ -53,6 +53,20 @@ SPORTINGTECH = {
         "Europe",
     ],
 
+    # RSS/Atom feeds pulled by Auto-fetch on the workspace (Google Alerts
+    # for the brand and each executive). Editable per client in the
+    # workspace under "Mention feeds".
+    "mention_feeds": [
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/16170668821117914581",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/4360640709969990399",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/1303721399638411999",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/12133739773753703727",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/4664133647478171063",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/18446529224811404312",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/9277082318107763866",
+        "https://www.google.co.uk/alerts/feeds/07184293393273308205/13625659024980385575",
+    ],
+
     # Passed to Claude for sentiment classification
     "sentiment_context": (
         "You are analysing media mentions of Sportingtech, a B2B iGaming "
