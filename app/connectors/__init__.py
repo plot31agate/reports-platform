@@ -11,7 +11,7 @@ format the matching ingestion parser already understands, into the same
 data/{client}/{period}/ folder an upload would land in. Everything downstream
 (checklist, build, report) is identical for synced and uploaded data.
 """
-from app.connectors import ahrefs, google
+from app.connectors import ahrefs, google, meta
 
 
 # Drives the Agency API keys page, the per-client workspace panel, and the
@@ -85,9 +85,39 @@ CONNECTOR_DEFS = [
             "Then grant it access per client: in GA4 → Admin → Property access management → add the service account's email as Viewer",
         ],
     },
+    {
+        "provider": "meta",
+        "label": "Meta — Facebook & Instagram",
+        "sources": ["meta_social"],
+        # At least the FB Page ID; the IG account is optional and pulled too
+        # when its ID is set. (pick_provider needs an all-required list, so the
+        # page is the gate - IG-only clients can still upload the CSV.)
+        "requires": {
+            "meta_social": ["fb_page_id"],
+        },
+        "blurb": "Pulls Facebook Page and Instagram daily insights - views, reach, content interactions, link clicks and new followers - into one social CSV. One access token covers every client whose pages your Meta business portfolio can read.",
+        "agency_fields": [
+            {"key": "access_token", "label": "Access token", "type": "password", "secret": True},
+        ],
+        "client_fields": [
+            {"key": "fb_page_id", "label": "Facebook Page ID", "type": "text",
+             "placeholder": "e.g. 1234567890",
+             "hint": "Facebook Page → Settings → Page transparency, or the numeric ID in Business Suite. Feeds the Facebook half of the report's Facebook & Instagram section."},
+            {"key": "ig_user_id", "label": "Instagram account ID", "type": "text",
+             "placeholder": "optional, e.g. 17841400000000000",
+             "hint": "Optional. The IG Business account's numeric ID (it must be linked to the Facebook Page). Leave blank for Facebook-only clients."},
+        ],
+        "key_help": [
+            "In Meta Business Suite, the page and its Instagram account must be in a Business portfolio (Business Settings → Accounts)",
+            "Business Settings → Users → System Users → Add (or pick) a system user, give it access to the pages you report on",
+            "With the system user selected → Generate new token → choose your app → tick permissions: pages_read_engagement, read_insights, instagram_basic, instagram_manage_insights",
+            "Set the token to never expire if offered, copy it, and paste it here",
+            "Then per client, set the Facebook Page ID (and Instagram account ID if used) on their Meta card in the workspace",
+        ],
+    },
 ]
 
-_MODULES = {"ahrefs": ahrefs, "google": google}
+_MODULES = {"ahrefs": ahrefs, "google": google, "meta": meta}
 
 # source_key -> providers that can feed it, in preference order (defs order).
 # Every source currently has exactly one provider; search_console is Ahrefs

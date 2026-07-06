@@ -408,14 +408,17 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
                 "label": connectors.get_def(provider)["label"],
                 "status": conns[provider].get("status"),
             }
-    connection_cards = [
-        _masked_connection_view(conns.get(d["provider"]), d, agency_creds.get(d["provider"]))
-        for d in connectors.CONNECTOR_DEFS
-    ]
-
     # Only show source cards for the sections this client's report includes.
     client_sources = enabled_source_keys(client_config)
     client_source_defs = [s for s in SOURCE_DEFS if s["key"] in client_sources]
+
+    # A connector's card shows when it feeds an enabled source, or is already
+    # set up (so an existing connection is never hidden by a section toggle).
+    connection_cards = [
+        _masked_connection_view(conns.get(d["provider"]), d, agency_creds.get(d["provider"]))
+        for d in connectors.CONNECTOR_DEFS
+        if (set(d["sources"]) & client_sources) or conns.get(d["provider"])
+    ]
 
     return _render(
         "admin/workspace.html",
