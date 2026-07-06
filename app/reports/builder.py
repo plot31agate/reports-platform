@@ -11,6 +11,7 @@ from app.config import settings
 from app.db import upsert_report, get_commentary, upsert_commentary
 from app.ingestion.parsers import parse_all
 from app.reports.pdf import render_pdf
+from app.reports.sections import enabled_sections
 from app.sentiment import classify_mentions, synthesise_actions
 
 
@@ -23,6 +24,7 @@ def _env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else v
+    env.filters["duration"] = _fmt_duration
     # Same cache-buster the admin app uses, so restyled reports refresh too.
     try:
         css_dir = Path(__file__).parent.parent / "static" / "css"
@@ -143,6 +145,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
 
     return {
         "client": client_config,
+        "enabled_sections": set(enabled_sections(client_config)),
         "exec_mentions": _detect_exec_mentions(parsed, client_config),
         "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
@@ -339,6 +342,9 @@ def _build_mom(client_slug: str, period: str, parsed: dict, technical_seo: dict 
         ("Sessions", "ga4_export", "sessions"),
         ("LinkedIn impressions", "linkedin_company", "impressions"),
         ("New followers", "linkedin_company", "follower_growth"),
+        ("Facebook views", "meta_social", "fb_views"),
+        ("Instagram views", "meta_social", "ig_views"),
+        ("TikTok views", "tiktok", "views"),
         ("Referring domains", "ahrefs_backlinks", "referring_domains"),
     ]
     metrics = []
@@ -454,6 +460,16 @@ def _build_technical_seo(parsed: dict, period: str) -> dict | None:
         "low_issues": low,
         "low_count": len(low),
     }
+
+
+def _fmt_duration(secs) -> str:
+    """Seconds -> '8m 10s' (or '42s' under a minute)."""
+    if not isinstance(secs, (int, float)) or secs <= 0:
+        return "—"
+    secs = int(secs)
+    if secs < 60:
+        return f"{secs}s"
+    return f"{secs // 60}m {secs % 60:02d}s"
 
 
 def _period_display(period: str) -> str:

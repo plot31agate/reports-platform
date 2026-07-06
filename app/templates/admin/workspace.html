@@ -178,6 +178,40 @@
         </div>
       </form>
     </details>
+
+    <!-- Report sections: which inputs and report sections this client gets -->
+    <details class="panel ws-connections" id="report-sections">
+      <summary>
+        <span class="ws-connections__title">Report sections</span>
+        <span class="ws-connections__sub">
+          {{ client_sections | length }} of {{ section_defs | length }} enabled — controls the source cards above and what the report renders
+        </span>
+      </summary>
+      <form method="post" action="/admin/sections/save">
+        <input type="hidden" name="client_slug" value="{{ selected_client }}">
+        <input type="hidden" name="period" value="{{ period }}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-bottom:12px;">
+          {% for s in section_defs %}
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;padding:4px 0;">
+            <input type="checkbox" name="sections" value="{{ s.key }}" {% if s.key in client_sections %}checked{% endif %} style="margin-top:2px;">
+            <span>
+              <strong>{{ s.label }}</strong>
+              <span style="display:block;color:var(--ink-soft,#6b7280);font-size:12px;">{{ s.hint }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="field" style="max-width:340px;">
+          <label>Misc section title</label>
+          <input type="text" name="misc_title" value="{{ client.misc_title or '' }}" placeholder="Additional notes">
+          <div class="field__hint">Heading for the misc section, if enabled. Its content is written on the review screen.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+          <button class="button button--primary button--sm" type="submit">Save sections</button>
+          <span class="ws-hint" style="margin:0;">Disabled sections drop their upload cards and never render — data already uploaded is kept, just not shown. Rebuild the report after changing.</span>
+        </div>
+      </form>
+    </details>
   </div>
 
   <!-- ============ RIGHT: BUILD & DELIVER ============ -->

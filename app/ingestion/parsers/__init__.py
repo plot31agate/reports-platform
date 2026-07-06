@@ -15,6 +15,11 @@ from app.ingestion.parsers.technical_seo import (
     parse_technical_seo_metrics,
     parse_technical_seo_register,
 )
+from app.ingestion.parsers.social import (
+    parse_meta_social,
+    parse_tiktok,
+    parse_influencers,
+)
 
 
 PARSER_MAP = {
@@ -29,6 +34,9 @@ PARSER_MAP = {
     "ga4_geography":           ("GA4 geography",               parse_ga4_geography),
     "search_console":          ("Search Console",              parse_search_console),
     "linkedin_company":        ("LinkedIn (company)",          parse_linkedin),
+    "meta_social":             ("Facebook & Instagram",        parse_meta_social),
+    "tiktok":                  ("TikTok",                      parse_tiktok),
+    "influencer_activity":     ("Influencer activity",         parse_influencers),
     "mentions":                ("Media mentions",              parse_mentions),
     "technical_seo_metrics":   ("Technical SEO metrics",       parse_technical_seo_metrics),
     "technical_seo_register":  ("Technical SEO issue register",parse_technical_seo_register),
@@ -45,6 +53,9 @@ SOURCE_DEFS = [
     {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
     {"key": "competitor_benchmark",   "title": "Competitor benchmark",  "purpose": "Share of voice vs competitors",               "cols": "month, brand, domain, organic_traffic"},
     {"key": "linkedin_company",       "title": "LinkedIn (company)",    "purpose": "Impressions, followers, top posts",           "cols": "date, impressions, clicks, followers"},
+    {"key": "meta_social",            "title": "Facebook & Instagram",  "purpose": "Views, reach, interactions, link clicks",     "cols": "platform, views, reach, interactions, link clicks (+ date for spikes)"},
+    {"key": "tiktok",                 "title": "TikTok",                "purpose": "Views, likes, comments, shares",              "cols": "views, likes, comments, shares (+ date for spikes)"},
+    {"key": "influencer_activity",    "title": "Influencer activity",   "purpose": "Creator posts, reach, engagement",            "cols": "influencer, platform, content, reach, engagements, link"},
     {"key": "technical_seo_metrics",  "title": "Technical SEO metrics", "purpose": "Site health score, DR, open issues by month", "cols": "month, health_score, domain_rating, total_open"},
     {"key": "technical_seo_register", "title": "Technical SEO register","purpose": "Issue register with severity and status",     "cols": "issue_id, finding, severity, status"},
 ]
@@ -161,6 +172,35 @@ def summarise_parsed(source_key: str, data) -> dict:
         s = f"{followers:,} followers, {impressions:,} impressions"
         return {"status": "ok" if followers > 0 else "warning", "summary": s,
                 "warnings": [], "row_count": followers}
+
+    if source_key == "meta_social":
+        platforms = (data or {}).get("platforms") or []
+        if not platforms:
+            return {"status": "warning", "summary": "No platform rows found - needs a views/reach column, ideally with a platform column",
+                    "warnings": [], "row_count": 0}
+        bits = []
+        for p in platforms:
+            v = p.get("views")
+            bits.append(f"{p['platform']}: {v:,.0f} views".replace(".0", "") if v else p["platform"])
+        return {"status": "ok", "summary": ", ".join(bits), "warnings": [], "row_count": len(platforms)}
+
+    if source_key == "tiktok":
+        views = (data or {}).get("views") or 0
+        likes = (data or {}).get("likes") or 0
+        s = f"{views:,} views, {likes:,} likes"
+        return {"status": "ok" if views > 0 else "warning", "summary": s,
+                "warnings": [] if views > 0 else ["No views found - check there is a Views or Video views column"],
+                "row_count": views}
+
+    if source_key == "influencer_activity":
+        rows = (data or {}).get("rows") or []
+        s = f"{len(rows)} influencer post{'s' if len(rows) != 1 else ''}"
+        reach = (data or {}).get("total_reach")
+        if reach:
+            s += f", {reach:,} combined reach"
+        return {"status": "ok" if rows else "warning", "summary": s,
+                "warnings": [] if rows else ["No rows found - needs an Influencer/Creator column"],
+                "row_count": len(rows)}
 
     if source_key == "technical_seo_metrics":
         rows = data if isinstance(data, list) else []

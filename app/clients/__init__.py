@@ -37,6 +37,10 @@ DEFAULT_CLIENT = {
     "competitors": [],
     "regions_of_interest": [],
     "mention_feeds": [],
+    # Report sections: None/empty = the default set (see app/reports/sections.py).
+    # The workspace "Report sections" panel writes a list of section keys here.
+    "sections": None,
+    "misc_title": "",
     "sentiment_context": (
         "You are analysing media mentions of this brand. Score sentiment from the "
         "brand's commercial perspective: launches, market entries, partnerships and "

@@ -82,6 +82,7 @@ from app.reports import jobs
 from app import connectors
 from app.connectors._util import ConnectorError
 from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
+from app.reports.sections import SECTION_DEFS, enabled_sections, enabled_source_keys, ALL_SECTION_KEYS
 
 # Sections that accept an optional operator note on the review screen.
 REVIEW_NOTE_SECTIONS = [
@@ -95,6 +96,10 @@ REVIEW_NOTE_SECTIONS = [
     ("backlinks", "Authority & social"),
     ("campaigns", "Geography"),
     ("linkedin", "LinkedIn"),
+    ("social", "Facebook & Instagram"),
+    ("tiktok", "TikTok"),
+    ("influencers", "Influencer activity"),
+    ("misc", "Misc"),
     ("technical_seo", "Technical SEO"),
 ]
 from app.reports.builder import build_report
@@ -408,6 +413,10 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         for d in connectors.CONNECTOR_DEFS
     ]
 
+    # Only show source cards for the sections this client's report includes.
+    client_sources = enabled_source_keys(client_config)
+    client_source_defs = [s for s in SOURCE_DEFS if s["key"] in client_sources]
+
     return _render(
         "admin/workspace.html",
         active="workspace",
@@ -416,7 +425,9 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         client=client_config,
         selected_client=slug,
         period=period,
-        source_defs=SOURCE_DEFS,
+        source_defs=client_source_defs,
+        section_defs=SECTION_DEFS,
+        client_sections=enabled_sections(client_config),
         report=report,
         shares=shares,
         views=views,
@@ -892,6 +903,26 @@ async def admin_mention_feeds_save(request: Request):
     except KeyError:
         return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
     return RedirectResponse(f"{back}&message=Saved+{len(urls)}+mention+feed{'s' if len(urls) != 1 else ''}", status_code=302)
+
+
+@app.post("/admin/sections/save")
+async def admin_sections_save(request: Request):
+    """Save which report sections this client's reports include."""
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period") or ""
+    back = f"/admin/workspace?client={client_slug}&period={period}"
+
+    chosen = [k for k in form.getlist("sections") if k in ALL_SECTION_KEYS]
+    if not chosen:
+        return RedirectResponse(f"{back}&error=Pick+at+least+one+section", status_code=302)
+    try:
+        update_client_config_key(client_slug, "sections", chosen)
+        update_client_config_key(client_slug, "misc_title", (form.get("misc_title") or "").strip())
+    except KeyError:
+        return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
+    return RedirectResponse(f"{back}&message=Report+sections+saved+({len(chosen)}+enabled)", status_code=302)
 
 
 @app.post("/admin/fetch-mentions")

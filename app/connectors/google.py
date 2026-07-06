@@ -111,7 +111,7 @@ def sync(config, source_key, dest, period):
         data = _ga4_report(
             session, prop, start, end,
             ["sessionDefaultChannelGroup"],
-            ["sessions", "totalUsers", "engagedSessions"],
+            ["sessions", "totalUsers", "engagedSessions", "newUsers", "userEngagementDuration"],
         )
         rows = data.get("rows") or []
         write_ga4_csv(rows, dest)
@@ -134,14 +134,15 @@ def write_ga4_csv(rows, dest):
     header = [
         "Session primary channel group (Default Channel Group)",
         "Sessions", "Users", "Engaged sessions",
+        "New users", "User engagement duration",
     ]
     out = []
     for r in rows:
         dims = r.get("dimensionValues") or []
         mets = r.get("metricValues") or []
         channel = dims[0].get("value", "") if dims else ""
-        vals = [m.get("value", "0") for m in mets] + ["0", "0", "0"]
-        out.append([channel, vals[0], vals[1], vals[2]])
+        vals = [m.get("value", "0") for m in mets] + ["0"] * 5
+        out.append([channel, vals[0], vals[1], vals[2], vals[3], vals[4]])
     write_csv(dest, header, out)
 
 

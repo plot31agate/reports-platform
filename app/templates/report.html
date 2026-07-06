@@ -137,7 +137,7 @@
 
 {# ================== MEDIA COVERAGE ================== #}
 {% set mentions_total = (data.mentions.data.total if data.mentions.data else none) %}
-{% if editable or (mentions_total and mentions_total > 0) or notes.get('media') or notes.get('callout_media') %}
+{% if 'media' in enabled_sections and (editable or (mentions_total and mentions_total > 0) or notes.get('media') or notes.get('callout_media')) %}
 <div class="section">
   <div class="slabel">Media coverage</div>
   <h2>Earned coverage</h2>
@@ -236,7 +236,7 @@
 {# ================== SHARE OF VOICE ================== #}
 {% set sov = data.competitor_benchmark.data if data.competitor_benchmark else none %}
 {% set has_sov = sov and sov.rows %}
-{% if editable or has_sov or notes.get('sov') or notes.get('callout_sov') %}
+{% if 'sov' in enabled_sections and (editable or has_sov or notes.get('sov') or notes.get('callout_sov')) %}
 <div class="section">
   <div class="slabel">Competitive landscape</div>
   <h2>Share of voice</h2>
@@ -285,7 +285,7 @@
 {# ================== SEARCH & TRAFFIC ================== #}
 {% set gsc = data.search_console.data %}
 {% set ga4 = data.ga4_export.data %}
-{% if editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic') %}
+{% if 'traffic' in enabled_sections and (editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic')) %}
 <div class="section">
   <div class="slabel">Search &amp; traffic</div>
   <h2>Search and site performance</h2>
@@ -304,12 +304,37 @@
   </div>
   {% endif %}
   {% if ga4 %}
-  <div class="stats">
+  <div class="stats{% if ga4.new_users or ga4.avg_engagement_secs %} stats--4{% endif %}">
     <div class="stat"><div class="n">{{ (ga4.users or 0) | thousands }}</div><div class="l">Users</div></div>
+    {% if ga4.new_users %}
+    <div class="stat"><div class="n">{{ ga4.new_users | thousands }}</div><div class="l">New users</div></div>
+    {% endif %}
     <div class="stat"><div class="n">{{ (ga4.sessions or 0) | thousands }}</div><div class="l">Sessions</div></div>
-    {% if ga4.engaged_sessions %}
+    {% if ga4.avg_engagement_secs %}
+    <div class="stat"><div class="n">{{ ga4.avg_engagement_secs | duration }}</div><div class="l">Avg engagement time</div></div>
+    {% elif ga4.engaged_sessions %}
     <div class="stat"><div class="n">{{ ga4.engaged_sessions | thousands }}</div><div class="l">Engaged sessions</div></div>
     {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ga4 and ga4.channels %}
+  <div class="panel panel--wide">
+    <h3>Engagement by channel</h3>
+    <table>
+      <thead><tr><th>Channel</th><th class="num">Sessions</th>{% if ga4.channels[0].new_users is not none %}<th class="num">New users</th>{% endif %}{% if ga4.channels[0].engagement_rate is not none %}<th class="num">Engagement rate</th>{% endif %}{% if ga4.channels[0].avg_engagement_secs is not none %}<th class="num">Avg engagement</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for ch in ga4.channels %}
+        <tr>
+          <td>{{ ch.channel }}</td>
+          <td class="num">{{ ch.sessions | thousands }}</td>
+          {% if ch.new_users is not none %}<td class="num">{{ ch.new_users | thousands }}</td>{% endif %}
+          {% if ch.engagement_rate is not none %}<td class="num">{{ ch.engagement_rate }}%</td>{% endif %}
+          {% if ch.avg_engagement_secs is not none %}<td class="num">{{ ch.avg_engagement_secs | duration }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
   {% endif %}
 
@@ -348,7 +373,7 @@
 {# GA4 country data preferred; Similarweb kept as fallback for old months. #}
 {% set geo = data.ga4_geography.data if data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries else data.similarweb_traffic.data %}
 {% set geo_label = 'GA4' if (data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries) else 'SimilarWeb' %}
-{% if editable or (geo and geo.top_countries) or notes.get('campaigns') or notes.get('callout_campaigns') %}
+{% if 'geography' in enabled_sections and (editable or (geo and geo.top_countries) or notes.get('campaigns') or notes.get('callout_campaigns')) %}
 <div class="section">
   <div class="slabel">Geography</div>
   <h2>Where visits come from</h2>
@@ -379,7 +404,7 @@
 {% set ah = data.ahrefs_backlinks.data %}
 {% set tr = data.ahrefs_trends.data if data.ahrefs_trends else none %}
 {% set has_trends = tr and tr.points and tr.points | length > 1 %}
-{% if editable or ah or has_trends or notes.get('backlinks') or notes.get('callout_backlinks') %}
+{% if 'links' in enabled_sections and (editable or ah or has_trends or notes.get('backlinks') or notes.get('callout_backlinks')) %}
 <div class="section">
   <div class="slabel">Authority &amp; links</div>
   <h2>Domain authority and backlinks</h2>
@@ -446,7 +471,7 @@
 
 {# ================== LINKEDIN ================== #}
 {% set li = data.linkedin_company.data %}
-{% if editable or li or notes.get('linkedin') or notes.get('callout_linkedin') %}
+{% if 'linkedin' in enabled_sections and (editable or li or notes.get('linkedin') or notes.get('callout_linkedin')) %}
 <div class="section">
   <div class="slabel">LinkedIn performance</div>
   <h2>Owned channel</h2>
@@ -485,9 +510,121 @@
 </div>
 {% endif %}
 
+{# ================== FACEBOOK & INSTAGRAM ================== #}
+{% set ms = data.meta_social.data if data.meta_social else none %}
+{% set has_ms = ms and ms.platforms %}
+{% if 'social' in enabled_sections and (editable or has_ms or notes.get('social') or notes.get('callout_social')) %}
+<div class="section">
+  <div class="slabel">Social performance</div>
+  <h2>Facebook &amp; Instagram</h2>
+  {{ note('social') }}
+  {{ callout('social') }}
+  {% if editable and not has_ms %}
+  <p class="muted muted--internal">No Facebook &amp; Instagram data uploaded for this period. This section will not appear in the published report.</p>
+  {% endif %}
+  {% if has_ms %}
+  <div class="grid2">
+    {% for p in ms.platforms %}
+    <div class="panel">
+      <h3>{{ p.platform }}</h3>
+      <table>
+        <tbody>
+          {% if p.views is not none %}<tr><td>Views</td><td class="num">{{ p.views | thousands }}</td></tr>{% endif %}
+          {% if p.reach is not none %}<tr><td>Reach</td><td class="num">{{ p.reach | thousands }}</td></tr>{% endif %}
+          {% if p.interactions is not none %}<tr><td>Content interactions</td><td class="num">{{ p.interactions | thousands }}</td></tr>{% endif %}
+          {% if p.link_clicks is not none %}<tr><td>Link clicks</td><td class="num">{{ p.link_clicks | thousands }}</td></tr>{% endif %}
+          {% if p.followers %}<tr><td>New followers</td><td class="num">{{ p.followers | thousands }}</td></tr>{% endif %}
+        </tbody>
+      </table>
+      {% if p.top_day %}
+      <p class="meta">Biggest day: {{ p.top_day.date }} with {{ p.top_day.value | thousands }} views.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ================== TIKTOK ================== #}
+{% set tk = data.tiktok.data if data.tiktok else none %}
+{% set has_tk = tk and tk.views %}
+{% if 'tiktok' in enabled_sections and (editable or has_tk or notes.get('tiktok') or notes.get('callout_tiktok')) %}
+<div class="section">
+  <div class="slabel">Social performance</div>
+  <h2>TikTok</h2>
+  {{ note('tiktok') }}
+  {{ callout('tiktok') }}
+  {% if editable and not has_tk %}
+  <p class="muted muted--internal">No TikTok data uploaded for this period. This section will not appear in the published report.</p>
+  {% endif %}
+  {% if has_tk %}
+  <div class="stats stats--4">
+    <div class="stat"><div class="n">{{ tk.views | thousands }}</div><div class="l">Views</div></div>
+    {% if tk.likes is not none %}<div class="stat"><div class="n">{{ tk.likes | thousands }}</div><div class="l">Likes</div></div>{% endif %}
+    {% if tk.comments is not none %}<div class="stat"><div class="n">{{ tk.comments | thousands }}</div><div class="l">Comments</div></div>{% endif %}
+    {% if tk.shares is not none %}<div class="stat"><div class="n">{{ tk.shares | thousands }}</div><div class="l">Shares</div></div>{% endif %}
+  </div>
+  {% if tk.top_day %}
+  <p class="meta">Biggest day: {{ tk.top_day.date }} with {{ tk.top_day.value | thousands }} views.</p>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+{# ================== INFLUENCER ACTIVITY ================== #}
+{% set inf = data.influencer_activity.data if data.influencer_activity else none %}
+{% set has_inf = inf and inf.rows %}
+{% if 'influencers' in enabled_sections and (editable or has_inf or notes.get('influencers') or notes.get('callout_influencers')) %}
+<div class="section">
+  <div class="slabel">Influencer activity</div>
+  <h2>Creator partnerships</h2>
+  {{ note('influencers') }}
+  {{ callout('influencers') }}
+  {% if editable and not has_inf %}
+  <p class="muted muted--internal">No influencer data uploaded for this period. This section will not appear in the published report.</p>
+  {% endif %}
+  {% if has_inf %}
+  <div class="panel panel--wide">
+    <h3>Activity this month</h3>
+    <table>
+      <thead><tr><th>Creator</th><th>Platform</th><th>Content</th><th class="num">Reach</th><th class="num">Engagements</th></tr></thead>
+      <tbody>
+        {% for r in inf.rows[:10] %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td>{{ r.platform or '—' }}</td>
+          <td>{% if r.link %}<a href="{{ r.link }}" target="_blank" rel="noopener">{{ (r.content or 'View post')[:90] }}</a>{% else %}{{ (r.content or '—')[:90] }}{% endif %}</td>
+          <td class="num">{{ r.reach | thousands if r.reach is not none else '—' }}</td>
+          <td class="num">{{ r.engagements | thousands if r.engagements is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if inf.rows | length > 10 %}
+    <p class="meta" style="margin-top:12px;">Showing the first 10 of {{ inf.rows | length }} tracked posts.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ================== MISC (free-text custom section) ================== #}
+{% if 'misc' in enabled_sections and (editable or notes.get('misc') or notes.get('callout_misc')) %}
+<div class="section">
+  <div class="slabel">Also this month</div>
+  <h2>{{ client.misc_title or 'Additional notes' }}</h2>
+  {{ note('misc') }}
+  {{ callout('misc') }}
+  {% if editable and not notes.get('misc') %}
+  <p class="muted muted--internal">Free-text section — whatever you write above publishes here. Leave blank and the section is omitted. Rename it in the workspace's Report sections panel.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ================== TECHNICAL SEO (navy chapter band) ================== #}
 </div>
-{% if editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo') %}
+{% if 'technical_seo' in enabled_sections and (editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo')) %}
 <div class="navyband">
 <div class="wrap">
 <div class="section">

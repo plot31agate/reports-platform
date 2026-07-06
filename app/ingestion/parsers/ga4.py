@@ -18,26 +18,74 @@ def parse_ga4(path: Path) -> dict:
     users_col = _find_col(df, ["Users", "Total users", "Active users"])
     sessions_col = _find_col(df, ["Sessions"])
     engaged_col = _find_col(df, ["Engaged sessions"])
+    new_users_col = _find_col(df, ["New users"])
+    duration_col = _find_col(df, ["User engagement duration", "Engagement duration"])
 
     total_users = _sum_col(df, users_col)
     total_sessions = _sum_col(df, sessions_col)
     total_engaged = _sum_col(df, engaged_col)
+    total_new_users = _sum_col(df, new_users_col)
+    total_duration = _sum_col(df, duration_col)
+
+    # Average engagement time per session, from the total-duration column the
+    # API sync writes (UI exports carry per-row averages, which don't sum).
+    avg_engagement_secs = None
+    if total_duration and total_sessions:
+        avg_engagement_secs = round(total_duration / total_sessions)
 
     top_pages = _top_by(df, ["Page path", "Page path and screen class", "Page title and screen class"], users_col or sessions_col, 10)
-    top_sources = _top_by(df, [
+    channel_col = _find_col(df, [
         "Session primary channel group (Default Channel Group)",
         "Session source / medium", "Session source",
         "First user primary channel group (Default Channel Group)",
         "First user source", "Source",
-    ], sessions_col or users_col, 10)
+    ])
+    top_sources = _top_by(df, [channel_col] if channel_col else [], sessions_col or users_col, 10)
 
     return {
         "users": total_users,
         "sessions": total_sessions,
         "engaged_sessions": total_engaged,
+        "new_users": total_new_users,
+        "avg_engagement_secs": avg_engagement_secs,
         "top_pages": top_pages,
         "top_sources": top_sources,
+        "channels": _channel_detail(df, channel_col, sessions_col, engaged_col, new_users_col, duration_col),
     }
+
+
+def _channel_detail(df, channel_col, sessions_col, engaged_col, new_users_col, duration_col):
+    """Per-channel engagement table: sessions, new users, engagement rate,
+    average engagement time. Only rendered when the richer columns exist."""
+    if not channel_col or not sessions_col:
+        return []
+    cols = [c for c in [channel_col, sessions_col, engaged_col, new_users_col, duration_col] if c]
+    try:
+        sub = df[cols].dropna(subset=[channel_col]).copy()
+        for c in cols[1:]:
+            sub[c] = sub[c].astype(str).str.replace(",", "").astype(float)
+        grouped = sub.groupby(channel_col).sum().sort_values(sessions_col, ascending=False)
+    except Exception:
+        return []
+    out = []
+    for name, r in grouped.head(8).iterrows():
+        sessions = r.get(sessions_col) or 0
+        if not str(name).strip() or not sessions:
+            continue
+        row = {"channel": str(name).strip(), "sessions": int(sessions), "new_users": None,
+               "engagement_rate": None, "avg_engagement_secs": None}
+        if new_users_col:
+            row["new_users"] = int(r.get(new_users_col) or 0)
+        if engaged_col:
+            row["engagement_rate"] = round((r.get(engaged_col) or 0) / sessions * 100, 1)
+        if duration_col:
+            row["avg_engagement_secs"] = round((r.get(duration_col) or 0) / sessions)
+        out.append(row)
+    # Rate and time need the richer columns; a bare channel/sessions table
+    # already renders as top_sources, so skip the duplicate.
+    if not (engaged_col or duration_col or new_users_col):
+        return []
+    return out
 
 
 def parse_ga4_geography(path: Path) -> dict:

@@ -159,6 +159,9 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
         "geography": _d("ga4_geography"),
         "search_console": _d("search_console"),
         "linkedin": _d("linkedin_company"),
+        "facebook_instagram": _d("meta_social"),
+        "tiktok": _d("tiktok"),
+        "influencers": _d("influencer_activity"),
         "technical_seo": _d("technical_seo_metrics"),
     }, default=str, indent=2)
 
@@ -187,7 +190,7 @@ Also write the report's editorial framing. This is the part the client's leaders
 - "standfirst": one or two sentences under the headline framing the month's story - the defining development and its strongest number.
 - "notes": an object of section commentaries keyed as below. ALWAYS include "intro". Include the other keys only when the summary above has data for them.
   - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month, connect the threads (how coverage, search, traffic, authority and social relate to each other this month), and close with where the focus goes next. This is the executive summary at the top of the report.
-  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
+  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
 
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 
