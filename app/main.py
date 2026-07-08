@@ -1055,7 +1055,13 @@ def portal_home(request: Request):
             "has_pdf": bool(r.get("pdf_path") and Path(r["pdf_path"]).exists()),
         })
 
-    return _render("portal/home.html", client=client, user=user, reports=reports)
+    documents = [
+        {**d, "updated_display": d["updated"].strftime("%b %Y")}
+        for d in list_client_documents(slug)
+    ]
+
+    return _render("portal/home.html", client=client, user=user,
+                   reports=reports, documents=documents)
 
 
 @app.get("/portal/report/{period}", response_class=HTMLResponse)
@@ -1089,6 +1095,54 @@ def portal_logout():
     resp = RedirectResponse("/portal", status_code=302)
     resp.delete_cookie(PORTAL_COOKIE_NAME)
     return resp
+
+
+_DOC_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _doc_title(html: str, fallback: str) -> str:
+    """Pull the <title> out of a document, falling back to a prettified filename."""
+    m = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    if m and m.group(1).strip():
+        return re.sub(r"\s+", " ", m.group(1)).strip()
+    return fallback.replace("-", " ").replace("_", " ").title()
+
+
+def list_client_documents(slug: str) -> list:
+    """Curated documents for a client, newest first. Scans client_docs/<slug>/*.html."""
+    doc_dir = settings.client_docs_dir / slug
+    if not doc_dir.is_dir():
+        return []
+    docs = []
+    for path in doc_dir.glob("*.html"):
+        try:
+            html = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        docs.append({
+            "name": path.stem,
+            "title": _doc_title(html, path.stem),
+            "updated": datetime.fromtimestamp(path.stat().st_mtime),
+        })
+    docs.sort(key=lambda d: d["updated"], reverse=True)
+    return docs
+
+
+def _resolve_document(slug: str, name: str) -> Path:
+    """Validate a document name and return its path, or raise 404."""
+    if not _DOC_NAME_RE.match(name):
+        raise HTTPException(status_code=404, detail="Document not found")
+    path = settings.client_docs_dir / slug / f"{name}.html"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Document not found")
+    return path
+
+
+@app.get("/d/{slug}/{name}", response_class=HTMLResponse)
+def client_document(slug: str, name: str):
+    """Public, shareable link to a curated client document (no auth)."""
+    path = _resolve_document(slug, name)
+    return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
 def _period_display_safe(period: str) -> str:

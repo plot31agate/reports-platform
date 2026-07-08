@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sportingtech — PR Campaign Calendar</title>
+<style>
+  :root{
+    --coral:#EE5B45;
+    --mint:#4FD8A6;
+    --ink:#0A0A0A;
+    --grey:#5F6469;
+    --line:#E2E4E7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#EDEEF0;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+
+  .stage{display:grid;place-items:center;min-height:100vh;padding:20px}
+  .fit{position:relative}
+  .slide{
+    position:absolute;top:0;left:0;transform-origin:top left;
+    width:1600px;height:900px;background:#fff;color:var(--ink);
+    display:flex;flex-direction:column;overflow:hidden;
+    padding:38px 52px 24px;
+    box-shadow:0 20px 60px rgba(0,0,0,.16);
+  }
+
+  /* HEADER */
+  .head{display:flex;align-items:flex-start;justify-content:space-between;flex:none}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:30px;height:30px;background:var(--mint);clip-path:polygon(50% 0,100% 27%,100% 73%,50% 100%,0 73%,0 27%);position:relative}
+  .mark::after{content:"";position:absolute;inset:8px;background:#fff;clip-path:polygon(50% 0,100% 27%,100% 73%,50% 100%,0 73%,0 27%)}
+  .wordmark{font-weight:900;font-size:23px;letter-spacing:.02em;text-transform:uppercase}
+  .wordmark em{font-style:normal;color:var(--mint)}
+  .prepared{text-align:right;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--grey);line-height:1.9}
+  .prepared b{color:var(--ink);font-weight:800}
+
+  /* TITLE */
+  .title{display:flex;align-items:flex-end;gap:24px;flex:none;padding:24px 0 20px}
+  .eyebrow{display:flex;align-items:center;gap:14px;font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--coral);font-weight:800;margin-bottom:12px}
+  .eyebrow .rule{height:2px;width:46px;background:var(--mint)}
+  h1{font-size:46px;line-height:.94;font-weight:900;letter-spacing:-.02em;text-transform:uppercase;transform:skewX(-6deg);transform-origin:left bottom}
+  h1 .hi{color:var(--coral)}
+  .range{margin-left:auto;text-align:right;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--grey);font-weight:800;padding-bottom:6px;white-space:nowrap}
+
+  /* GRID */
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex:1;min-height:0}
+  .col{border:1px solid var(--line);border-top:5px solid var(--mint);display:flex;flex-direction:column;overflow:hidden}
+  .col--hero{background:#FBF4F2;border-color:#EFD9D3;border-top-color:var(--coral)}
+  .col--hero .row{border-color:#EFD9D3}
+  .col--hero .qhead{border-color:#EFD9D3}
+  .col--hero .flag{background:var(--coral);color:#fff}
+
+  .qhead{padding:16px 18px 14px;border-bottom:1px solid var(--line);flex:none}
+  .qname{font-size:22px;font-weight:900;letter-spacing:-.01em;text-transform:uppercase;line-height:1}
+  .qmonths{margin-top:6px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--grey);font-weight:800}
+  .qtheme{margin-top:10px;font-size:11.5px;font-weight:800;color:var(--coral);line-height:1.3;text-transform:uppercase;letter-spacing:.03em}
+
+  .row{padding:14px 18px;border-bottom:1px solid var(--line);flex:1;min-height:0}
+  .row:last-child{border-bottom:none}
+  .month{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--coral);font-weight:800}
+  .camp{margin-top:5px;font-size:16px;font-weight:800;line-height:1.2;letter-spacing:-.01em}
+  .detail{margin-top:6px;font-size:12.5px;line-height:1.45;color:var(--grey)}
+  .flag{display:inline-block;margin-top:8px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;font-weight:900;padding:4px 8px;background:var(--mint);color:var(--ink)}
+
+  /* ALWAYS ON */
+  .always{display:flex;margin-top:12px;flex:none;border:1px solid var(--line)}
+  .always__label{
+    padding:0 20px;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;font-weight:900;
+    background:var(--ink);color:var(--mint);display:grid;place-items:center;white-space:nowrap;
+  }
+  .always__items{display:grid;grid-template-columns:repeat(4,1fr);flex:1;background:var(--mint)}
+  .aitem{padding:13px 18px;border-left:1px solid rgba(0,0,0,.16)}
+  .aitem:first-child{border-left:none}
+  .aitem b{display:block;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.02em;color:var(--ink)}
+  .aitem span{display:block;margin-top:3px;font-size:11.5px;line-height:1.38;color:rgba(0,0,0,.72)}
+
+  .foot{display:flex;justify-content:space-between;flex:none;padding-top:14px;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#9AA0A6;font-weight:800}
+
+  @media print{
+    @page{size:1600px 900px;margin:0}
+    html,body{background:#fff}
+    .stage{padding:0;min-height:auto;display:block}
+    .fit{width:1600px!important;height:900px!important}
+    .slide{transform:none!important;box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+<div class="fit">
+<div class="slide">
+
+  <div class="head">
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="wordmark">Sporting<em>tech</em></div>
+    </div>
+    <div class="prepared">
+      Prepared for <b>Sportingtech</b><br>
+      By Digital Footprints
+    </div>
+  </div>
+
+  <div class="title">
+    <div>
+      <div class="eyebrow"><span>PR Campaign Calendar</span><span class="rule"></span></div>
+      <h1>Twelve months of<br><span class="hi">earned authority</span></h1>
+    </div>
+    <div class="range">Q3 2026 &nbsp;—&nbsp; Q2 2027</div>
+  </div>
+
+  <div class="grid">
+
+    <div class="col">
+      <div class="qhead">
+        <div class="qname">Q3 2026</div>
+        <div class="qmonths">Jul · Aug · Sep</div>
+        <div class="qtheme">Positioning &amp; the event stage</div>
+      </div>
+      <div class="row">
+        <div class="month">August</div>
+        <div class="camp">People-Powered: The Human Edge in iGaming</div>
+        <div class="detail">Brand positioning launch. CEO thought leadership, executive interviews, customer stories, LinkedIn and podcasts.</div>
+      </div>
+      <div class="row">
+        <div class="month">Aug – Sep</div>
+        <div class="camp">The Partnership Gap Report</div>
+        <div class="detail">Survey design, panel recruitment and fieldwork. No publication this quarter.</div>
+        <span class="flag">Fieldwork</span>
+      </div>
+      <div class="row">
+        <div class="month">September</div>
+        <div class="camp">Own the Narrative: SBC Summit</div>
+        <div class="detail">Product and technology angle. Media briefings, speaker interviews, live coverage, reactive PR.</div>
+      </div>
+    </div>
+
+    <div class="col col--hero">
+      <div class="qhead">
+        <div class="qname">Q4 2026</div>
+        <div class="qmonths">Oct · Nov · Dec</div>
+        <div class="qtheme">Proprietary research</div>
+      </div>
+      <div class="row">
+        <div class="month">October</div>
+        <div class="camp">Pre-launch build</div>
+        <div class="detail">Analysis, report design, embargoed briefings, infographics and webinar scheduling.</div>
+      </div>
+      <div class="row">
+        <div class="month">November</div>
+        <div class="camp">The Partnership Gap Report</div>
+        <div class="detail">Publication. Flagship earned-media asset with an annual refresh cadence. Exclusives, downloadable report, webinar.</div>
+        <span class="flag">Hero moment</span>
+      </div>
+      <div class="row">
+        <div class="month">Nov – Dec</div>
+        <div class="camp">LATAM media programme</div>
+        <div class="detail">Regional relations built on the report's LATAM findings. Spanish and Portuguese summaries.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="qhead">
+        <div class="qname">Q1 2027</div>
+        <div class="qmonths">Jan · Feb · Mar</div>
+        <div class="qtheme">Global stage</div>
+      </div>
+      <div class="row">
+        <div class="month">January</div>
+        <div class="camp">Own the Narrative: ICE Barcelona</div>
+        <div class="detail">Research and data angle, hooked on the November report. Leadership interviews, media meetings, customer announcements.</div>
+      </div>
+      <div class="row">
+        <div class="month">February</div>
+        <div class="camp">Post-event follow-through</div>
+        <div class="detail">Trends report, follow-up bylines with titles met at ICE, customer announcement pipeline.</div>
+      </div>
+      <div class="row">
+        <div class="month">March</div>
+        <div class="camp">Report refresh: regional cut</div>
+        <div class="detail">A LATAM slice of the November dataset, released as its own story.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="qhead">
+        <div class="qname">Q2 2027</div>
+        <div class="qmonths">Apr · May · Jun</div>
+        <div class="qtheme">Proof &amp; compounding</div>
+      </div>
+      <div class="row">
+        <div class="month">April</div>
+        <div class="camp">Customer proof programme</div>
+        <div class="detail">Named operator case studies with outcome data. Customer video, joint releases, reference programme.</div>
+      </div>
+      <div class="row">
+        <div class="month">May</div>
+        <div class="camp">LATAM regional campaign</div>
+        <div class="detail">Full regional push on the Q4 groundwork. Trade coverage, local executive visibility, event presence.</div>
+      </div>
+      <div class="row">
+        <div class="month">June</div>
+        <div class="camp">Mid-year benchmark</div>
+        <div class="detail">Twelve-month review against baseline. Survey design begins for the next edition.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="always">
+    <div class="always__label">Always-on</div>
+    <div class="always__items">
+      <div class="aitem"><b>PR for Search</b><span>High-authority backlinks, long-form thought leadership, executive bylines.</span></div>
+      <div class="aitem"><b>Executive visibility</b><span>Product, regulatory and market-entry narratives. 2–3 placements a month.</span></div>
+      <div class="aitem"><b>AI search visibility</b><span>How often Sportingtech is named and cited in AI-generated answers.</span></div>
+      <div class="aitem"><b>Performance</b><span>Share of voice, backlinks, competitor tracking, LATAM traction.</span></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>Sportingtech · PR Campaign Calendar · Confidential</span>
+    <span>Built to handle the pressure</span>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+  const slide = document.querySelector('.slide');
+  const fit = document.querySelector('.fit');
+  function scale(){
+    const pad = 40;
+    const s = Math.min((window.innerWidth - pad) / 1600, (window.innerHeight - pad) / 900);
+    slide.style.transform = 'scale(' + s + ')';
+    fit.style.width = (1600 * s) + 'px';
+    fit.style.height = (900 * s) + 'px';
+  }
+  scale();
+  window.addEventListener('resize', scale);
+</script>
+</body>
+</html>

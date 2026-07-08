@@ -68,6 +68,23 @@
     padding: 44px 24px; text-align: center; color: #888; font-size: 14px;
   }
 
+  .docs { max-width: 860px; margin: 0 auto; padding: 8px 28px 0; }
+  .docs h2 { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #888; margin: 0 0 14px; }
+  .doc {
+    background: #fff; border: 1px solid rgba(0,0,0,0.08); border-radius: 14px;
+    padding: 20px 24px; margin-bottom: 14px; display: flex; gap: 18px; align-items: center;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+  .doc:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.09); transform: translateY(-1px); }
+  .doc__icon {
+    flex: none; width: 46px; height: 46px; border-radius: 10px; background: var(--hero);
+    color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 18px;
+  }
+  .doc__body { min-width: 0; flex: 1; }
+  .doc__title { font-weight: 700; font-size: 16px; color: #1a1a1a; }
+  .doc__meta { font-size: 13px; color: #999; margin-top: 3px; }
+  .doc__actions { flex: none; }
+
   .foot { text-align: center; padding: 0 28px 40px; font-size: 11px; color: #aaa; }
   .foot img { width: 120px; opacity: 0.5; display: block; margin: 10px auto 0; }
 
@@ -94,6 +111,24 @@
       <p>Your PR &amp; growth reporting, prepared by Digital Footprints.</p>
     </div>
   </div>
+
+  {% if documents %}
+  <div class="docs">
+    <h2>Documents</h2>
+    {% for d in documents %}
+    <div class="doc">
+      <div class="doc__icon">{{ d.title[0] | upper }}</div>
+      <div class="doc__body">
+        <div class="doc__title">{{ d.title }}</div>
+        <div class="doc__meta">Updated {{ d.updated_display }}</div>
+      </div>
+      <div class="doc__actions">
+        <a class="btn btn--view" href="/d/{{ client.slug }}/{{ d.name }}" target="_blank" rel="noopener">Open</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div class="list">
     <h2>{{ reports | length }} report{{ 's' if reports | length != 1 }}</h2>

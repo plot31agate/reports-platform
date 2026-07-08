@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path(__file__).parent.parent / "data"
     reports_out_dir: Path = Path(__file__).parent.parent / "reports_out"
+    # Curated per-client documents (slides, decks, one-pagers). Tracked in git and
+    # shipped with deploys, unlike generated reports_out. One subdir per client slug.
+    client_docs_dir: Path = Path(__file__).parent.parent / "client_docs"
     db_path: Path = Path(__file__).parent.parent / "reporting.db"
 
     class Config:
@@ -36,3 +39,4 @@ settings = Settings()
 # Ensure runtime dirs exist
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.reports_out_dir.mkdir(parents=True, exist_ok=True)
+settings.client_docs_dir.mkdir(parents=True, exist_ok=True)
