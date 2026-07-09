@@ -413,7 +413,10 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
             connected_sources[source_key] = {
                 "provider": provider,
                 "label": connectors.get_def(provider)["label"],
-                "status": conns[provider].get("status"),
+                # A provider can be pickable on the agency key alone (Serper
+                # mentions needs no per-client field), so there may be no
+                # client connection row - don't assume conns[provider] exists.
+                "status": (conns.get(provider) or {}).get("status"),
             }
     # Only show source cards for the sections this client's report includes.
     client_sources = enabled_source_keys(client_config)
