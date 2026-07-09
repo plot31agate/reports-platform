@@ -212,10 +212,7 @@ def _framing_blank(row: dict | None) -> bool:
         return False
     if (row.get("standfirst") or "").strip():
         return False
-    try:
-        notes = json.loads(row.get("notes_json") or "{}")
-    except (ValueError, TypeError):
-        notes = {}
+    notes = _dict(_loads(row.get("notes_json")))
     return not any(v.strip() for v in notes.values() if isinstance(v, str))
 
 
@@ -223,11 +220,24 @@ def _has_intro(row: dict | None) -> bool:
     """True when the commentary already carries an executive-summary intro."""
     if row is None:
         return False
+    intro = _dict(_loads(row.get("notes_json"))).get("intro")
+    return bool(intro.strip()) if isinstance(intro, str) else False
+
+
+def _loads(raw):
     try:
-        notes = json.loads(row.get("notes_json") or "{}")
+        return json.loads(raw) if raw else None
     except (ValueError, TypeError):
-        return False
-    return bool((notes.get("intro") or "").strip())
+        return None
+
+
+def _dict(v):
+    """Coerce to a dict - Claude output and stored JSON are trusted loosely."""
+    return v if isinstance(v, dict) else {}
+
+
+def _str(v):
+    return v.strip() if isinstance(v, str) else ""
 
 
 def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict | None) -> dict:
@@ -238,40 +248,35 @@ def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict 
     pre-written. On later builds, fresh synthesis fills only fields the
     operator has left blank - saved edits always win.
     """
-    content = synth_content or {}
+    content = _dict(synth_content)
+    seed_notes = {k: v for k, v in _dict(content.get("notes")).items() if isinstance(v, str) and v.strip()}
     seed_actions = {k: content[k] for k in ACTION_BUCKETS if content.get(k)} or None
 
     row = get_commentary(client_slug, period)
     if row is None:
         upsert_commentary(
             client_slug, period,
-            headline=(content.get("headline") or "Performance Report").strip(),
-            standfirst=(content.get("standfirst") or "").strip(),
-            notes_json=json.dumps(content.get("notes") or {}),
+            headline=_str(content.get("headline")) or "Performance Report",
+            standfirst=_str(content.get("standfirst")),
+            notes_json=json.dumps(seed_notes),
             actions_json=json.dumps(seed_actions) if seed_actions else None,
         )
         row = get_commentary(client_slug, period)
     elif content:
-        headline = (row.get("headline") or "").strip()
-        standfirst = (row.get("standfirst") or "").strip()
-        try:
-            notes = json.loads(row.get("notes_json") or "{}")
-        except (ValueError, TypeError):
-            notes = {}
-        try:
-            actions = json.loads(row["actions_json"]) if row.get("actions_json") else None
-        except (ValueError, TypeError):
-            actions = None
+        headline = _str(row.get("headline"))
+        standfirst = _str(row.get("standfirst"))
+        notes = _dict(_loads(row.get("notes_json")))
+        actions = _loads(row.get("actions_json"))
 
         changed = False
-        if headline in ("", "Performance Report") and (content.get("headline") or "").strip():
-            headline = content["headline"].strip()
+        if headline in ("", "Performance Report") and _str(content.get("headline")):
+            headline = _str(content["headline"])
             changed = True
-        if not standfirst and (content.get("standfirst") or "").strip():
-            standfirst = content["standfirst"].strip()
+        if not standfirst and _str(content.get("standfirst")):
+            standfirst = _str(content["standfirst"])
             changed = True
-        for key, val in (content.get("notes") or {}).items():
-            if isinstance(val, str) and val.strip() and not (notes.get(key) or "").strip():
+        for key, val in _dict(content.get("notes")).items():
+            if isinstance(val, str) and val.strip() and not _str(notes.get(key)):
                 notes[key] = val.strip()
                 changed = True
         if not actions and seed_actions:
@@ -291,8 +296,8 @@ def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict 
     return {
         "headline": row.get("headline") or "Performance Report",
         "standfirst": row.get("standfirst") or "",
-        "notes": json.loads(row["notes_json"]) if row.get("notes_json") else {},
-        "actions": json.loads(row["actions_json"]) if row.get("actions_json") else None,
+        "notes": _dict(_loads(row.get("notes_json"))),
+        "actions": _loads(row.get("actions_json")),
     }
 
 
