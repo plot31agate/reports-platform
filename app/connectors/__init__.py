@@ -11,7 +11,7 @@ format the matching ingestion parser already understands, into the same
 data/{client}/{period}/ folder an upload would land in. Everything downstream
 (checklist, build, report) is identical for synced and uploaded data.
 """
-from app.connectors import ahrefs, google, meta
+from app.connectors import ahrefs, google, meta, serper
 
 
 # Drives the Agency API keys page, the per-client workspace panel, and the
@@ -115,9 +115,35 @@ CONNECTOR_DEFS = [
             "Then per client, set the Facebook Page ID (and Instagram account ID if used) on their Meta card in the workspace",
         ],
     },
+    {
+        "provider": "serper",
+        "label": "Serper — Google News mentions",
+        "sources": ["mentions"],
+        # A client can sync once it has an agency key; queries fall back to the
+        # client's brand name + executives, so no per-client field is strictly
+        # required to light the Sync button.
+        "requires": {
+            "mentions": [],
+        },
+        "blurb": "Pulls media mentions from Google News by search query - the brand name plus executive and product names - and writes the same mentions CSV as Google Alerts. One API key covers every client. RSS Auto-fetch and manual upload still work as alternatives.",
+        "agency_fields": [
+            {"key": "api_key", "label": "API key", "type": "password", "secret": True},
+        ],
+        "client_fields": [
+            {"key": "mention_queries", "label": "Search queries", "type": "textarea",
+             "placeholder": "One phrase per line, e.g.\nMindway AI\n\"GameScanner\"\nRasmus Kjaergaard",
+             "hint": "One search phrase per line - brand, product and executive names. Wrap exact phrases in quotes. Leave blank to use the client's brand name and tracked executives automatically."},
+        ],
+        "key_help": [
+            "Go to serper.dev and sign up (2,500 free searches, then pay as you go)",
+            "Open the Dashboard - your API key is shown at the top",
+            "Copy the key and paste it here",
+            "Serper bills per search; each client sync runs one search per configured query",
+        ],
+    },
 ]
 
-_MODULES = {"ahrefs": ahrefs, "google": google, "meta": meta}
+_MODULES = {"ahrefs": ahrefs, "google": google, "meta": meta, "serper": serper}
 
 # source_key -> providers that can feed it, in preference order (defs order).
 # Every source currently has exactly one provider; search_console is Ahrefs

@@ -677,7 +677,17 @@ def _parse_config(row) -> dict:
 def _merged_config(provider: str, client_slug: str) -> dict:
     agency = _parse_config(get_agency_credential(provider))
     client = _parse_config(get_connection(client_slug, provider))
-    return {**agency, **client}
+    merged = {**agency, **client}
+    # Client identity, for connectors that build queries from it (e.g. Serper
+    # mentions falls back to the brand name + tracked executives). Underscored
+    # so they never collide with a real connection field.
+    try:
+        cc = get_client(client_slug)
+        merged["_display_name"] = cc.get("display_name")
+        merged["_executives"] = cc.get("executives") or []
+    except KeyError:
+        pass
+    return merged
 
 
 def _masked_connection_view(conn_row, cdef, agency_row) -> dict:
