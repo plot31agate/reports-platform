@@ -447,7 +447,20 @@
 .ws-grid {
   display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start;
 }
-.ws-rail { display: flex; flex-direction: column; gap: 18px; }
+.ws-rail { display: flex; flex-direction: column; gap: 18px; order: 2; }
+
+/* Client setup: the configure-once panels, a full-width row below the
+   monthly data | deliver row. CSS order keeps the data column and rail on
+   row 1, so this spans row 2 despite sitting mid-DOM. */
+.ws-setup { grid-column: 1 / -1; order: 3; margin-top: 6px; }
+.ws-setup__head { display: flex; align-items: baseline; gap: 10px; margin: 6px 2px 12px; }
+.ws-setup__head h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+.ws-setup__head span { font-size: 12px; color: var(--grey-600); }
+.ws-setup__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.ws-setup .ws-connections { margin-top: 0; }
+/* The API-connections panel holds a card grid, so let it span both columns. */
+.ws-setup #connections { grid-column: 1 / -1; }
+@media (max-width: 1024px) { .ws-setup__grid { grid-template-columns: 1fr; } }
 
 .panel__head h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
 .panel__head { align-items: center; justify-content: space-between; }

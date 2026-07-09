@@ -85,6 +85,15 @@
         <button class="chip-link" type="button" onclick="clearUploads()">Clear all uploads for this month</button>
       </div>
     </div>
+  </div>
+
+  <!-- ============ CLIENT SETUP: configure once per client (full-width row below) ============ -->
+  <div class="ws-setup">
+    <div class="ws-setup__head">
+      <h2>Client setup</h2>
+      <span>Configure once per client — not every month</span>
+    </div>
+    <div class="ws-setup__grid">
 
     <!-- API connections: per-client settings; the shared keys live on /admin/keys -->
     <details class="panel ws-connections" id="connections">
@@ -251,6 +260,7 @@
         </div>
       </form>
     </details>
+    </div>
   </div>
 
   <!-- ============ RIGHT: BUILD & DELIVER ============ -->
