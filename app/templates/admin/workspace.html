@@ -193,8 +193,17 @@
         <input type="hidden" name="period" value="{{ period }}">
 
         <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin-bottom:6px;">Sentiment brief</label>
-        <p class="ws-hint" style="margin:0 0 8px;">Claude scores every mention's tone against this, from {{ client.display_name }}'s commercial perspective. Say what counts as positive, negative and neutral for this specific business.{% if not sentiment_is_custom %} The text below is the generic fallback — replace it.{% endif %}</p>
-        <textarea name="sentiment_context" rows="7" spellcheck="true"
+        <p class="ws-hint" style="margin:0 0 8px;">Claude scores every mention's tone against this, from {{ client.display_name }}'s commercial perspective. You don't have to write it by hand — describe the client in a sentence below and let Claude draft it, then tweak.{% if not sentiment_is_custom %} The text in the box is the generic fallback — replace it.{% endif %}</p>
+
+        <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:wrap;">
+          <input type="text" id="brief-desc" placeholder="What does {{ client.display_name }} do, and who are its customers? e.g. AI-based responsible-gambling tools sold to online betting operators"
+                 style="flex:1 1 340px;min-width:0;font-size:13px;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;">
+          <button type="button" class="button button--ghost button--sm" id="brief-draft-btn"
+                  onclick="draftSentimentBrief('{{ selected_client }}')">Draft with AI</button>
+        </div>
+        <div id="brief-draft-status" class="ws-hint" style="margin:0 0 8px;display:none;"></div>
+
+        <textarea name="sentiment_context" id="sentiment-context" rows="7" spellcheck="true"
                   style="width:100%;font-size:13px;line-height:1.6;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;">{{ client.sentiment_context }}</textarea>
 
         <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin:16px 0 6px;">Tracked executives</label>
@@ -331,6 +340,32 @@
 </div>
 
 <script>
+// Draft the sentiment brief with Claude from the one-line description.
+function draftSentimentBrief(clientSlug) {
+  var btn = document.getElementById('brief-draft-btn');
+  var status = document.getElementById('brief-draft-status');
+  var desc = document.getElementById('brief-desc');
+  var box = document.getElementById('sentiment-context');
+  status.style.display = 'block';
+  status.style.color = '';
+  status.textContent = 'Drafting with Claude...';
+  btn.disabled = true;
+  var body = new URLSearchParams({ client_slug: clientSlug, description: desc.value || '' });
+  fetch('/admin/sentiment-brief/draft', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+    .then(function(res) {
+      if (!res.ok || !res.j.brief) {
+        status.style.color = '#b3324b';
+        status.textContent = res.j.error || 'Draft failed — try again.';
+        return;
+      }
+      box.value = res.j.brief;
+      status.style.color = '#157a52';
+      status.textContent = 'Draft ready — review and edit, then Save.';
+    })
+    .catch(function() { status.style.color = '#b3324b'; status.textContent = 'Network error — try again.'; })
+    .finally(function() { btn.disabled = false; });
+}
 (function() {
   var CLIENT = {{ selected_client | tojson }};
   var PERIOD = {{ period | tojson }};

@@ -916,6 +916,28 @@ async def admin_mention_feeds_save(request: Request):
     return RedirectResponse(f"{back}&message=Saved+{len(urls)}+mention+feed{'s' if len(urls) != 1 else ''}", status_code=302)
 
 
+@app.post("/admin/sentiment-brief/draft")
+async def admin_sentiment_brief_draft(request: Request):
+    """Draft a sentiment brief with Claude from a one-line description.
+    Returns JSON {brief} so the workspace can fill the textarea in place."""
+    _require_admin_or_redirect(request)
+    from app.sentiment import draft_sentiment_brief
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    description = (form.get("description") or "").strip()
+    try:
+        cfg = get_client(client_slug)
+    except KeyError:
+        return JSONResponse({"error": "Unknown client"}, status_code=400)
+
+    result = draft_sentiment_brief(cfg.get("display_name") or client_slug, description, cfg.get("competitors"))
+    if not result.get("configured"):
+        return JSONResponse({"error": "Claude API is not configured (ANTHROPIC_API_KEY)."}, status_code=400)
+    if not result.get("brief"):
+        return JSONResponse({"error": (result.get("error") or "Draft failed")[:200]}, status_code=502)
+    return JSONResponse({"brief": result["brief"]})
+
+
 @app.post("/admin/sentiment-brief/save")
 async def admin_sentiment_brief_save(request: Request):
     """Save the client's sentiment brief and tracked executive list. The brief

@@ -136,6 +136,43 @@ def classify_mentions(
     }
 
 
+def draft_sentiment_brief(display_name: str, description: str, competitors: list | None = None) -> dict:
+    """Write a per-client sentiment brief from a one-line description.
+
+    Returns {"configured": bool, "brief": str|None, "error": str|None}.
+    The brief is the context classify_mention scores each mention against,
+    so an operator never has to hand-write the pos/neg/neutral rules.
+    """
+    client = _client()
+    if not client:
+        return {"configured": False, "brief": None, "error": None}
+
+    comp = ", ".join(competitors) if competitors else "none provided"
+    prompt = f"""Write a sentiment-scoring brief for media monitoring of a company called "{display_name}".
+
+What the company does (from the operator): {description or "not specified"}
+Known competitors: {comp}
+
+The brief is read by an AI that scores each news mention of the company as POSITIVE, NEGATIVE or NEUTRAL from the company's own commercial perspective. Write instructions that make those calls correctly for THIS company, including any cases where the obvious reading is wrong (for example, a company whose product addresses a problem may benefit commercially when coverage of that problem increases).
+
+Structure the brief as:
+- One sentence naming the company, what it does, and who its customers are.
+- "Score sentiment from {display_name}'s commercial perspective:" then three short paragraphs or bullet groups for POSITIVE, NEGATIVE and NEUTRAL, each naming the concrete kinds of story that belong there for this specific business.
+- A final sentence on any counter-intuitive cases worth getting right.
+
+Write only the brief itself, no preamble, no headings, no markdown. 120-200 words. Use plain hyphens and commas, never em dashes."""
+
+    try:
+        resp = client.messages.create(
+            model=settings.claude_model_synthesis,
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return {"configured": True, "brief": resp.content[0].text.strip(), "error": None}
+    except Exception as e:
+        return {"configured": True, "brief": None, "error": str(e)}
+
+
 def synthesise_actions(report_data: dict, client_config: dict) -> dict:
     """Generate 'next month's actions' by passing the assembled report data to Claude."""
     client = _client()
