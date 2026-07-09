@@ -141,7 +141,12 @@
             {% for f in card.fields %}
             <div class="field">
               <label>{{ f.label }}</label>
+              {% if f.type == 'textarea' %}
+              <textarea name="{{ f.key }}" rows="4" placeholder="{{ f.placeholder or '' }}"
+                        style="width:100%;font-family:inherit;font-size:13px;line-height:1.6;resize:vertical;">{{ f.value }}</textarea>
+              {% else %}
               <input type="text" name="{{ f.key }}" value="{{ f.value }}" placeholder="{{ f.placeholder or '' }}">
+              {% endif %}
               {% if f.hint %}<div class="field__hint">{{ f.hint }}</div>{% endif %}
             </div>
             {% endfor %}
