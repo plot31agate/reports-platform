@@ -8,7 +8,12 @@ User=wwwdfootdigi
 Group=wwwdfootdigi
 WorkingDirectory=/home/wwwdfootdigi/apps/reporting
 EnvironmentFile=/home/wwwdfootdigi/apps/reporting/.env
-ExecStart=/home/wwwdfootdigi/apps/reporting/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+# --reload makes FTP deploys go live on their own: uvicorn watches the app
+# package and reloads when a .py file changes, so a flaky restart webhook
+# can't leave stale code running. --reload-dir is scoped to app/ on purpose -
+# a bare --reload would also watch data/ and reports_out/, which change on
+# every build and would trigger constant reload storms.
+ExecStart=/home/wwwdfootdigi/apps/reporting/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload --reload-dir /home/wwwdfootdigi/apps/reporting/app
 Restart=on-failure
 RestartSec=5
 
