@@ -105,8 +105,11 @@ def _parse_date(raw: str):
 def _post(config, query, tbs=None):
     """POST one query to Serper News. Returns (news_list, tbs_applied).
 
-    Free accounts reject the tbs date filter - on that specific 400 we retry
-    without it and tell the caller (tbs_applied=False) so it filters by date.
+    Free Serper accounts reject "query patterns" - both the tbs date filter
+    and advanced query operators like quoted exact-match phrases. On that 400
+    we retry with the offending pattern removed: strip quotes first (keeps the
+    date scoping when possible), then drop tbs. Paid keys never hit these
+    branches. tbs_applied tells the caller whether date scoping survived.
     """
     requests = _requests()
     key = _api_key(config)
@@ -121,16 +124,26 @@ def _post(config, query, tbs=None):
         except Exception as e:
             raise ConnectorError(f"Could not reach Serper: {e}")
 
+    def _blocked(r):
+        return r.status_code == 400 and (
+            "free account" in r.text.lower() or "query pattern" in r.text.lower()
+        )
+
     payload = {"q": query, "num": RESULTS_PER_QUERY, "gl": "us", "hl": "en"}
     if tbs:
         payload["tbs"] = tbs
     resp = _do(payload)
     tbs_applied = bool(tbs)
 
-    if resp.status_code == 400 and tbs and "free account" in resp.text.lower():
-        payload.pop("tbs", None)
+    # 1. Drop quote operators (exact-match) - free tier rejects them.
+    if _blocked(resp) and '"' in payload["q"]:
+        payload["q"] = payload["q"].replace('"', "").strip()
         resp = _do(payload)
+    # 2. Still blocked? Drop the date filter and scope by date in code.
+    if _blocked(resp) and payload.get("tbs"):
+        payload.pop("tbs", None)
         tbs_applied = False
+        resp = _do(payload)
 
     if resp.status_code in (401, 403):
         raise ConnectorError("Serper rejected the API key (401/403) - check it on the API keys page")
@@ -180,9 +193,15 @@ def sync(config, source_key, dest, period):
     hi = datetime.strptime(end, "%Y-%m-%d").date()
     tbs = _tbs(period)
 
-    seen, rows, dropped = set(), [], 0
+    seen, rows, dropped, failed = set(), [], 0, []
     for q in queries:
-        news, tbs_applied = _post(config, q, tbs)
+        # One query failing (e.g. an operator the plan rejects) must not sink
+        # the others - skip it and keep going.
+        try:
+            news, tbs_applied = _post(config, q, tbs)
+        except ConnectorError as e:
+            failed.append((q, str(e)))
+            continue
         for item in news:
             url = (item.get("link") or "").strip()
             title = (item.get("title") or "").strip()
@@ -213,6 +232,15 @@ def sync(config, source_key, dest, period):
                 (item.get("snippet") or "").strip()[:300],
             ])
 
+    # Only error out if every query failed - otherwise write what we got.
+    if failed and len(failed) == len(queries):
+        raise ConnectorError(failed[0][1])
+
     rows.sort(key=lambda r: r[0])
     write_csv(dest, ["date", "source", "title", "url", "snippet"], rows)
-    return {"rows": len(rows), "queries": len(queries), "dropped_out_of_period": dropped}
+    return {
+        "rows": len(rows),
+        "queries": len(queries),
+        "failed": len(failed),
+        "dropped_out_of_period": dropped,
+    }
