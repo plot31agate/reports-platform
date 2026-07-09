@@ -179,6 +179,36 @@
       </form>
     </details>
 
+    <!-- Sentiment brief + executives: how mentions are scored and who is tracked -->
+    {% set execs = client.executives or [] %}
+    <details class="panel ws-connections" id="sentiment-brief">
+      <summary>
+        <span class="ws-connections__title">Sentiment brief &amp; executives</span>
+        <span class="ws-connections__sub">
+          {% if sentiment_is_custom %}Custom brief set{% else %}Using the generic default — write a brief tuned to {{ client.display_name }}{% endif %} · {{ execs | length }} executive{{ 's' if execs | length != 1 }} tracked
+        </span>
+      </summary>
+      <form method="post" action="/admin/sentiment-brief/save">
+        <input type="hidden" name="client_slug" value="{{ selected_client }}">
+        <input type="hidden" name="period" value="{{ period }}">
+
+        <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin-bottom:6px;">Sentiment brief</label>
+        <p class="ws-hint" style="margin:0 0 8px;">Claude scores every mention's tone against this, from {{ client.display_name }}'s commercial perspective. Say what counts as positive, negative and neutral for this specific business.{% if not sentiment_is_custom %} The text below is the generic fallback — replace it.{% endif %}</p>
+        <textarea name="sentiment_context" rows="7" spellcheck="true"
+                  style="width:100%;font-size:13px;line-height:1.6;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;">{{ client.sentiment_context }}</textarea>
+
+        <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin:16px 0 6px;">Tracked executives</label>
+        <p class="ws-hint" style="margin:0 0 8px;">One name per line. Coverage is scanned for these names to build the executive-visibility section.</p>
+        <textarea name="executives" rows="{{ [execs | length + 1, 4] | max }}" spellcheck="false"
+                  style="width:100%;font-family:monospace;font-size:12px;line-height:1.7;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;"
+                  placeholder="One name per line, e.g.&#10;Jane Smith&#10;John Doe">{{ execs | join('\n') }}</textarea>
+
+        <div style="margin-top:10px;">
+          <button class="button button--primary button--sm" type="submit">Save brief &amp; executives</button>
+        </div>
+      </form>
+    </details>
+
     <!-- Report sections: which inputs and report sections this client gets -->
     <details class="panel ws-connections" id="report-sections">
       <summary>

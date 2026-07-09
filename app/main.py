@@ -376,6 +376,13 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
     period = period if period and re.match(r"^\d{4}-\d{2}$", period) else datetime.utcnow().strftime("%Y-%m")
 
     client_config = get_client(slug)
+    # Is the sentiment brief a per-client custom, or the generic fallback?
+    _raw_row = get_client_row(slug) or {}
+    try:
+        _raw_cfg = json.loads(_raw_row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        _raw_cfg = {}
+    sentiment_is_custom = bool((_raw_cfg.get("sentiment_context") or "").strip())
     report = next((r for r in list_reports(slug) if r["period"] == period), None)
 
     shares = []
@@ -428,6 +435,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         client=client_config,
         selected_client=slug,
         period=period,
+        sentiment_is_custom=sentiment_is_custom,
         source_defs=client_source_defs,
         section_defs=SECTION_DEFS,
         client_sections=enabled_sections(client_config),
@@ -906,6 +914,27 @@ async def admin_mention_feeds_save(request: Request):
     except KeyError:
         return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
     return RedirectResponse(f"{back}&message=Saved+{len(urls)}+mention+feed{'s' if len(urls) != 1 else ''}", status_code=302)
+
+
+@app.post("/admin/sentiment-brief/save")
+async def admin_sentiment_brief_save(request: Request):
+    """Save the client's sentiment brief and tracked executive list. The brief
+    is the context Claude scores every mention against; executives are the
+    names scanned for in coverage."""
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period") or ""
+    back = f"/admin/workspace?client={client_slug}&period={period}"
+
+    brief = (form.get("sentiment_context") or "").strip()
+    execs = [line.strip() for line in (form.get("executives") or "").splitlines() if line.strip()]
+    try:
+        update_client_config_key(client_slug, "sentiment_context", brief)
+        update_client_config_key(client_slug, "executives", execs)
+    except KeyError:
+        return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
+    return RedirectResponse(f"{back}&message=Saved+sentiment+brief+and+{len(execs)}+executive{'s' if len(execs) != 1 else ''}", status_code=302)
 
 
 @app.post("/admin/sections/save")
