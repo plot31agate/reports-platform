@@ -140,10 +140,12 @@
             <input type="hidden" name="provider" value="{{ card.def.provider }}">
             {% for f in card.fields %}
             <div class="field">
-              <label>{{ f.label }}</label>
+              <label>{{ f.label }}{% if f.type == 'password' and f.has_value %} <span class="conn-saved">saved — leave blank to keep</span>{% endif %}</label>
               {% if f.type == 'textarea' %}
               <textarea name="{{ f.key }}" rows="4" placeholder="{{ f.placeholder or '' }}"
                         style="width:100%;font-family:inherit;font-size:13px;line-height:1.6;resize:vertical;">{{ f.value }}</textarea>
+              {% elif f.type == 'password' %}
+              <input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ '•••••• (saved)' if f.has_value else (f.placeholder or '') }}">
               {% else %}
               <input type="text" name="{{ f.key }}" value="{{ f.value }}" placeholder="{{ f.placeholder or '' }}">
               {% endif %}

@@ -55,7 +55,9 @@ def _requests():
 
 
 def _token(config) -> str:
-    tok = (config.get("access_token") or "").strip()
+    # A client whose Page lives in a different Meta business portfolio can
+    # carry its own token, which overrides the shared agency one.
+    tok = (config.get("client_access_token") or config.get("access_token") or "").strip()
     if not tok:
         raise ConnectorError("No Meta access token saved")
     return tok
@@ -98,6 +100,19 @@ def test_key(config) -> tuple[bool, str]:
     return True, f"Token OK ({name}) - now set each client's Facebook Page ID / Instagram account ID"
 
 
+def _accessible_pages(config) -> str:
+    """List the pages this token can actually read, so a wrong/unconnected
+    Page ID turns into 'here are the IDs you can use' instead of a dead end."""
+    data = _get(config, "/me/accounts", {"fields": "name,id", "limit": 50}, best_effort=True)
+    pages = (data or {}).get("data") or []
+    if not pages:
+        return ("This token can't see any Facebook Pages. Add the Page to the ympredictions "
+                "business portfolio, connect it to the Reporting app, and make sure the token has "
+                "pages_show_list, pages_read_engagement and read_insights.")
+    listed = "; ".join(f"{p.get('name')} = {p.get('id')}" for p in pages[:15])
+    return f"Pages this token can read: {listed}"
+
+
 def test(config) -> tuple[bool, str]:
     fb = (config.get("fb_page_id") or "").strip()
     ig = (config.get("ig_user_id") or "").strip()
@@ -113,7 +128,9 @@ def test(config) -> tuple[bool, str]:
             data = _get(config, f"/{ig}", {"fields": "username,followers_count"})
             parts.append(f"Instagram: @{data.get('username')} ({data.get('followers_count', '?')} followers)")
     except ConnectorError as e:
-        return False, str(e)
+        # A page/account lookup failed - tell the operator which IDs do work.
+        hint = _accessible_pages(config)
+        return False, f"{e}. {hint}"
     return True, "Connected - " + "; ".join(parts)
 
 

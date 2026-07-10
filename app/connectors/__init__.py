@@ -95,7 +95,7 @@ CONNECTOR_DEFS = [
         "requires": {
             "meta_social": ["fb_page_id"],
         },
-        "blurb": "Pulls Facebook Page and Instagram daily insights - views, reach, content interactions, link clicks and new followers - into one social CSV. One access token covers every client whose pages your Meta business portfolio can read.",
+        "blurb": "Pulls Facebook Page and Instagram daily insights - views, reach, content interactions, link clicks and new followers - into one social CSV. The agency token covers every client whose pages sit in that Meta business portfolio; a client on a separate portfolio can paste its own token override below.",
         "agency_fields": [
             {"key": "access_token", "label": "Access token", "type": "password", "secret": True},
         ],
@@ -106,6 +106,8 @@ CONNECTOR_DEFS = [
             {"key": "ig_user_id", "label": "Instagram account ID", "type": "text",
              "placeholder": "optional, e.g. 17841400000000000",
              "hint": "Optional. The IG Business account's numeric ID (it must be linked to the Facebook Page). Leave blank for Facebook-only clients."},
+            {"key": "client_access_token", "label": "Access token override", "type": "password", "secret": True,
+             "hint": "Only if this client's Page lives in a different Meta business portfolio than the agency token. Generate a System User token in that portfolio and paste it here. Leave blank to use the shared agency token."},
         ],
         "key_help": [
             "In Meta Business Suite, the page and its Instagram account must be in a Business portfolio (Business Settings → Accounts)",

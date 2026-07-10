@@ -711,7 +711,15 @@ def _merged_config(provider: str, client_slug: str) -> dict:
 def _masked_connection_view(conn_row, cdef, agency_row) -> dict:
     """Per-client connection state for the workspace panel."""
     saved = _parse_config(conn_row)
-    fields = [{**f, "value": (saved.get(f["key"]) or "").strip()} for f in cdef["client_fields"]]
+    # Secret client fields (e.g. a per-client Meta token) are never echoed back;
+    # the form shows a masked placeholder and blank-means-keep, like agency keys.
+    fields = []
+    for f in cdef["client_fields"]:
+        val = (saved.get(f["key"]) or "").strip()
+        if f.get("secret"):
+            fields.append({**f, "value": "", "has_value": bool(val)})
+        else:
+            fields.append({**f, "value": val, "has_value": bool(val)})
     return {
         "def": cdef,
         "configured": bool(conn_row),
@@ -832,7 +840,14 @@ async def admin_connections_save(request: Request):
     except KeyError:
         return RedirectResponse(f"/admin/connections?client={client_slug}&error=Unknown+provider", status_code=302)
 
-    config = {f["key"]: (form.get(f["key"]) or "").strip() for f in cdef["client_fields"]}
+    old = _parse_config(get_connection(client_slug, provider))
+    config = {}
+    for f in cdef["client_fields"]:
+        val = (form.get(f["key"]) or "").strip()
+        # Secrets are write-only: blank means keep what's already saved.
+        if not val and f.get("secret"):
+            val = old.get(f["key"], "")
+        config[f["key"]] = val
     upsert_connection(client_slug, provider, json.dumps(config))
     return _connections_redirect(client_slug, form.get("period"),
                                  message=f"{cdef['label']}+settings+saved")
@@ -844,7 +859,14 @@ def admin_connections_test(request: Request, client_slug: str = Form(...), provi
     row = get_connection(client_slug, provider)
     if not row:
         return _connections_redirect(client_slug, period, error="Save+the+settings+first")
-    if not get_agency_credential(provider):
+    # A client on a separate portfolio can carry its own secret token, so the
+    # agency key is only required when the client hasn't supplied one.
+    cdef = connectors.get_def(provider)
+    saved = _parse_config(row)
+    client_has_secret = any(
+        f.get("secret") and (saved.get(f["key"]) or "").strip() for f in cdef["client_fields"]
+    )
+    if not get_agency_credential(provider) and not client_has_secret:
         return _connections_redirect(client_slug, period,
                                      error="No+agency+key+for+this+provider+yet+—+add+it+on+the+API+keys+page")
     ok, msg = connectors.test_connection(provider, _merged_config(provider, client_slug))
