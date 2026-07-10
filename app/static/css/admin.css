@@ -138,6 +138,7 @@
 }
 .button svg { width: 15px; height: 15px; }
 .button:active { transform: translateY(1px); }
+.button:disabled { opacity: 0.45; cursor: default; pointer-events: none; box-shadow: none; }
 .button--primary { background: var(--df-pink); color: #fff; box-shadow: var(--shadow-sm); }
 .button--primary:hover { background: #d10a7d; box-shadow: var(--shadow-md); }
 .button--ghost { background: var(--panel); color: var(--ink); border-color: var(--line-strong); }
@@ -463,15 +464,12 @@
 /* Client setup: the configure-once panels, a full-width row below the
    monthly data | deliver row. CSS order keeps the data column and rail on
    row 1, so this spans row 2 despite sitting mid-DOM. */
-.ws-setup { grid-column: 1 / -1; order: 3; margin-top: 6px; }
-.ws-setup__head { display: flex; align-items: baseline; gap: 10px; margin: 6px 2px 12px; }
-.ws-setup__head h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
-.ws-setup__head span { font-size: 12px; color: var(--grey-600); }
-.ws-setup__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
-.ws-setup .ws-connections { margin-top: 0; }
+/* Client settings page: the configure-once panels, stacked two-up. */
+.cs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.cs-grid .ws-connections { margin-top: 0; }
 /* The API-connections panel holds a card grid, so let it span both columns. */
-.ws-setup #connections { grid-column: 1 / -1; }
-@media (max-width: 1024px) { .ws-setup__grid { grid-template-columns: 1fr; } }
+.cs-grid #connections { grid-column: 1 / -1; }
+@media (max-width: 1024px) { .cs-grid { grid-template-columns: 1fr; } }
 
 .panel__head h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
 .panel__head { align-items: center; justify-content: space-between; }
@@ -496,6 +494,10 @@
 .ws-drop__big { font-weight: 700; font-size: 14px; color: var(--ink); }
 .ws-drop__small { font-size: 12px; color: var(--grey-600); margin-top: 4px; }
 .ws-drop__browse { color: var(--df-pink); font-weight: 700; text-decoration: underline; }
+/* Once the month has data the dropzone shrinks to a slim reminder bar. */
+.ws-drop--slim { padding: 10px 16px; }
+.ws-drop--slim .ws-drop__big { display: none; }
+.ws-drop--slim .ws-drop__small { margin-top: 0; }
 
 .ws-unrouted-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -523,7 +525,22 @@
 .ws-source__status .status-summary--ok, .ws-source__status .status-summary--warning,
 .ws-source__status .status-summary--error { font-weight: 600; }
 .ws-source__actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.ws-sources__foot { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 2px; text-align: right; }
+.ws-source__help { padding: 2px 8px; }
+.ws-source__hint {
+  margin-top: 4px; font-size: 11px; color: var(--grey-600);
+  font-family: 'SF Mono', ui-monospace, monospace;
+}
+.ws-source__status .status-summary--quiet { color: var(--grey-400); font-weight: 500; }
+.ws-sources__group {
+  margin-top: 14px; padding: 6px 4px 4px; border-top: 1px solid var(--line);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--grey-400);
+}
+.ws-sources__group + .ws-source { border-top: none; }
+.ws-sources__foot {
+  border-top: 1px solid var(--line); padding-top: 12px; margin-top: 2px;
+  display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
 
 .ws-hint { font-size: 12px; color: var(--grey-600); margin: 0 0 12px; line-height: 1.5; }
 .ws-actions { display: flex; gap: 8px; flex-wrap: wrap; }

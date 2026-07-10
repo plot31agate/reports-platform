@@ -1,0 +1,296 @@
+{% extends "admin/_shell.html" %}
+{% block title %}{{ client.display_name }} — Client settings{% endblock %}
+{% block main %}
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">{{ client.display_name }}</h1>
+    <div class="page-head__sub">Configure once per client — connections, briefs and report sections. Monthly data lives in the <a href="/admin/workspace?client={{ selected_client }}" style="font-weight:700;text-decoration:underline;">workspace</a>.</div>
+  </div>
+  <div class="page-head__actions">
+    <label class="head-field">
+      <span class="head-field__label">Client</span>
+      <select id="cs-client" title="Client">
+        {% for c in clients %}
+        <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+</div>
+
+{% if message %}<div class="flash flash--ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash--err">{{ error }}</div>{% endif %}
+
+<div class="cs-grid">
+
+  <!-- API connections: per-client settings; the shared keys live on /admin/keys -->
+  <details class="panel ws-connections" id="connections">
+    <summary>
+      <span class="ws-connections__title">API connections</span>
+      <span class="ws-connections__sub">
+        {% set live = connection_cards | selectattr('configured') | list %}
+        {% if live %}{{ live | length }} set up for {{ client.display_name }} — Sync replaces the CSV exports{% else %}Set which domain / properties to pull for {{ client.display_name }}{% endif %}
+      </span>
+    </summary>
+
+    <div class="conn-grid">
+      {% for card in connection_cards %}
+      <div class="conn-card">
+        <div class="conn-card__head">
+          <div>
+            <span class="conn-card__name">{{ card.def.label }}</span>
+            <div class="conn-card__sources">
+              feeds:
+              {% for s in card.def.sources %}<span class="conn-chip">{{ s }}</span>{% endfor %}
+            </div>
+          </div>
+          {% if not card.agency_key_set %}
+          <a class="conn-status conn-status--untested" href="/admin/keys" title="One key covers every client">No agency key →</a>
+          {% elif card.configured %}
+          <span class="conn-status conn-status--{{ card.status or 'untested' }}">
+            {% if card.status == 'ok' %}Connected{% elif card.status == 'error' %}Error{% else %}Untested{% endif %}
+          </span>
+          {% endif %}
+        </div>
+
+        <p class="ws-hint">{{ card.def.blurb }}</p>
+
+        {% if card.status_detail %}
+        <div class="conn-detail conn-detail--{{ card.status or 'untested' }}">{{ card.status_detail }}</div>
+        {% endif %}
+        {% if card.last_synced_at %}
+        <div class="conn-detail">Last synced {{ card.last_synced_at }}</div>
+        {% endif %}
+
+        <form method="post" action="/admin/connections/save">
+          <input type="hidden" name="client_slug" value="{{ selected_client }}">
+          <input type="hidden" name="provider" value="{{ card.def.provider }}">
+          {% for f in card.fields %}
+          <div class="field">
+            <label>{{ f.label }}{% if f.type == 'password' and f.has_value %} <span class="conn-saved">saved — leave blank to keep</span>{% endif %}</label>
+            {% if f.type == 'textarea' %}
+            <textarea name="{{ f.key }}" rows="4" placeholder="{{ f.placeholder or '' }}"
+                      style="width:100%;font-family:inherit;font-size:13px;line-height:1.6;resize:vertical;">{{ f.value }}</textarea>
+            {% elif f.type == 'password' %}
+            <input type="password" name="{{ f.key }}" autocomplete="new-password" placeholder="{{ '•••••• (saved)' if f.has_value else (f.placeholder or '') }}">
+            {% else %}
+            <input type="text" name="{{ f.key }}" value="{{ f.value }}" placeholder="{{ f.placeholder or '' }}">
+            {% endif %}
+            {% if f.hint %}<div class="field__hint">{{ f.hint }}</div>{% endif %}
+          </div>
+          {% endfor %}
+          <div class="conn-actions">
+            <button class="button button--primary button--sm" type="submit">Save</button>
+            {% if card.configured and card.agency_key_set %}
+            <button class="button button--ghost button--sm" type="submit" formaction="/admin/connections/test">Test</button>
+            {% endif %}
+            {% if card.configured %}
+            <button class="chip-link chip-link--danger" type="submit" formaction="/admin/connections/delete"
+                    onclick="return confirm('Remove {{ client.display_name }}&#39;s settings for this provider?');">Remove</button>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="ws-hint" style="margin:14px 0 0;">
+      API keys are shared across clients and live on the <a href="/admin/keys" style="font-weight:700;text-decoration:underline;">API keys</a> page —
+      here you only set what to pull for {{ client.display_name }}.
+      LinkedIn doesn't offer a key-based API — that stays on upload. Mentions pull from the RSS feeds below.
+    </p>
+  </details>
+
+  <!-- Mention feeds: RSS/Atom URLs pulled by Auto-fetch on the mentions card -->
+  {% set feeds = client.mention_feeds or [] %}
+  <details class="panel ws-connections" id="mention-feeds">
+    <summary>
+      <span class="ws-connections__title">Mention feeds</span>
+      <span class="ws-connections__sub">
+        {% if feeds %}{{ feeds | length }} feed{{ 's' if feeds | length != 1 }} — Auto-fetch pulls these for media mentions{% else %}Add RSS or Atom feeds for Auto-fetch to pull media mentions{% endif %}
+      </span>
+    </summary>
+    <form method="post" action="/admin/mention-feeds/save">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+      <textarea name="feeds" rows="{{ [feeds | length + 2, 6] | max }}" spellcheck="false"
+                style="width:100%;font-family:monospace;font-size:12px;line-height:1.7;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;"
+                placeholder="One feed URL per line, e.g.&#10;https://www.google.co.uk/alerts/feeds/...&#10;https://www.example-trade-press.com/rss&#10;https://alerts.talkwalker.com/alerts/rss/...">{{ feeds | join('\n') }}</textarea>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+        <button class="button button--primary button--sm" type="submit">Save feeds</button>
+        <span class="ws-hint" style="margin:0;">Any RSS 2.0 or Atom feed works — Google Alerts, publication RSS, Talkwalker alerts. Entries are filtered to the report month and de-duplicated by URL.</span>
+      </div>
+    </form>
+  </details>
+
+  <!-- Sentiment brief + executives: how mentions are scored and who is tracked -->
+  {% set execs = client.executives or [] %}
+  <details class="panel ws-connections" id="sentiment-brief">
+    <summary>
+      <span class="ws-connections__title">Sentiment brief &amp; executives</span>
+      <span class="ws-connections__sub">
+        {% if sentiment_is_custom %}Custom brief set{% else %}Using the generic default — write a brief tuned to {{ client.display_name }}{% endif %} · {{ execs | length }} executive{{ 's' if execs | length != 1 }} tracked
+      </span>
+    </summary>
+    <form method="post" action="/admin/sentiment-brief/save">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+
+      <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin-bottom:6px;">Sentiment brief</label>
+      <p class="ws-hint" style="margin:0 0 8px;">Claude scores every mention's tone against this, from {{ client.display_name }}'s commercial perspective. You don't have to write it by hand — describe the client in a sentence below and let Claude draft it, then tweak.{% if not sentiment_is_custom %} The text in the box is the generic fallback — replace it.{% endif %}</p>
+
+      <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:wrap;">
+        <input type="text" id="brief-desc" placeholder="What does {{ client.display_name }} do, and who are its customers? e.g. AI-based responsible-gambling tools sold to online betting operators"
+               style="flex:1 1 340px;min-width:0;font-size:13px;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;">
+        <button type="button" class="button button--ghost button--sm" id="brief-draft-btn"
+                onclick="draftSentimentBrief('{{ selected_client }}')">Draft with AI</button>
+      </div>
+      <div id="brief-draft-status" class="ws-hint" style="margin:0 0 8px;display:none;"></div>
+
+      <textarea name="sentiment_context" id="sentiment-context" rows="7" spellcheck="true"
+                style="width:100%;font-size:13px;line-height:1.6;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;">{{ client.sentiment_context }}</textarea>
+
+      <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin:16px 0 6px;">Tracked executives</label>
+      <p class="ws-hint" style="margin:0 0 8px;">One name per line. Coverage is scanned for these names to build the executive-visibility section.</p>
+      <textarea name="executives" rows="{{ [execs | length + 1, 4] | max }}" spellcheck="false"
+                style="width:100%;font-family:monospace;font-size:12px;line-height:1.7;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;"
+                placeholder="One name per line, e.g.&#10;Jane Smith&#10;John Doe">{{ execs | join('\n') }}</textarea>
+
+      <div style="margin-top:10px;">
+        <button class="button button--primary button--sm" type="submit">Save brief &amp; executives</button>
+      </div>
+    </form>
+  </details>
+
+  <!-- Report focus: the editorial steer for the whole report's commentary -->
+  <details class="panel ws-connections" id="report-focus">
+    <summary>
+      <span class="ws-connections__title">Report focus</span>
+      <span class="ws-connections__sub">
+        {% if focus_is_custom %}Custom focus set — commentary leads with it{% else %}Not set — commentary follows the enabled sections{% endif %}
+      </span>
+    </summary>
+    <form method="post" action="/admin/report-focus/save">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+
+      <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin-bottom:6px;">Report focus brief</label>
+      <p class="ws-hint" style="margin:0 0 8px;">Decides the report's editorial emphasis — which areas lead the headline, summary and commentary (e.g. PR coverage for one client, traffic and social growth for another). Describe the focus in a sentence below and let Claude draft it, then tweak. Leave the box empty to fall back to weighting by the enabled sections.</p>
+
+      <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:wrap;">
+        <input type="text" id="focus-desc" placeholder="What should {{ client.display_name }}'s report lead with? e.g. mostly social growth — followers, traffic and engagement, PR is secondary"
+               style="flex:1 1 340px;min-width:0;font-size:13px;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;">
+        <button type="button" class="button button--ghost button--sm" id="focus-draft-btn"
+                onclick="draftReportFocus('{{ selected_client }}')">Draft with AI</button>
+      </div>
+      <div id="focus-draft-status" class="ws-hint" style="margin:0 0 8px;display:none;"></div>
+
+      <textarea name="report_focus" id="report-focus-text" rows="6" spellcheck="true"
+                style="width:100%;font-size:13px;line-height:1.6;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;"
+                placeholder="Empty — commentary weights itself by the enabled sections. Write or draft a brief to steer it.">{{ client.report_focus or '' }}</textarea>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+        <button class="button button--primary button--sm" type="submit">Save report focus</button>
+        <span class="ws-hint" style="margin:0;">Applies to the next build — rebuild the report to regenerate commentary.</span>
+      </div>
+    </form>
+  </details>
+
+  <!-- Report sections: which inputs and report sections this client gets -->
+  <details class="panel ws-connections" id="report-sections">
+    <summary>
+      <span class="ws-connections__title">Report sections</span>
+      <span class="ws-connections__sub">
+        {{ client_sections | length }} of {{ section_defs | length }} enabled — controls the workspace source cards and what the report renders
+      </span>
+    </summary>
+    <form method="post" action="/admin/sections/save">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-bottom:12px;">
+        {% for s in section_defs %}
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;padding:4px 0;">
+          <input type="checkbox" name="sections" value="{{ s.key }}" {% if s.key in client_sections %}checked{% endif %} style="margin-top:2px;">
+          <span>
+            <strong>{{ s.label }}</strong>
+            <span style="display:block;color:var(--ink-soft,#6b7280);font-size:12px;">{{ s.hint }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="field" style="max-width:340px;">
+        <label>Misc section title</label>
+        <input type="text" name="misc_title" value="{{ client.misc_title or '' }}" placeholder="Additional notes">
+        <div class="field__hint">Heading for the misc section, if enabled. Its content is written on the review screen.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+        <button class="button button--primary button--sm" type="submit">Save sections</button>
+        <span class="ws-hint" style="margin:0;">Disabled sections drop their upload cards and never render — data already uploaded is kept, just not shown. Rebuild the report after changing.</span>
+      </div>
+    </form>
+  </details>
+
+</div>
+
+<script>
+// Draft the sentiment brief with Claude from the one-line description.
+function draftSentimentBrief(clientSlug) {
+  var btn = document.getElementById('brief-draft-btn');
+  var status = document.getElementById('brief-draft-status');
+  var desc = document.getElementById('brief-desc');
+  var box = document.getElementById('sentiment-context');
+  status.style.display = 'block';
+  status.style.color = '';
+  status.textContent = 'Drafting with Claude...';
+  btn.disabled = true;
+  var body = new URLSearchParams({ client_slug: clientSlug, description: desc.value || '' });
+  fetch('/admin/sentiment-brief/draft', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+    .then(function(res) {
+      if (!res.ok || !res.j.brief) {
+        status.style.color = '#b3324b';
+        status.textContent = res.j.error || 'Draft failed — try again.';
+        return;
+      }
+      box.value = res.j.brief;
+      status.style.color = '#157a52';
+      status.textContent = 'Draft ready — review and edit, then Save.';
+    })
+    .catch(function() { status.style.color = '#b3324b'; status.textContent = 'Network error — try again.'; })
+    .finally(function() { btn.disabled = false; });
+}
+// Draft the report-focus brief with Claude from the one-line description.
+function draftReportFocus(clientSlug) {
+  var btn = document.getElementById('focus-draft-btn');
+  var status = document.getElementById('focus-draft-status');
+  var desc = document.getElementById('focus-desc');
+  var box = document.getElementById('report-focus-text');
+  status.style.display = 'block';
+  status.style.color = '';
+  status.textContent = 'Drafting with Claude...';
+  btn.disabled = true;
+  var body = new URLSearchParams({ client_slug: clientSlug, description: desc.value || '' });
+  fetch('/admin/report-focus/draft', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+    .then(function(res) {
+      if (!res.ok || !res.j.brief) {
+        status.style.color = '#b3324b';
+        status.textContent = res.j.error || 'Draft failed — try again.';
+        return;
+      }
+      box.value = res.j.brief;
+      status.style.color = '#157a52';
+      status.textContent = 'Draft ready — review and edit, then Save.';
+    })
+    .catch(function() { status.style.color = '#b3324b'; status.textContent = 'Network error — try again.'; })
+    .finally(function() { btn.disabled = false; });
+}
+(function() {
+  document.getElementById('cs-client').addEventListener('change', function() {
+    window.location = '/admin/client-settings?client=' + encodeURIComponent(this.value);
+  });
+  // Deep-link support: /admin/client-settings#connections opens that panel
+  // (used by redirects after save/test so you land back where you were).
+  if (window.location.hash) {
+    var panel = document.getElementById(window.location.hash.slice(1));
+    if (panel && panel.tagName === 'DETAILS') { panel.open = true; panel.scrollIntoView(); }
+  }
+})();
+</script>
+{% endblock %}

@@ -377,14 +377,6 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
     period = period if period and re.match(r"^\d{4}-\d{2}$", period) else datetime.utcnow().strftime("%Y-%m")
 
     client_config = get_client(slug)
-    # Is the sentiment brief a per-client custom, or the generic fallback?
-    _raw_row = get_client_row(slug) or {}
-    try:
-        _raw_cfg = json.loads(_raw_row.get("config_json") or "{}")
-    except (ValueError, TypeError):
-        _raw_cfg = {}
-    sentiment_is_custom = bool((_raw_cfg.get("sentiment_context") or "").strip())
-    focus_is_custom = bool((_raw_cfg.get("report_focus") or "").strip())
     report = next((r for r in list_reports(slug) if r["period"] == period), None)
 
     shares = []
@@ -424,6 +416,51 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
     client_sources = enabled_source_keys(client_config)
     client_source_defs = [s for s in SOURCE_DEFS if s["key"] in client_sources]
 
+    return _render(
+        "admin/workspace.html",
+        active="workspace",
+        nav_clients=clients,
+        active_client=slug,
+        client=client_config,
+        selected_client=slug,
+        period=period,
+        source_defs=client_source_defs,
+        report=report,
+        has_uploads=bool(list_uploads(slug, period)),
+        shares=shares,
+        views=views,
+        portal_member_count=len(portal_members),
+        connected_sources=connected_sources,
+        message=message,
+        error=error,
+        share_url=share_url,
+    )
+
+
+@app.get("/admin/client-settings", response_class=HTMLResponse)
+def admin_client_settings(request: Request, client: str = None, message: str = None, error: str = None):
+    """Configure-once-per-client settings: API connections, mention feeds,
+    sentiment brief, report focus and report sections. Split out of the
+    workspace so the monthly screen stays purely data in / build / deliver."""
+    _require_admin_or_redirect(request)
+    clients = list_clients()
+    if not clients:
+        return RedirectResponse("/admin/clients/new", status_code=302)
+    slug = client if client and any(c["slug"] == client for c in clients) else clients[0]["slug"]
+
+    client_config = get_client(slug)
+    # Are the briefs per-client customs, or the generic fallbacks?
+    _raw_row = get_client_row(slug) or {}
+    try:
+        _raw_cfg = json.loads(_raw_row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        _raw_cfg = {}
+    sentiment_is_custom = bool((_raw_cfg.get("sentiment_context") or "").strip())
+    focus_is_custom = bool((_raw_cfg.get("report_focus") or "").strip())
+
+    conns = get_connections(slug)
+    agency_creds = get_agency_credentials()
+    client_sources = enabled_source_keys(client_config)
     # A connector's card shows when it feeds an enabled source, or is already
     # set up (so an existing connection is never hidden by a section toggle).
     connection_cards = [
@@ -433,27 +470,20 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
     ]
 
     return _render(
-        "admin/workspace.html",
-        active="workspace",
+        "admin/client_settings.html",
+        active="client_settings",
         nav_clients=clients,
+        active_client=slug,
         clients=clients,
         client=client_config,
         selected_client=slug,
-        period=period,
         sentiment_is_custom=sentiment_is_custom,
         focus_is_custom=focus_is_custom,
-        source_defs=client_source_defs,
         section_defs=SECTION_DEFS,
         client_sections=enabled_sections(client_config),
-        report=report,
-        shares=shares,
-        views=views,
-        portal_member_count=len(portal_members),
-        connected_sources=connected_sources,
         connection_cards=connection_cards,
         message=message,
         error=error,
-        share_url=share_url,
     )
 
 
@@ -814,16 +844,14 @@ def admin_keys_delete(request: Request, provider: str = Form(...)):
 
 @app.get("/admin/connections")
 def admin_connections_get(request: Request, client: str = None):
-    """Connections live inside the client workspace now."""
+    """Connections live on the client settings page now."""
     _require_admin_or_redirect(request)
     suffix = f"?client={client}" if client else ""
-    return RedirectResponse(f"/admin/workspace{suffix}#connections", status_code=302)
+    return RedirectResponse(f"/admin/client-settings{suffix}#connections", status_code=302)
 
 
 def _connections_redirect(client_slug: str, period: str = None, message: str = None, error: str = None):
-    url = f"/admin/workspace?client={client_slug}"
-    if period:
-        url += f"&period={period}"
+    url = f"/admin/client-settings?client={client_slug}"
     if message:
         url += f"&message={message}"
     if error:
@@ -959,8 +987,7 @@ async def admin_mention_feeds_save(request: Request):
     _require_admin_or_redirect(request)
     form = await request.form()
     client_slug = form.get("client_slug")
-    period = form.get("period") or ""
-    back = f"/admin/workspace?client={client_slug}&period={period}"
+    back = f"/admin/client-settings?client={client_slug}"
 
     urls = [line.strip() for line in (form.get("feeds") or "").splitlines() if line.strip()]
     bad = [u for u in urls if not u.startswith(("http://", "https://"))]
@@ -1003,8 +1030,7 @@ async def admin_sentiment_brief_save(request: Request):
     _require_admin_or_redirect(request)
     form = await request.form()
     client_slug = form.get("client_slug")
-    period = form.get("period") or ""
-    back = f"/admin/workspace?client={client_slug}&period={period}"
+    back = f"/admin/client-settings?client={client_slug}"
 
     brief = (form.get("sentiment_context") or "").strip()
     execs = [line.strip() for line in (form.get("executives") or "").splitlines() if line.strip()]
@@ -1047,8 +1073,7 @@ async def admin_report_focus_save(request: Request):
     _require_admin_or_redirect(request)
     form = await request.form()
     client_slug = form.get("client_slug")
-    period = form.get("period") or ""
-    back = f"/admin/workspace?client={client_slug}&period={period}"
+    back = f"/admin/client-settings?client={client_slug}"
 
     brief = (form.get("report_focus") or "").strip()
     try:
@@ -1065,8 +1090,7 @@ async def admin_sections_save(request: Request):
     _require_admin_or_redirect(request)
     form = await request.form()
     client_slug = form.get("client_slug")
-    period = form.get("period") or ""
-    back = f"/admin/workspace?client={client_slug}&period={period}"
+    back = f"/admin/client-settings?client={client_slug}"
 
     chosen = [k for k in form.getlist("sections") if k in ALL_SECTION_KEYS]
     if not chosen:
