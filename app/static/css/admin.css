@@ -529,9 +529,8 @@
 .ws-setupbar__chip--ok .ws-setupbar__tick { color: var(--accent-strong); }
 .ws-setupbar__sub { color: var(--grey-400); font-weight: 500; }
 
-/* Grouped source accordions, two-up on wide screens */
-.ws-groups { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: start; }
-@media (min-width: 1240px) { .ws-groups { grid-template-columns: 1fr 1fr; } }
+/* Grouped source accordions, stacked full-width so cards never squeeze */
+.ws-groups { display: flex; flex-direction: column; gap: 10px; }
 .ws-group { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .ws-group summary {
   display: flex; align-items: center; gap: 9px; padding: 12px 14px;
