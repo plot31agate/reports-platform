@@ -56,8 +56,19 @@ SOURCE_DEFS = [
     {"key": "meta_social",            "title": "Facebook & Instagram",  "purpose": "Views, reach, interactions, link clicks",     "cols": "platform, views, reach, interactions, link clicks (+ date for spikes)"},
     {"key": "tiktok",                 "title": "TikTok",                "purpose": "Views, likes, comments, shares",              "cols": "views, likes, comments, shares (+ date for spikes)"},
     {"key": "influencer_activity",    "title": "Influencer activity",   "purpose": "Creator posts, reach, engagement",            "cols": "influencer, platform, content, reach, engagements, link"},
-    {"key": "technical_seo_metrics",  "title": "Technical SEO metrics", "purpose": "Site health score, DR, open issues by month", "cols": "month, health_score, domain_rating, total_open"},
-    {"key": "technical_seo_register", "title": "Technical SEO register","purpose": "Issue register with severity and status",     "cols": "issue_id, finding, severity, status"},
+    {"key": "technical_seo_metrics",  "title": "Health metrics",        "purpose": "Site health score, DR, open issues by month", "cols": "month, health_score, domain_rating, total_open"},
+    {"key": "technical_seo_register", "title": "Issue register",        "purpose": "Issue register with severity and status",     "cols": "issue_id, finding, severity, status"},
+]
+
+
+# Visual grouping for the workspace data cards — related sources sit together
+# in one accordion. Order inside "sources" is the display order.
+SOURCE_GROUPS = [
+    {"key": "media",     "label": "Media & PR",              "sources": ["mentions"]},
+    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "ga4_geography"]},
+    {"key": "authority", "label": "Authority & competitors", "sources": ["ahrefs_backlinks", "ahrefs_trends", "competitor_benchmark"]},
+    {"key": "social",    "label": "Social & influencers",    "sources": ["linkedin_company", "meta_social", "tiktok", "influencer_activity"]},
+    {"key": "technical", "label": "Technical SEO",           "sources": ["technical_seo_metrics", "technical_seo_register"]},
 ]
 
 

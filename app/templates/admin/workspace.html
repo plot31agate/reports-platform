@@ -25,6 +25,20 @@
 </div>
 {% endif %}
 
+<!-- Client setup at a glance: each chip links into the settings page. -->
+<div class="ws-setupbar">
+  <span class="ws-setupbar__title">Client setup</span>
+  {% for item in setup_items %}
+  <a class="ws-setupbar__chip {% if item.ok %}ws-setupbar__chip--ok{% endif %}"
+     href="/admin/client-settings?client={{ selected_client }}#{{ item.anchor }}"
+     title="Open {{ item.label }} in client settings">
+    <span class="ws-setupbar__tick">{% if item.ok %}✓{% else %}○{% endif %}</span>
+    {{ item.label }}
+    <span class="ws-setupbar__sub">{{ item.sub }}</span>
+  </a>
+  {% endfor %}
+</div>
+
 <div class="ws-grid">
 
   <!-- ============ LEFT: SOURCES ============ -->
@@ -39,14 +53,6 @@
           <span class="ws-filled" id="ws-filled">0/{{ source_defs | length }} sources</span>
         </div>
       </div>
-
-      <div class="ws-drop" id="ws-drop">
-        <input type="file" id="ws-drop-input" multiple accept=".csv,.xlsx,.xls" style="display:none;">
-        <div class="ws-drop__big">Drop this month's export files here</div>
-        <div class="ws-drop__small">Any number at once — each file routes to its source automatically. Or <span class="ws-drop__browse">browse</span>.</div>
-      </div>
-
-      <div id="ws-unrouted"></div>
 
       {% macro source_card(src) %}
         <div class="ws-source" id="src-{{ src.key }}" data-key="{{ src.key }}">
@@ -84,18 +90,22 @@
         </div>
       {% endmacro %}
 
-      {% set manual_defs = source_defs | rejectattr('key', 'in', connected_sources) | list %}
-      {% set connected_defs = source_defs | selectattr('key', 'in', connected_sources) | list %}
-      <div class="ws-sources">
-        {% for src in manual_defs %}{{ source_card(src) }}{% endfor %}
-        {% if connected_defs %}
-        <div class="ws-sources__group">Synced from APIs — these fill themselves, no file needed</div>
-        {% for src in connected_defs %}{{ source_card(src) }}{% endfor %}
-        {% endif %}
+      <div class="ws-groups">
+        {% for g in source_groups %}
+        <details class="ws-group" id="grp-{{ g.key }}" data-sources="{{ g.defs | map(attribute='key') | join(',') }}">
+          <summary>
+            <span class="ws-group__dot" id="grp-dot-{{ g.key }}"></span>
+            <span class="ws-group__label">{{ g.label }}</span>
+            <span class="ws-group__count" id="grp-count-{{ g.key }}">0/{{ g.defs | length }}</span>
+          </summary>
+          <div class="ws-group__body">
+            {% for src in g.defs %}{{ source_card(src) }}{% endfor %}
+          </div>
+        </details>
+        {% endfor %}
       </div>
 
       <div class="ws-sources__foot">
-        <a class="chip-link" href="/admin/client-settings?client={{ selected_client }}">Client settings — connections, briefs, sections →</a>
         <button class="chip-link" type="button" onclick="clearUploads()">Clear all uploads for this month</button>
       </div>
     </div>
@@ -195,21 +205,6 @@
   var PERIOD = {{ period | tojson }};
   var HAS_REPORT = {{ (report is not none) | tojson }};
   var SOURCE_KEYS = [{% for src in source_defs %}{{ src.key | tojson }}{{ "," if not loop.last }}{% endfor %}];
-  var SOURCE_TITLES = { {% for src in source_defs %}{{ src.key | tojson }}: {{ src.title | tojson }}{{ "," if not loop.last }}{% endfor %} };
-
-  // Filename → source routing. Longest/most-specific patterns first.
-  var ROUTES = [
-    ['technical_seo_register', ['technical_seo_register', 'seo_register']],
-    ['technical_seo_metrics',  ['technical_seo_metrics', 'seo_metrics']],
-    ['ga4_geography',          ['ga4_geography', 'geography', 'countries']],
-    ['search_console',         ['search_console', 'searchconsole', 'gsc']],
-    ['ahrefs_trends',          ['ahrefs_trends', 'trends']],
-    ['competitor_benchmark',   ['competitor_benchmark', 'competitor', 'benchmark', 'sov']],
-    ['ahrefs_backlinks',       ['ahrefs']],
-    ['ga4_export',             ['ga4']],
-    ['linkedin_company',       ['linkedin']],
-    ['mentions',               ['mentions', 'alerts']]
-  ];
 
   document.getElementById('ws-period').addEventListener('change', function() {
     window.location = '/admin/workspace?client=' + encodeURIComponent(CLIENT) + '&period=' + encodeURIComponent(this.value);
@@ -248,8 +243,16 @@
     document.getElementById('ws-filled').textContent =
       n + '/' + SOURCE_KEYS.length + ' sources in' + (syncable ? ' · ' + syncable + ' can sync' : '');
 
-    // The dropzone earns its size only while the month is empty.
-    document.getElementById('ws-drop').classList.toggle('ws-drop--slim', n > 0);
+    // Each group's summary shows its own fill state without opening it.
+    document.querySelectorAll('.ws-group').forEach(function(grp) {
+      var keys = (grp.dataset.sources || '').split(',').filter(Boolean);
+      var got = keys.filter(function(k) { return filled[k]; }).length;
+      var dot = grp.querySelector('.ws-group__dot');
+      var count = grp.querySelector('.ws-group__count');
+      if (count) count.textContent = got + '/' + keys.length;
+      if (dot) dot.className = 'ws-group__dot ' + (
+        got === keys.length && keys.length ? 'ws-group__dot--full' : got > 0 ? 'ws-group__dot--part' : '');
+    });
 
     // Build unlocks once any source has data (a rebuild is always allowed).
     if (!HAS_REPORT) {
@@ -279,18 +282,6 @@
   }
   refreshSources();
 
-  // ---------- routing + upload ----------
-  function routeFile(filename) {
-    var lower = filename.toLowerCase();
-    for (var i = 0; i < ROUTES.length; i++) {
-      var key = ROUTES[i][0], aliases = ROUTES[i][1];
-      for (var j = 0; j < aliases.length; j++) {
-        if (lower.indexOf(aliases[j]) !== -1) return key;
-      }
-    }
-    return null;
-  }
-
   function uploadFile(key, file) {
     setSourceState(key, 'uploading', file.name, '', []);
     var fd = new FormData();
@@ -306,51 +297,6 @@
       })
       .catch(function() { setSourceState(key, 'error', file.name, 'Upload failed — try again', []); });
   }
-
-  function handleFiles(fileList) {
-    Array.prototype.forEach.call(fileList, function(file) {
-      var key = routeFile(file.name);
-      if (key) { uploadFile(key, file); }
-      else { addUnrouted(file); }
-    });
-  }
-
-  // Unrouted files get a manual assignment row instead of failing silently.
-  var pendingUnrouted = [];
-  function addUnrouted(file) {
-    pendingUnrouted.push(file);
-    var idx = pendingUnrouted.length - 1;
-    var box = document.getElementById('ws-unrouted');
-    var row = document.createElement('div');
-    row.className = 'ws-unrouted-row';
-    var options = SOURCE_KEYS.map(function(k) {
-      return '<option value="' + k + '">' + esc(SOURCE_TITLES[k]) + '</option>';
-    }).join('');
-    row.innerHTML =
-      '<span class="ws-unrouted-row__name">' + esc(file.name) + '</span>' +
-      '<span class="ws-unrouted-row__q">Which source is this?</span>' +
-      '<select>' + options + '</select>' +
-      '<button class="chip-link" type="button">Assign</button>' +
-      '<button class="chip-link" type="button">Skip</button>';
-    var select = row.querySelector('select');
-    var btns = row.querySelectorAll('button');
-    btns[0].addEventListener('click', function() { uploadFile(select.value, pendingUnrouted[idx]); row.remove(); });
-    btns[1].addEventListener('click', function() { row.remove(); });
-    box.appendChild(row);
-  }
-
-  // Global dropzone
-  var drop = document.getElementById('ws-drop');
-  var dropInput = document.getElementById('ws-drop-input');
-  drop.addEventListener('click', function() { dropInput.click(); });
-  dropInput.addEventListener('change', function() { handleFiles(dropInput.files); dropInput.value = ''; });
-  drop.addEventListener('dragover', function(e) { e.preventDefault(); drop.classList.add('ws-drop--active'); });
-  drop.addEventListener('dragleave', function() { drop.classList.remove('ws-drop--active'); });
-  drop.addEventListener('drop', function(e) {
-    e.preventDefault();
-    drop.classList.remove('ws-drop--active');
-    handleFiles(e.dataTransfer.files);
-  });
 
   // API sync for connected sources
   var CONNECTED = [{% for key in connected_sources %}{{ key | tojson }}{{ "," if not loop.last }}{% endfor %}];

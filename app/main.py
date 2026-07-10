@@ -82,7 +82,7 @@ from app.db import (
 from app.reports import jobs
 from app import connectors
 from app.connectors._util import ConnectorError
-from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, summarise_parsed
+from app.ingestion.parsers import PARSER_MAP, SOURCE_DEFS, SOURCE_GROUPS, summarise_parsed
 from app.reports.sections import SECTION_DEFS, enabled_sections, enabled_source_keys, ALL_SECTION_KEYS
 
 # Sections that accept an optional operator note on the review screen.
@@ -412,9 +412,43 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
                 # client connection row - don't assume conns[provider] exists.
                 "status": (conns.get(provider) or {}).get("status"),
             }
-    # Only show source cards for the sections this client's report includes.
+    # Only show source cards for the sections this client's report includes,
+    # grouped by relation for the accordion layout.
     client_sources = enabled_source_keys(client_config)
     client_source_defs = [s for s in SOURCE_DEFS if s["key"] in client_sources]
+    defs_by_key = {s["key"]: s for s in client_source_defs}
+    source_groups = []
+    for g in SOURCE_GROUPS:
+        defs = [defs_by_key[k] for k in g["sources"] if k in defs_by_key]
+        if defs:
+            source_groups.append({"key": g["key"], "label": g["label"], "defs": defs})
+
+    # Setup-status strip: what's configured for this client, with links into
+    # the settings page — so a fresh month makes the missing setup obvious.
+    _raw_row = get_client_row(slug) or {}
+    try:
+        _raw_cfg = json.loads(_raw_row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        _raw_cfg = {}
+    feeds = client_config.get("mention_feeds") or []
+    live_providers = sorted({v["provider"] for v in connected_sources.values()})
+    setup_items = [
+        {"anchor": "connections", "label": "API connections",
+         "ok": bool(live_providers),
+         "sub": f"{len(live_providers)} live" if live_providers else "set up →"},
+        {"anchor": "mention-feeds", "label": "Mention feeds",
+         "ok": bool(feeds),
+         "sub": f"{len(feeds)} feed{'s' if len(feeds) != 1 else ''}" if feeds else "add →"},
+        {"anchor": "sentiment-brief", "label": "Sentiment brief",
+         "ok": bool((_raw_cfg.get("sentiment_context") or "").strip()),
+         "sub": "custom" if (_raw_cfg.get("sentiment_context") or "").strip() else "generic →"},
+        {"anchor": "report-focus", "label": "Report focus",
+         "ok": bool((_raw_cfg.get("report_focus") or "").strip()),
+         "sub": "set" if (_raw_cfg.get("report_focus") or "").strip() else "optional"},
+        {"anchor": "report-sections", "label": "Sections",
+         "ok": True,
+         "sub": f"{len(enabled_sections(client_config))} of {len(SECTION_DEFS)}"},
+    ]
 
     return _render(
         "admin/workspace.html",
@@ -425,6 +459,8 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         selected_client=slug,
         period=period,
         source_defs=client_source_defs,
+        source_groups=source_groups,
+        setup_items=setup_items,
         report=report,
         has_uploads=bool(list_uploads(slug, period)),
         shares=shares,
