@@ -934,6 +934,11 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
         label, parser = PARSER_MAP[source_key]
         data = parser(dest)
         result = summarise_parsed(source_key, data)
+        # Connectors can flag a partial pull (e.g. Meta got Instagram but no
+        # Facebook rows) by attaching warnings to the config it was handed.
+        extra = config.get("_warnings") or []
+        if extra:
+            result["warnings"] = (result.get("warnings") or []) + extra
         upsert_upload(client_slug, period, source_key, filename, str(dest),
                       result["status"], result.get("row_count", 0), json.dumps(result))
         set_connection_status(client_slug, provider, "ok", "Last sync OK", synced=True)

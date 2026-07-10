@@ -225,13 +225,36 @@ def _rows_from_series(series: dict, platform: str, keys) -> list:
     return rows
 
 
+def _probe_reason(config, node_id, metrics, start, end) -> str:
+    """One deliberate (non-best-effort) insights call to explain why a platform
+    came back empty - a deprecated metric name or a missing permission - instead
+    of the best-effort path silently dropping every metric."""
+    try:
+        _get(config, f"/{node_id}/insights",
+             {"metric": ",".join(metrics.values()), "period": "day",
+              "since": start, "until": end})
+        return "the page reported no activity for this month"
+    except ConnectorError as e:
+        return str(e)
+
+
+def _note_if_empty(config, rows, platform, node_id, metrics, start, end):
+    """Record a warning (surfaced on the sync card) when a configured platform
+    produced no rows, so a half-empty sync isn't a mystery."""
+    if not rows:
+        reason = _probe_reason(config, node_id, metrics, start, end)
+        config.setdefault("_warnings", []).append(f"{platform}: no data written - {reason}")
+    return rows
+
+
 def _facebook_rows(config, page_id, start, end):
     series = _pull_daily(config, page_id, FB_METRICS, start, end)
     # Link clicks in its own best-effort call so its absence never drops reach.
     clicks = _pull_daily(config, page_id, {"link_clicks": FB_LINK_CLICKS_METRIC}, start, end)
     series.update(clicks)
-    return _rows_from_series(series, "Facebook",
+    rows = _rows_from_series(series, "Facebook",
                              ["views", "reach", "interactions", "link_clicks", "followers"])
+    return _note_if_empty(config, rows, "Facebook", page_id, FB_METRICS, start, end)
 
 
 def _instagram_rows(config, ig_id, start, end):
@@ -240,5 +263,6 @@ def _instagram_rows(config, ig_id, start, end):
         series.update(_pull_daily(config, ig_id, IG_DAILY_METRICS_FALLBACK, start, end))
     followers = _pull_daily(config, ig_id, {"followers": IG_FOLLOWER_METRIC}, start, end)
     series.update(followers)
-    return _rows_from_series(series, "Instagram",
+    rows = _rows_from_series(series, "Instagram",
                              ["views", "reach", "interactions", "link_clicks", "followers"])
+    return _note_if_empty(config, rows, "Instagram", ig_id, IG_DAILY_METRICS, start, end)
