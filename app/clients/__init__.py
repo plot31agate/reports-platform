@@ -47,6 +47,10 @@ DEFAULT_CLIENT = {
         "executive hires are POSITIVE; competitor wins and losses are NEGATIVE; "
         "generic industry commentary is NEUTRAL."
     ),
+    # Editorial steer for report commentary: which areas lead the story
+    # (PR coverage vs traffic/social growth). Empty = derive the emphasis
+    # from the enabled sections. The workspace "Report focus" panel writes it.
+    "report_focus": "",
 }
 
 

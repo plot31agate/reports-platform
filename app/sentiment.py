@@ -173,6 +173,45 @@ Write only the brief itself, no preamble, no headings, no markdown. 120-200 word
         return {"configured": True, "brief": None, "error": str(e)}
 
 
+def draft_report_focus(display_name: str, description: str, section_labels: list | None = None) -> dict:
+    """Write a per-client report-focus brief from a one-line description.
+
+    Returns {"configured": bool, "brief": str|None, "error": str|None}.
+    The brief steers the editorial voice of the whole report - which metrics
+    lead the story and which are supporting cast - so a PR-led client reads
+    differently from a growth/social-led one.
+    """
+    client = _client()
+    if not client:
+        return {"configured": False, "brief": None, "error": None}
+
+    sections = ", ".join(section_labels) if section_labels else "not specified"
+    prompt = f"""Write an editorial-focus brief for the monthly performance report of a company called "{display_name}".
+
+What the report should focus on (from the operator): {description or "not specified"}
+Report sections enabled for this client: {sections}
+
+The brief is read by an AI that writes the report's headline, executive summary and section commentary from a month of PR, search, traffic and social data. Write instructions that tell it what kind of report this is for THIS client - which areas lead the story and which are supporting detail.
+
+Structure the brief as:
+- One sentence naming the report's primary purpose (e.g. earned-media and PR impact, or audience growth and social reach, or organic search performance).
+- "Lead with:" one or two sentences naming the metrics and stories that should open the report and carry the headline.
+- "Support with:" one sentence on the areas that appear as context but should not dominate.
+- One sentence on the voice (e.g. written for a comms director who cares about outlet quality, or for a marketing lead who cares about follower and traffic growth).
+
+Write only the brief itself, no preamble, no headings, no markdown. 80-140 words. Use plain hyphens and commas, never em dashes."""
+
+    try:
+        resp = client.messages.create(
+            model=settings.claude_model_synthesis,
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return {"configured": True, "brief": resp.content[0].text.strip(), "error": None}
+    except Exception as e:
+        return {"configured": True, "brief": None, "error": str(e)}
+
+
 def synthesise_actions(report_data: dict, client_config: dict) -> dict:
     """Generate 'next month's actions' by passing the assembled report data to Claude."""
     client = _client()
@@ -202,7 +241,26 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
         "technical_seo": _d("technical_seo_metrics"),
     }, default=str, indent=2)
 
+    # Per-client editorial steer: the operator-written focus brief decides
+    # which areas lead the story; the enabled-sections list is the fallback
+    # signal when no brief is set (a social-only client should never get a
+    # PR-led intro just because the generic prompt weighs coverage first).
+    from app.reports.sections import SECTION_DEFS, enabled_sections
+    section_labels = {d["key"]: d["label"] for d in SECTION_DEFS}
+    enabled = [section_labels[k] for k in enabled_sections(client_config) if k in section_labels]
+
+    focus_brief = (client_config.get("report_focus") or "").strip()
+    if focus_brief:
+        focus_block = f"""Editorial focus for this client's report:
+{focus_brief}
+
+This focus decides the report's emphasis: the headline, standfirst, intro and the ordering of ideas inside every note must lead with the areas it names as primary, and treat the rest as supporting context. Recommended actions should also skew toward the primary areas."""
+    else:
+        focus_block = f"""This client's report covers these sections: {", ".join(enabled) if enabled else "the default set"}. Weight the headline, standfirst and intro toward the areas where this month's data shows the most meaningful movement, and do not dwell on areas outside the enabled sections."""
+
     prompt = f"""You are a senior PR and growth advisor for {client_config['display_name']}, {client_config.get('sentiment_context', '').split('.')[0]}.
+
+{focus_block}
 
 The month's data summary:
 
@@ -223,10 +281,10 @@ Also give a read on the month:
 
 Also write the report's editorial framing. This is the part the client's leadership actually reads: it must tell the story of the month, not recite numbers. Every piece should say what happened, what drove it, and what it means for the client - the numbers support the sentence, they never lead it.
 
-- "headline": the report title, 4 to 8 words naming the month's defining story (e.g. "Kenya launch drives record coverage"). Title case only on the first word and proper nouns, no trailing full stop, no colons.
+- "headline": the report title, 4 to 8 words naming the month's defining story in the report's primary focus area (e.g. "Kenya launch drives record coverage" for a PR-led report, "Follower growth accelerates across every channel" for a social-led one). Title case only on the first word and proper nouns, no trailing full stop, no colons.
 - "standfirst": one or two sentences under the headline framing the month's story - the defining development and its strongest number.
 - "notes": an object of section commentaries keyed as below. ALWAYS include "intro". Include the other keys only when the summary above has data for them.
-  - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month, connect the threads (how coverage, search, traffic, authority and social relate to each other this month), and close with where the focus goes next. This is the executive summary at the top of the report.
+  - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month in the report's primary focus area, connect the threads (how the other areas relate to it this month), and close with where the focus goes next. This is the executive summary at the top of the report.
   - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
 
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:

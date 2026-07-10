@@ -240,6 +240,40 @@
       </form>
     </details>
 
+    <!-- Report focus: the editorial steer for the whole report's commentary -->
+    <details class="panel ws-connections" id="report-focus">
+      <summary>
+        <span class="ws-connections__title">Report focus</span>
+        <span class="ws-connections__sub">
+          {% if focus_is_custom %}Custom focus set — commentary leads with it{% else %}Not set — commentary follows the enabled sections{% endif %}
+        </span>
+      </summary>
+      <form method="post" action="/admin/report-focus/save">
+        <input type="hidden" name="client_slug" value="{{ selected_client }}">
+        <input type="hidden" name="period" value="{{ period }}">
+
+        <label style="display:block;font-weight:700;font-size:13px;color:var(--ink);margin-bottom:6px;">Report focus brief</label>
+        <p class="ws-hint" style="margin:0 0 8px;">Decides the report's editorial emphasis — which areas lead the headline, summary and commentary (e.g. PR coverage for one client, traffic and social growth for another). Describe the focus in a sentence below and let Claude draft it, then tweak. Leave the box empty to fall back to weighting by the enabled sections.</p>
+
+        <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:wrap;">
+          <input type="text" id="focus-desc" placeholder="What should {{ client.display_name }}'s report lead with? e.g. mostly social growth — followers, traffic and engagement, PR is secondary"
+                 style="flex:1 1 340px;min-width:0;font-size:13px;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;">
+          <button type="button" class="button button--ghost button--sm" id="focus-draft-btn"
+                  onclick="draftReportFocus('{{ selected_client }}')">Draft with AI</button>
+        </div>
+        <div id="focus-draft-status" class="ws-hint" style="margin:0 0 8px;display:none;"></div>
+
+        <textarea name="report_focus" id="report-focus-text" rows="6" spellcheck="true"
+                  style="width:100%;font-size:13px;line-height:1.6;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;resize:vertical;"
+                  placeholder="Empty — commentary weights itself by the enabled sections. Write or draft a brief to steer it.">{{ client.report_focus or '' }}</textarea>
+
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+          <button class="button button--primary button--sm" type="submit">Save report focus</button>
+          <span class="ws-hint" style="margin:0;">Applies to the next build — rebuild the report to regenerate commentary.</span>
+        </div>
+      </form>
+    </details>
+
     <!-- Report sections: which inputs and report sections this client gets -->
     <details class="panel ws-connections" id="report-sections">
       <summary>
@@ -375,6 +409,32 @@ function draftSentimentBrief(clientSlug) {
   btn.disabled = true;
   var body = new URLSearchParams({ client_slug: clientSlug, description: desc.value || '' });
   fetch('/admin/sentiment-brief/draft', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+    .then(function(res) {
+      if (!res.ok || !res.j.brief) {
+        status.style.color = '#b3324b';
+        status.textContent = res.j.error || 'Draft failed — try again.';
+        return;
+      }
+      box.value = res.j.brief;
+      status.style.color = '#157a52';
+      status.textContent = 'Draft ready — review and edit, then Save.';
+    })
+    .catch(function() { status.style.color = '#b3324b'; status.textContent = 'Network error — try again.'; })
+    .finally(function() { btn.disabled = false; });
+}
+// Draft the report-focus brief with Claude from the one-line description.
+function draftReportFocus(clientSlug) {
+  var btn = document.getElementById('focus-draft-btn');
+  var status = document.getElementById('focus-draft-status');
+  var desc = document.getElementById('focus-desc');
+  var box = document.getElementById('report-focus-text');
+  status.style.display = 'block';
+  status.style.color = '';
+  status.textContent = 'Drafting with Claude...';
+  btn.disabled = true;
+  var body = new URLSearchParams({ client_slug: clientSlug, description: desc.value || '' });
+  fetch('/admin/report-focus/draft', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
     .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
     .then(function(res) {
       if (!res.ok || !res.j.brief) {

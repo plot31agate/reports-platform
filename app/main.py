@@ -384,6 +384,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
     except (ValueError, TypeError):
         _raw_cfg = {}
     sentiment_is_custom = bool((_raw_cfg.get("sentiment_context") or "").strip())
+    focus_is_custom = bool((_raw_cfg.get("report_focus") or "").strip())
     report = next((r for r in list_reports(slug) if r["period"] == period), None)
 
     shares = []
@@ -440,6 +441,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         selected_client=slug,
         period=period,
         sentiment_is_custom=sentiment_is_custom,
+        focus_is_custom=focus_is_custom,
         source_defs=client_source_defs,
         section_defs=SECTION_DEFS,
         client_sections=enabled_sections(client_config),
@@ -1012,6 +1014,49 @@ async def admin_sentiment_brief_save(request: Request):
     except KeyError:
         return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
     return RedirectResponse(f"{back}&message=Saved+sentiment+brief+and+{len(execs)}+executive{'s' if len(execs) != 1 else ''}", status_code=302)
+
+
+@app.post("/admin/report-focus/draft")
+async def admin_report_focus_draft(request: Request):
+    """Draft a report-focus brief with Claude from a one-line description.
+    Returns JSON {brief} so the workspace can fill the textarea in place."""
+    _require_admin_or_redirect(request)
+    from app.sentiment import draft_report_focus
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    description = (form.get("description") or "").strip()
+    try:
+        cfg = get_client(client_slug)
+    except KeyError:
+        return JSONResponse({"error": "Unknown client"}, status_code=400)
+
+    labels = {d["key"]: d["label"] for d in SECTION_DEFS}
+    section_labels = [labels[k] for k in enabled_sections(cfg) if k in labels]
+    result = draft_report_focus(cfg.get("display_name") or client_slug, description, section_labels)
+    if not result.get("configured"):
+        return JSONResponse({"error": "Claude API is not configured (ANTHROPIC_API_KEY)."}, status_code=400)
+    if not result.get("brief"):
+        return JSONResponse({"error": (result.get("error") or "Draft failed")[:200]}, status_code=502)
+    return JSONResponse({"brief": result["brief"]})
+
+
+@app.post("/admin/report-focus/save")
+async def admin_report_focus_save(request: Request):
+    """Save the client's report-focus brief - the editorial steer that decides
+    which areas lead the report's commentary."""
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period") or ""
+    back = f"/admin/workspace?client={client_slug}&period={period}"
+
+    brief = (form.get("report_focus") or "").strip()
+    try:
+        update_client_config_key(client_slug, "report_focus", brief)
+    except KeyError:
+        return RedirectResponse(f"{back}&error=Unknown+client", status_code=302)
+    msg = "Saved+report+focus" if brief else "Cleared+report+focus+-+commentary+follows+the+enabled+sections"
+    return RedirectResponse(f"{back}&message={msg}", status_code=302)
 
 
 @app.post("/admin/sections/save")
