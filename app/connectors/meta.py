@@ -324,13 +324,26 @@ def _ig_views_by_day(config, ig_id, start, end) -> dict:
     return out
 
 
+def _ig_follower_series(config, ig_id, start, end) -> dict:
+    """Daily new-follower series, clamped to the trailing 30-day window (minus
+    today) that Meta serves follower_count for - asking outside it 400s. A sync
+    run after the month closes still gets the tail of the month that overlaps."""
+    from datetime import date, timedelta
+    today = date.today()
+    lo = max(date.fromisoformat(start), today - timedelta(days=30))
+    hi = min(date.fromisoformat(end), today - timedelta(days=1))
+    if lo > hi:
+        return {}  # month is entirely outside the window Meta keeps
+    return _pull_daily(config, ig_id, {"followers": IG_FOLLOWER_METRIC},
+                       lo.isoformat(), hi.isoformat())
+
+
 def _instagram_rows(config, ig_id, start, end):
     series = _pull_daily(config, ig_id, IG_DAILY_METRICS, start, end)
     views = _ig_views_by_day(config, ig_id, start, end)
     if views:
         series["views"] = views
-    followers = _pull_daily(config, ig_id, {"followers": IG_FOLLOWER_METRIC}, start, end)
-    series.update(followers)
+    series.update(_ig_follower_series(config, ig_id, start, end))
     rows = _rows_from_series(series, "Instagram",
                              ["views", "reach", "interactions", "link_clicks", "followers"])
     return _note_if_empty(config, rows, "Instagram")
