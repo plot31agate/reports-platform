@@ -173,7 +173,11 @@ def test(config) -> tuple[bool, str]:
         if not qs:
             return False, "Add at least one search query (or set the client's brand name and executives)"
         items, _ = _post(config, qs[0])
-        return True, f"Connected - '{qs[0]}' returned {len(items)} stories ({len(qs)} quer{'y' if len(qs) == 1 else 'ies'} configured)"
+        return True, (
+            f"Key works - test query '{qs[0]}' returned {len(items)} stories "
+            f"(all dates, before dedupe). {len(qs)} quer{'y' if len(qs) == 1 else 'ies'} "
+            f"configured; the month's sync keeps only in-period, de-duplicated coverage."
+        )
     except ConnectorError as e:
         return False, str(e)
 
