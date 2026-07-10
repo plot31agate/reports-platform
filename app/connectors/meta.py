@@ -24,28 +24,27 @@ GRAPH_VERSION = "v21.0"
 API = f"https://graph.facebook.com/{GRAPH_VERSION}"
 TIMEOUT = 30
 
-# Facebook Page insights (period=day). These have survived Meta's insights
-# deprecations; link clicks is pulled separately because it's less reliable.
-# Meta deprecated the impression- and fan-based Page metrics on 2025-11-15
-# (calls 400 with "must be a valid insights metric" afterwards); these are the
-# current replacements. Names keep shifting, so _pull_daily isolates each metric
-# - a dead name drops out, named in a warning, instead of nuking the whole call.
+# Facebook Page insights (period=day). Meta's 2025-11-15 purge removed the
+# impression- and fan-based names; these are the current replacements. Page
+# insights must be called with a *Page* access token (the user/system token
+# 400s with #190), which _fb_page_token exchanges per page. page_impressions_
+# unique (reach) and page_consumptions_by_consumption_type (link clicks) were
+# removed outright with no replacement, so those Facebook columns stay blank.
+# Names keep shifting - _pull_daily isolates each metric, so a dead name drops
+# out named in a warning instead of nuking the whole call.
 FB_METRICS = {
     "views": "page_media_view",          # was page_impressions
-    "reach": "page_impressions_unique",  # deprecated on newer versions; drops if rejected
     "interactions": "page_post_engagements",
     "followers": "page_daily_follows",   # was page_fan_adds
 }
-# Best-effort extras requested in their own call so a rejection here doesn't
-# lose the core metrics above.
-FB_LINK_CLICKS_METRIC = "page_consumptions_by_consumption_type"
 
-# Instagram account insights (period=day time series). Meta deprecated
-# account-level "impressions" in favour of "views".
+# Instagram account insights. reach and follower_count are daily time series;
+# "views" (which replaced the deprecated "impressions") is only served as
+# metric_type=total_value, so _ig_views_by_day fetches it one day at a time.
 IG_DAILY_METRICS = {
-    "views": "views",
     "reach": "reach",
 }
+IG_VIEWS_METRIC = "views"
 IG_FOLLOWER_METRIC = "follower_count"
 
 
@@ -66,10 +65,11 @@ def _token(config) -> str:
     return tok
 
 
-def _get(config, path, params, best_effort=False):
+def _get(config, path, params, best_effort=False, token=None):
     """GET a Graph API node. Returns parsed JSON, or None when best_effort and
-    Meta rejects the specific request (e.g. an unavailable metric)."""
-    params = {**params, "access_token": _token(config)}
+    Meta rejects the specific request (e.g. an unavailable metric). Pass token
+    to use a specific credential (e.g. a Page token) over the configured one."""
+    params = {**params, "access_token": token or _token(config)}
     requests = _requests()
     try:
         resp = requests.get(f"{API}/{path.lstrip('/')}", params=params, timeout=TIMEOUT)
@@ -91,6 +91,25 @@ def _get(config, path, params, best_effort=False):
     if resp.status_code == 190:
         raise ConnectorError(f"Meta access token invalid or expired: {msg}")
     raise ConnectorError(f"Meta error {resp.status_code}: {msg}")
+
+
+def _fb_page_token(config, page_id) -> str:
+    """Exchange the configured user/system token for the Page's own token.
+    Page insights reject anything else with '#190 must be called with a Page
+    Access Token'. Cached on the config dict for the life of one sync."""
+    cache_key = f"_page_token_{page_id}"
+    if config.get(cache_key):
+        return config[cache_key]
+    data = _get(config, f"/{page_id}", {"fields": "access_token"}, best_effort=True)
+    tok = (data or {}).get("access_token")
+    if not tok:
+        raise ConnectorError(
+            f"Couldn't get a Page token for {page_id} - the configured token must "
+            "manage this Page (grant the Page to the system user with full control, "
+            "and include the pages_show_list and pages_read_engagement permissions)"
+        )
+    config[cache_key] = tok
+    return tok
 
 
 def test_key(config) -> tuple[bool, str]:
@@ -192,7 +211,7 @@ def _daily_series(node) -> dict:
     return out
 
 
-def _pull_daily(config, node_id, metrics: dict, start, end, extra=None):
+def _pull_daily(config, node_id, metrics: dict, start, end, extra=None, token=None):
     """Return {our_key: {day: value}} for several insights metrics.
 
     Meta rejects the whole call if any single metric name is invalid (routine as
@@ -212,7 +231,7 @@ def _pull_daily(config, node_id, metrics: dict, start, end, extra=None):
                 for key, name in metrics.items() if name in by_name}
 
     batch = _get(config, f"/{node_id}/insights",
-                 {**base, "metric": ",".join(metrics.values())}, best_effort=True)
+                 {**base, "metric": ",".join(metrics.values())}, best_effort=True, token=token)
     if batch is not None:
         got = _series(batch)
         if got:
@@ -220,14 +239,15 @@ def _pull_daily(config, node_id, metrics: dict, start, end, extra=None):
 
     out = {}
     for key, name in metrics.items():
-        one = _get(config, f"/{node_id}/insights", {**base, "metric": name}, best_effort=True)
+        one = _get(config, f"/{node_id}/insights", {**base, "metric": name},
+                   best_effort=True, token=token)
         series = _series(one) if one is not None else {}
         if series:
             out.update(series)
         else:
             # Capture Meta's exact reason for this metric so we know what to fix.
             try:
-                _get(config, f"/{node_id}/insights", {**base, "metric": name})
+                _get(config, f"/{node_id}/insights", {**base, "metric": name}, token=token)
                 reason = "returned no rows for this month"
             except ConnectorError as e:
                 reason = str(e)
@@ -248,42 +268,69 @@ def _rows_from_series(series: dict, platform: str, keys) -> list:
     return rows
 
 
-def _probe_reason(config, node_id, metrics, start, end) -> str:
-    """One deliberate (non-best-effort) insights call to explain why a platform
-    came back empty - a deprecated metric name or a missing permission - instead
-    of the best-effort path silently dropping every metric."""
-    try:
-        _get(config, f"/{node_id}/insights",
-             {"metric": ",".join(metrics.values()), "period": "day",
-              "since": start, "until": end})
-        return "the page reported no activity for this month"
-    except ConnectorError as e:
-        return str(e)
-
-
-def _note_if_empty(config, rows, platform, node_id, metrics, start, end):
+def _note_if_empty(config, rows, platform):
     """Record a warning (surfaced on the sync card) when a configured platform
-    produced no rows, so a half-empty sync isn't a mystery."""
+    produced no rows. _pull_daily already recorded each metric's exact rejection,
+    so this just marks the platform-level outcome."""
     if not rows:
-        reason = _probe_reason(config, node_id, metrics, start, end)
-        config.setdefault("_warnings", []).append(f"{platform}: no data written - {reason}")
+        config.setdefault("_warnings", []).append(
+            f"{platform}: no data written - see the metric errors above")
     return rows
 
 
 def _facebook_rows(config, page_id, start, end):
-    series = _pull_daily(config, page_id, FB_METRICS, start, end)
-    # Link clicks in its own best-effort call so its absence never drops reach.
-    clicks = _pull_daily(config, page_id, {"link_clicks": FB_LINK_CLICKS_METRIC}, start, end)
-    series.update(clicks)
+    # Page insights only answer to the Page's own token (#190 otherwise).
+    try:
+        page_token = _fb_page_token(config, page_id)
+    except ConnectorError as e:
+        config.setdefault("_warnings", []).append(f"Facebook: no data written - {e}")
+        return []
+    series = _pull_daily(config, page_id, FB_METRICS, start, end, token=page_token)
     rows = _rows_from_series(series, "Facebook",
                              ["views", "reach", "interactions", "link_clicks", "followers"])
-    return _note_if_empty(config, rows, "Facebook", page_id, FB_METRICS, start, end)
+    return _note_if_empty(config, rows, "Facebook")
+
+
+def _ig_views_by_day(config, ig_id, start, end) -> dict:
+    """Daily series for IG views, which Meta only serves aggregated
+    (metric_type=total_value) - so ask for each day's total separately."""
+    from datetime import date, timedelta
+    out = {}
+    day = date.fromisoformat(start)
+    last = date.fromisoformat(end)
+    failed = None
+    while day <= last:
+        data = _get(config, f"/{ig_id}/insights",
+                    {"metric": IG_VIEWS_METRIC, "period": "day",
+                     "metric_type": "total_value",
+                     "since": day.isoformat(), "until": (day + timedelta(days=1)).isoformat()},
+                    best_effort=True)
+        for node in ((data or {}).get("data") or []):
+            val = (node.get("total_value") or {}).get("value")
+            if isinstance(val, (int, float)):
+                out[day.isoformat()] = val
+        if data is None:
+            failed = day.isoformat()
+        day += timedelta(days=1)
+    if failed and not out:
+        # Every day failed - capture Meta's reason once, from the last day.
+        try:
+            _get(config, f"/{ig_id}/insights",
+                 {"metric": IG_VIEWS_METRIC, "period": "day",
+                  "metric_type": "total_value", "since": failed, "until": end})
+            config.setdefault("_warnings", []).append("Instagram views: returned no data")
+        except ConnectorError as e:
+            config.setdefault("_warnings", []).append(f"Instagram views: {e}")
+    return out
 
 
 def _instagram_rows(config, ig_id, start, end):
     series = _pull_daily(config, ig_id, IG_DAILY_METRICS, start, end)
+    views = _ig_views_by_day(config, ig_id, start, end)
+    if views:
+        series["views"] = views
     followers = _pull_daily(config, ig_id, {"followers": IG_FOLLOWER_METRIC}, start, end)
     series.update(followers)
     rows = _rows_from_series(series, "Instagram",
                              ["views", "reach", "interactions", "link_clicks", "followers"])
-    return _note_if_empty(config, rows, "Instagram", ig_id, IG_DAILY_METRICS, start, end)
+    return _note_if_empty(config, rows, "Instagram")
