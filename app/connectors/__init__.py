@@ -102,10 +102,10 @@ CONNECTOR_DEFS = [
         "client_fields": [
             {"key": "fb_page_id", "label": "Facebook Page ID", "type": "text",
              "placeholder": "e.g. 1234567890",
-             "hint": "Facebook Page → Settings → Page transparency, or the numeric ID in Business Suite. Feeds the Facebook half of the report's Facebook & Instagram section."},
+             "hint": "Easiest way: leave this as-is, save, and click Test - it lists the exact Page ID (and the linked Instagram ID) this token can read, ready to copy. Manual: Business Suite → Settings → the Page shows its numeric ID. Note the number in the page's web address is a profile ID, not the Page ID, so don't use that."},
             {"key": "ig_user_id", "label": "Instagram account ID", "type": "text",
              "placeholder": "optional, e.g. 17841400000000000",
-             "hint": "Optional. The IG Business account's numeric ID (it must be linked to the Facebook Page). Leave blank for Facebook-only clients."},
+             "hint": "Optional - Facebook-only clients leave blank. The IG account must be a Business/Creator account linked to the Facebook Page above; once it is, Test lists its numeric ID right next to the Page. You can't get one without the other - they come from the same linked Page."},
             {"key": "client_access_token", "label": "Access token override", "type": "password", "secret": True,
              "hint": "Only if this client's Page lives in a different Meta business portfolio than the agency token. Generate a System User token in that portfolio and paste it here. Leave blank to use the shared agency token."},
         ],

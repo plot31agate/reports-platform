@@ -101,16 +101,27 @@ def test_key(config) -> tuple[bool, str]:
 
 
 def _accessible_pages(config) -> str:
-    """List the pages this token can actually read, so a wrong/unconnected
-    Page ID turns into 'here are the IDs you can use' instead of a dead end."""
-    data = _get(config, "/me/accounts", {"fields": "name,id", "limit": 50}, best_effort=True)
+    """List the pages this token can actually read - with each page's linked
+    Instagram account - so a wrong/unconnected ID turns into 'here are the exact
+    IDs to paste' instead of a dead end. IG is linked to the page, so one call
+    returns both numbers the operator needs."""
+    data = _get(config, "/me/accounts",
+                {"fields": "name,id,instagram_business_account{id,username}", "limit": 50},
+                best_effort=True)
     pages = (data or {}).get("data") or []
     if not pages:
-        return ("This token can't see any Facebook Pages. Add the Page to the ympredictions "
-                "business portfolio, connect it to the Reporting app, and make sure the token has "
+        return ("This token can't see any Facebook Pages. Add the Page to the business "
+                "portfolio, connect it to the Reporting app, and make sure the token has "
                 "pages_show_list, pages_read_engagement and read_insights.")
-    listed = "; ".join(f"{p.get('name')} = {p.get('id')}" for p in pages[:15])
-    return f"Pages this token can read: {listed}"
+    bits = []
+    for p in pages[:15]:
+        entry = f"{p.get('name')} - Page ID {p.get('id')}"
+        ig = p.get("instagram_business_account") or {}
+        if ig.get("id"):
+            handle = f"@{ig['username']} " if ig.get("username") else ""
+            entry += f", Instagram {handle}ID {ig['id']}"
+        bits.append(entry)
+    return "IDs this token can read: " + "; ".join(bits)
 
 
 def test(config) -> tuple[bool, str]:
