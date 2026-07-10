@@ -26,23 +26,26 @@ TIMEOUT = 30
 
 # Facebook Page insights (period=day). These have survived Meta's insights
 # deprecations; link clicks is pulled separately because it's less reliable.
+# Meta deprecated the impression- and fan-based Page metrics on 2025-11-15
+# (calls 400 with "must be a valid insights metric" afterwards); these are the
+# current replacements. Names keep shifting, so _pull_daily isolates each metric
+# - a dead name drops out, named in a warning, instead of nuking the whole call.
 FB_METRICS = {
-    "views": "page_impressions",
-    "reach": "page_impressions_unique",
+    "views": "page_media_view",          # was page_impressions
+    "reach": "page_impressions_unique",  # deprecated on newer versions; drops if rejected
     "interactions": "page_post_engagements",
-    "followers": "page_fan_adds",
+    "followers": "page_daily_follows",   # was page_fan_adds
 }
 # Best-effort extras requested in their own call so a rejection here doesn't
 # lose the core metrics above.
 FB_LINK_CLICKS_METRIC = "page_consumptions_by_consumption_type"
 
-# Instagram account insights. IG needs metric_type=total_value for the
-# interaction metrics on recent API versions; reach/views are plain daily.
+# Instagram account insights (period=day time series). Meta deprecated
+# account-level "impressions" in favour of "views".
 IG_DAILY_METRICS = {
-    "views": "impressions",       # newer accounts serve "views"; we try both
+    "views": "views",
     "reach": "reach",
 }
-IG_DAILY_METRICS_FALLBACK = {"views": "views"}
 IG_FOLLOWER_METRIC = "follower_count"
 
 
@@ -190,29 +193,46 @@ def _daily_series(node) -> dict:
 
 
 def _pull_daily(config, node_id, metrics: dict, start, end, extra=None):
-    """Request one insights call for several metrics; return {our_key: {day: val}}.
+    """Return {our_key: {day: value}} for several insights metrics.
 
-    A single unavailable metric fails the whole Graph call, so this retries
-    once dropping the metric Meta named in its error, keeping the rest.
+    Meta rejects the whole call if any single metric name is invalid (routine as
+    it deprecates names), so the batch is only a fast path: on failure we fetch
+    each metric on its own, so a dead name drops out - recorded as a warning
+    naming the exact metric - and every still-valid metric comes through.
     """
-    wanted = dict(metrics)
-    for _attempt in range(len(wanted) + 1):
-        if not wanted:
-            return {}
-        params = {"metric": ",".join(wanted.values()), "period": "day",
-                  "since": start, "until": end}
-        if extra:
-            params.update(extra)
-        data = _get(config, f"/{node_id}/insights", params, best_effort=True)
-        if data is not None:
-            by_name = {d.get("name"): d for d in (data.get("data") or [])}
-            return {key: _daily_series(by_name[name])
-                    for key, name in wanted.items() if name in by_name}
-        # Drop one metric and retry - without the error name we can't tell
-        # which, so drop the last and let the caller's best-effort extras cover
-        # anything important that got dropped.
-        wanted.popitem()
-    return {}
+    if not metrics:
+        return {}
+    base = {"period": "day", "since": start, "until": end}
+    if extra:
+        base.update(extra)
+
+    def _series(data):
+        by_name = {d.get("name"): d for d in (data.get("data") or [])}
+        return {key: _daily_series(by_name[name])
+                for key, name in metrics.items() if name in by_name}
+
+    batch = _get(config, f"/{node_id}/insights",
+                 {**base, "metric": ",".join(metrics.values())}, best_effort=True)
+    if batch is not None:
+        got = _series(batch)
+        if got:
+            return got
+
+    out = {}
+    for key, name in metrics.items():
+        one = _get(config, f"/{node_id}/insights", {**base, "metric": name}, best_effort=True)
+        series = _series(one) if one is not None else {}
+        if series:
+            out.update(series)
+        else:
+            # Capture Meta's exact reason for this metric so we know what to fix.
+            try:
+                _get(config, f"/{node_id}/insights", {**base, "metric": name})
+                reason = "returned no rows for this month"
+            except ConnectorError as e:
+                reason = str(e)
+            config.setdefault("_warnings", []).append(f"{name}: {reason}")
+    return out
 
 
 def _rows_from_series(series: dict, platform: str, keys) -> list:
@@ -262,8 +282,6 @@ def _facebook_rows(config, page_id, start, end):
 
 def _instagram_rows(config, ig_id, start, end):
     series = _pull_daily(config, ig_id, IG_DAILY_METRICS, start, end)
-    if "views" not in series:
-        series.update(_pull_daily(config, ig_id, IG_DAILY_METRICS_FALLBACK, start, end))
     followers = _pull_daily(config, ig_id, {"followers": IG_FOLLOWER_METRIC}, start, end)
     series.update(followers)
     rows = _rows_from_series(series, "Instagram",
