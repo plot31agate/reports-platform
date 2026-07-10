@@ -1,5 +1,6 @@
 """Report builder — orchestrates parsing, sentiment, synthesis, and rendering."""
 import base64
+import hashlib
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,7 +9,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.clients import get_client
 from app.config import settings
-from app.db import upsert_report, get_commentary, upsert_commentary
+from app.db import upsert_report, get_commentary, upsert_commentary, get_mention_overrides
 from app.ingestion.parsers import parse_all
 from app.reports.pdf import render_pdf
 from app.reports.sections import enabled_sections
@@ -64,15 +65,42 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
             for key in ("domain_rating", "referring_domains", "organic_traffic")
         }
 
-    # 2. Sentiment classification on mentions (cached per mention)
-    mentions_data = parsed.get("mentions", {}).get("data") or {}
-    mention_list = mentions_data.get("mentions", [])
-    _progress("sentiment", f"0/{len(mention_list)}" if mention_list else "no mentions")
-    sentiment = classify_mentions(
-        mention_list,
-        client_config,
-        progress=lambda i, n: _progress("sentiment", f"{i}/{n}"),
-    )
+    # 2. Sentiment classification on mentions (cached per mention).
+    #    Operator overrides from the review screen are applied first: excluded
+    #    stories drop out of the report and the sentiment maths entirely, and a
+    #    per-story sentiment override replaces the AI's call.
+    #    Skipped entirely for SEO-only reports (no media section): those never
+    #    render coverage, so there's no point scoring mentions or paying for it,
+    #    even if a stray mentions file is sitting in the data folder.
+    media_on = "media" in enabled_sections(client_config)
+    if media_on:
+        mentions_data = parsed.get("mentions", {}).get("data") or {}
+        all_mentions = mentions_data.get("mentions", [])
+        overrides = get_mention_overrides(client_slug, period)
+        for m in all_mentions:
+            key = _mention_key(m)
+            ov = overrides.get(key) or {}
+            m["_key"] = key
+            m["_excluded"] = bool(ov.get("excluded"))
+            m["_sentiment_override"] = ov.get("sentiment") or None
+
+        active_mentions = [m for m in all_mentions if not m["_excluded"]]
+        # The report and every count run off the active set; the full annotated
+        # list stays on the data dict so the review screen can show excluded rows
+        # (to un-exclude) and each story's current override.
+        mentions_data["total"] = len(active_mentions)
+        mentions_data["all_mentions"] = all_mentions
+        mentions_data["mentions"] = active_mentions
+
+        _progress("sentiment", f"0/{len(active_mentions)}" if active_mentions else "no mentions")
+        sentiment = classify_mentions(
+            active_mentions,
+            client_config,
+            progress=lambda i, n: _progress("sentiment", f"{i}/{n}"),
+        )
+        _apply_sentiment_overrides(sentiment, active_mentions)
+    else:
+        sentiment = classify_mentions([], client_config)
 
     # 3. Next month's actions. Once the operator has saved edits, those win —
     #    skip the synthesis call entirely so review loads and republishes are
@@ -394,6 +422,41 @@ def _build_mom(client_slug: str, period: str, parsed: dict, technical_seo: dict 
         "prev_name": prev_dt.strftime("%B"),
         "prev_period": prev_period,
     }
+
+
+def _mention_key(m: dict) -> str:
+    """Stable identity for a mention, matching the parser's dedup on
+    normalised url + title - so an override survives a re-sync even if the
+    snippet text shifts."""
+    raw = (m.get("url", "").strip().lower().rstrip("/")) + "|" + (m.get("title", "").strip().lower())
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _apply_sentiment_overrides(sentiment: dict, mentions: list) -> None:
+    """Apply per-story sentiment overrides in place, recompute the aggregate,
+    and annotate each mention with _ai_sentiment (the model's call) and
+    _effective_sentiment (what the report shows) for the templates."""
+    override_by_key = {m["_key"]: m.get("_sentiment_override") for m in mentions}
+    scored = sentiment.get("scored") or []
+    for s in scored:
+        s["_ai_classification"] = s.get("classification")
+        ov = override_by_key.get(s.get("_key"))
+        if ov:
+            s["classification"] = ov
+            s["_overridden"] = True
+
+    counted = [s for s in scored if s.get("ok", True)]
+    pos = sum(1 for s in counted if s["classification"] == "positive")
+    neg = sum(1 for s in counted if s["classification"] == "negative")
+    neu = sum(1 for s in counted if s["classification"] == "neutral")
+    sentiment["positive"], sentiment["neutral"], sentiment["negative"] = pos, neu, neg
+    sentiment["avg_score"] = round((pos - neg) / len(counted), 2) if counted else None
+
+    scored_by_key = {s.get("_key"): s for s in scored}
+    for m in mentions:
+        s = scored_by_key.get(m["_key"]) or {}
+        m["_ai_sentiment"] = s.get("_ai_classification")
+        m["_effective_sentiment"] = m.get("_sentiment_override") or s.get("classification")
 
 
 def _detect_exec_mentions(parsed: dict, client_config: dict) -> list:

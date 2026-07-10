@@ -95,6 +95,16 @@ CREATE TABLE IF NOT EXISTS sentiment_cache (
     UNIQUE(client_slug, content_hash)
 );
 
+CREATE TABLE IF NOT EXISTS mention_overrides (
+    client_slug  TEXT NOT NULL,
+    period       TEXT NOT NULL,
+    mention_key  TEXT NOT NULL,
+    excluded     INTEGER NOT NULL DEFAULT 0,   -- 1 = operator removed it
+    sentiment    TEXT,                          -- positive|neutral|negative, or NULL = use AI
+    updated_at   TEXT NOT NULL,
+    UNIQUE(client_slug, period, mention_key)
+);
+
 CREATE TABLE IF NOT EXISTS client_connections (
     client_slug    TEXT NOT NULL,
     provider       TEXT NOT NULL,
@@ -573,3 +583,38 @@ def put_sentiment_cache(client_slug: str, content_hash: str, result: dict):
                    result_json = excluded.result_json, created_at = excluded.created_at""",
             (client_slug, content_hash, json.dumps(result), datetime.utcnow().isoformat()),
         )
+
+
+def get_mention_overrides(client_slug: str, period: str) -> dict:
+    """Operator overrides for a period's mentions, keyed by mention_key:
+    {key: {"excluded": bool, "sentiment": str|None}}."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT mention_key, excluded, sentiment FROM mention_overrides WHERE client_slug = ? AND period = ?",
+            (client_slug, period),
+        ).fetchall()
+    return {
+        r["mention_key"]: {"excluded": bool(r["excluded"]), "sentiment": r["sentiment"]}
+        for r in rows
+    }
+
+
+def set_mention_overrides(client_slug: str, period: str, overrides: dict):
+    """Replace the period's overrides. `overrides` is {key: {excluded, sentiment}};
+    only rows that actually override something (excluded or a sentiment) are kept."""
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM mention_overrides WHERE client_slug = ? AND period = ?",
+            (client_slug, period),
+        )
+        for key, ov in (overrides or {}).items():
+            excluded = 1 if ov.get("excluded") else 0
+            sentiment = ov.get("sentiment") or None
+            if not excluded and not sentiment:
+                continue
+            conn.execute(
+                """INSERT INTO mention_overrides (client_slug, period, mention_key, excluded, sentiment, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (client_slug, period, key, excluded, sentiment, now),
+            )

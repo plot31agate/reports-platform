@@ -54,6 +54,7 @@ from app.db import (
     delete_uploads,
     get_commentary,
     upsert_commentary,
+    set_mention_overrides,
     create_client,
     get_client_row,
     list_share_tokens,
@@ -652,6 +653,20 @@ async def admin_review_post(request: Request):
         client_slug, period, headline, standfirst,
         json.dumps(notes), json.dumps(actions),
     )
+
+    # Per-story mention overrides: a sentiment <select> is rendered for every
+    # story (so its key is always in the form); an unticked "keep" checkbox
+    # simply doesn't submit, which means excluded.
+    mention_overrides = {}
+    for field in form.keys():
+        if field.startswith("mx_") and field.endswith("_sentiment"):
+            key = field[3:-len("_sentiment")]
+            kept = form.get(f"mx_{key}_keep") == "1"
+            sentiment = (form.get(field) or "").strip() or None
+            if sentiment not in ("positive", "neutral", "negative"):
+                sentiment = None
+            mention_overrides[key] = {"excluded": not kept, "sentiment": sentiment}
+    set_mention_overrides(client_slug, period, mention_overrides)
 
     # Regenerate HTML + PDF with the edited commentary.
     try:

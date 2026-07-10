@@ -208,25 +208,55 @@
     {% endif %}
   </div>
 
+  {% macro tone_tag(s) %}
+  {%- if s == 'positive' %}<span class="tag grn">Positive</span>
+  {%- elif s == 'negative' %}<span class="tag red">Watch</span>
+  {%- elif s == 'neutral' %}<span class="tag">Neutral</span>{% endif -%}
+  {% endmacro %}
   <div class="panel panel--wide">
+    {% if editable %}
+    <h3>Coverage this month — tidy the list</h3>
+    <p class="meta" style="margin:0 0 12px;">Untick a story to drop it from the report and the sentiment score. Change its tone to override the AI. The published report shows the first 10 kept stories.</p>
+    <table>
+      <thead><tr><th style="width:52px;">Keep</th><th>Story</th><th>Source</th><th>Date</th><th style="width:130px;">Tone</th></tr></thead>
+      <tbody>
+        {% for m in data.mentions.data.all_mentions %}
+        <tr style="{% if m._excluded %}opacity:0.45;{% endif %}">
+          <td style="text-align:center;"><input type="checkbox" name="mx_{{ m._key }}_keep" value="1" {% if not m._excluded %}checked{% endif %} title="Keep this story in the report"></td>
+          <td>{% if m.url %}<a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.title }}</a>{% else %}{{ m.title }}{% endif %}</td>
+          <td>{{ m.source }}</td>
+          <td style="white-space:nowrap;">{{ m.date }}</td>
+          <td>
+            <select name="mx_{{ m._key }}_sentiment" style="font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;">
+              <option value="" {% if not m._sentiment_override %}selected{% endif %}>Auto{% if m._ai_sentiment %} ({{ m._ai_sentiment|capitalize }}){% endif %}</option>
+              <option value="positive" {% if m._sentiment_override == 'positive' %}selected{% endif %}>Positive</option>
+              <option value="neutral" {% if m._sentiment_override == 'neutral' %}selected{% endif %}>Neutral</option>
+              <option value="negative" {% if m._sentiment_override == 'negative' %}selected{% endif %}>Watch</option>
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
     <h3>Coverage this month</h3>
     <table>
       <thead><tr><th style="width:30px;">#</th><th>Story</th><th>Source</th><th>Date</th><th>Tone</th></tr></thead>
       <tbody>
         {% for m in data.mentions.data.mentions[:10] %}
-        {% set scored = (sentiment.scored | selectattr('title', 'equalto', m.title) | list | first) if sentiment.scored else none %}
         <tr>
           <td class="num">{{ loop.index }}</td>
           <td>{% if m.url %}<a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.title }}</a>{% else %}{{ m.title }}{% endif %}</td>
           <td>{{ m.source }}</td>
           <td style="white-space:nowrap;">{{ m.date }}</td>
-          <td>{% if scored %}{% if scored.classification == 'positive' %}<span class="tag grn">Positive</span>{% elif scored.classification == 'negative' %}<span class="tag red">Watch</span>{% else %}<span class="tag">Neutral</span>{% endif %}{% endif %}</td>
+          <td>{{ tone_tag(m._effective_sentiment) }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% if mentions_total > 10 %}
     <p class="meta" style="margin-top:12px;">Showing the first 10 of {{ mentions_total }} tracked mentions.</p>
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}
