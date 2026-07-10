@@ -8,12 +8,18 @@
     <div class="page-head__sub">Everything for one month lives here: data in, build, review, deliver.</div>
   </div>
   <div class="page-head__actions">
-    <select id="ws-client" title="Client">
-      {% for c in clients %}
-      <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
-      {% endfor %}
-    </select>
-    <input type="month" id="ws-period" value="{{ period }}" title="Reporting month">
+    <label class="head-field">
+      <span class="head-field__label">Client</span>
+      <select id="ws-client" title="Client">
+        {% for c in clients %}
+        <option value="{{ c.slug }}" {% if c.slug == selected_client %}selected{% endif %}>{{ c.display_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="head-field head-field--accent">
+      <span class="head-field__label">Reporting month</span>
+      <input type="month" id="ws-period" value="{{ period }}" title="Reporting month">
+    </label>
   </div>
 </div>
 

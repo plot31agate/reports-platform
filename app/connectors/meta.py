@@ -162,10 +162,13 @@ def sync(config, source_key, dest, period):
         rows += _instagram_rows(config, ig, start, end)
 
     if not rows:
-        raise ConnectorError(
-            f"Meta returned no insights for {period} - the page/account may have no activity, "
-            "or the token lacks the read_insights / instagram_basic permissions"
-        )
+        # Each platform's _note_if_empty probe recorded why it came back empty;
+        # surface those exact Meta reasons instead of a generic guess.
+        reasons = "; ".join(config.get("_warnings") or [])
+        detail = f" - {reasons}" if reasons else (
+            " - the page/account may have no activity, or the token lacks the "
+            "read_insights / instagram_basic permissions")
+        raise ConnectorError(f"Meta returned no insights for {period}{detail}")
 
     header = ["Date", "Platform", "Views", "Reach", "Content interactions", "Link clicks", "New followers"]
     write_csv(dest, header, rows)

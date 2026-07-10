@@ -115,7 +115,18 @@
   color: var(--ink);
 }
 .page-head__sub { font-size: 13px; color: var(--grey-600); margin-top: 4px; }
-.page-head__actions { display: flex; gap: 10px; }
+.page-head__actions { display: flex; gap: 12px; align-items: flex-end; }
+.head-field { display: flex; flex-direction: column; gap: 4px; }
+.head-field__label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--grey-600);
+}
+.head-field--accent .head-field__label { color: var(--df-pink); }
+.head-field--accent input[type=month] {
+  border-color: var(--df-pink);
+  box-shadow: 0 0 0 3px rgba(240,20,147,0.10);
+  font-weight: 700;
+}
 
 /* -------- Buttons -------- */
 .button {
