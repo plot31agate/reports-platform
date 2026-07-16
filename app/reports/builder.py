@@ -9,7 +9,10 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.clients import get_client
 from app.config import settings
-from app.db import upsert_report, get_commentary, upsert_commentary, get_mention_overrides
+from app.db import (
+    upsert_report, get_commentary, upsert_commentary,
+    get_mention_overrides, set_commentary_ai_state,
+)
 from app.ingestion.parsers import parse_all
 from app.reports.pdf import render_pdf
 from app.reports.sections import enabled_sections
@@ -114,11 +117,17 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
             saved_actions = None
 
     # Synthesis also runs when the saved commentary is still untouched
-    # defaults (months built before AI framing existed): the rebuild then
-    # fills headline, standfirst and section notes without touching edits.
+    # defaults (months built before AI framing existed), and when the month's
+    # data has changed since the last synthesis (e.g. a scan pulled new
+    # mentions) — otherwise the commentary keeps describing numbers that are
+    # no longer in the report. The merge below still protects operator edits.
+    fingerprint = _data_fingerprint(parsed, sentiment)
+    data_changed = bool(saved) and (saved.get("data_fingerprint") or "") != fingerprint
+
     synthesis_health = {"ran": False, "ok": None, "error": None}
     synth_content = None
-    if saved_actions and not _framing_blank(saved) and _has_intro(saved):
+    if (saved_actions and not _framing_blank(saved) and _has_intro(saved)
+            and not data_changed and not _blanked_ai_fields(saved)):
         actions = {"configured": True, "content": saved_actions}
     else:
         _progress("synthesis")
@@ -135,9 +144,9 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         else:
             actions = result
 
-    # 3b. Commentary — seed from AI framing on first build, fill blanks on
-    #     later builds, and always let saved operator edits win.
-    commentary = _load_or_seed_commentary(client_slug, period, synth_content)
+    # 3b. Commentary — seed from AI framing on first build, refresh AI-written
+    #     fields when the data changed, and always let saved operator edits win.
+    commentary = _load_or_seed_commentary(client_slug, period, synth_content, fingerprint)
     if commentary.get("actions"):
         actions = {"configured": True, "content": commentary["actions"]}
 
@@ -244,6 +253,24 @@ def _framing_blank(row: dict | None) -> bool:
     return not any(v.strip() for v in notes.values() if isinstance(v, str))
 
 
+def _blanked_ai_fields(row: dict | None) -> bool:
+    """True when the operator has blanked a field the AI previously wrote -
+    treated as 'regenerate this' on the next build, so clearing a stale note
+    in review and saving gets it rewritten from the current data."""
+    if row is None:
+        return False
+    seed = _dict(_loads(row.get("ai_seed_json")))
+    if not seed:
+        return False
+    if _str(seed.get("headline")) and _str(row.get("headline")) in ("", "Performance Report"):
+        return True
+    if _str(seed.get("standfirst")) and not _str(row.get("standfirst")):
+        return True
+    seed_notes = _dict(seed.get("notes"))
+    notes = _dict(_loads(row.get("notes_json")))
+    return any(_str(seed_notes.get(k)) and not _str(notes.get(k)) for k in seed_notes)
+
+
 def _has_intro(row: dict | None) -> bool:
     """True when the commentary already carries an executive-summary intro."""
     if row is None:
@@ -268,16 +295,47 @@ def _str(v):
     return v.strip() if isinstance(v, str) else ""
 
 
-def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict | None) -> dict:
+def _data_fingerprint(parsed: dict, sentiment: dict) -> str:
+    """Stable hash of the data the synthesis prompt reads, so a rebuild can
+    tell whether the month's numbers actually changed. Volatile bookkeeping
+    (cache hits, failure counts, per-call rationale text) is left out."""
+    payload = {
+        "sources": {k: (v or {}).get("data") for k, v in parsed.items()},
+        "sentiment": {
+            "total": sentiment.get("total"),
+            "positive": sentiment.get("positive"),
+            "neutral": sentiment.get("neutral"),
+            "negative": sentiment.get("negative"),
+            "avg_score": sentiment.get("avg_score"),
+            "keys": sorted(s.get("_key") or "" for s in sentiment.get("scored") or []),
+        },
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _ai_seed(content: dict) -> dict:
+    """The AI-authored values worth remembering, normalised the same way they
+    are written into the commentary row - so equality against the row later
+    means 'the operator never touched this'."""
+    return {
+        "headline": _str(content.get("headline")),
+        "standfirst": _str(content.get("standfirst")),
+        "notes": {k: v.strip() for k, v in _dict(content.get("notes")).items() if isinstance(v, str) and v.strip()},
+        "actions": {k: content[k] for k in ACTION_BUCKETS if content.get(k)} or None,
+    }
+
+
+def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict | None, fingerprint: str | None = None) -> dict:
     """Return commentary as a dict {headline, standfirst, notes, actions}.
 
     On the first build for a period, seed the row from the synthesis output
     (headline, standfirst, notes, action buckets) so the review screen opens
-    pre-written. On later builds, fresh synthesis fills only fields the
-    operator has left blank - saved edits always win.
+    pre-written. On later builds, fresh synthesis fills blank fields and
+    refreshes fields still carrying the AI's previous text (tracked in
+    ai_seed_json) - anything the operator has edited is never touched.
     """
     content = _dict(synth_content)
-    seed_notes = {k: v for k, v in _dict(content.get("notes")).items() if isinstance(v, str) and v.strip()}
+    seed_notes = {k: v.strip() for k, v in _dict(content.get("notes")).items() if isinstance(v, str) and v.strip()}
     seed_actions = {k: content[k] for k in ACTION_BUCKETS if content.get(k)} or None
 
     row = get_commentary(client_slug, period)
@@ -289,27 +347,36 @@ def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict 
             notes_json=json.dumps(seed_notes),
             actions_json=json.dumps(seed_actions) if seed_actions else None,
         )
+        if content:
+            set_commentary_ai_state(client_slug, period, json.dumps(_ai_seed(content)), fingerprint)
         row = get_commentary(client_slug, period)
     elif content:
+        prev_seed = _dict(_loads(row.get("ai_seed_json")))
+        prev_notes = _dict(prev_seed.get("notes"))
+
         headline = _str(row.get("headline"))
         standfirst = _str(row.get("standfirst"))
         notes = _dict(_loads(row.get("notes_json")))
         actions = _loads(row.get("actions_json"))
 
         changed = False
-        if headline in ("", "Performance Report") and _str(content.get("headline")):
-            headline = _str(content["headline"])
-            changed = True
-        if not standfirst and _str(content.get("standfirst")):
-            standfirst = _str(content["standfirst"])
-            changed = True
-        for key, val in _dict(content.get("notes")).items():
-            if isinstance(val, str) and val.strip() and not _str(notes.get(key)):
-                notes[key] = val.strip()
+        if _str(content.get("headline")) and headline in ("", "Performance Report", _str(prev_seed.get("headline"))):
+            if headline != _str(content["headline"]):
+                headline = _str(content["headline"])
                 changed = True
-        if not actions and seed_actions:
-            actions = seed_actions
-            changed = True
+        if _str(content.get("standfirst")) and standfirst in ("", _str(prev_seed.get("standfirst"))):
+            if standfirst != _str(content["standfirst"]):
+                standfirst = _str(content["standfirst"])
+                changed = True
+        for key, val in seed_notes.items():
+            current = _str(notes.get(key))
+            if current in ("", _str(prev_notes.get(key))) and current != val:
+                notes[key] = val
+                changed = True
+        if seed_actions and (not actions or actions == prev_seed.get("actions")):
+            if actions != seed_actions:
+                actions = seed_actions
+                changed = True
 
         if changed:
             upsert_commentary(
@@ -319,6 +386,11 @@ def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict 
                 notes_json=json.dumps(notes),
                 actions_json=json.dumps(actions) if actions else None,
             )
+        # Always record what the AI wrote and the data it read, even when no
+        # field was applied - otherwise a fully-edited report would re-run
+        # synthesis on every build.
+        set_commentary_ai_state(client_slug, period, json.dumps(_ai_seed(content)), fingerprint)
+        if changed:
             row = get_commentary(client_slug, period)
 
     return {

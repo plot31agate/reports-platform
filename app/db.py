@@ -55,13 +55,15 @@ CREATE TABLE IF NOT EXISTS uploads (
 );
 
 CREATE TABLE IF NOT EXISTS report_commentary (
-    client_slug  TEXT NOT NULL,
-    period       TEXT NOT NULL,
-    headline     TEXT,
-    standfirst   TEXT,
-    notes_json   TEXT,
-    actions_json TEXT,
-    updated_at   TEXT NOT NULL,
+    client_slug      TEXT NOT NULL,
+    period           TEXT NOT NULL,
+    headline         TEXT,
+    standfirst       TEXT,
+    notes_json       TEXT,
+    actions_json     TEXT,
+    ai_seed_json     TEXT,   -- what the AI last wrote, to tell seeded text from operator edits
+    data_fingerprint TEXT,   -- hash of the data the last synthesis read
+    updated_at       TEXT NOT NULL,
     UNIQUE(client_slug, period)
 );
 
@@ -149,6 +151,11 @@ def init_db():
         share_cols = [r["name"] for r in conn.execute("PRAGMA table_info(share_tokens)").fetchall()]
         if "revoked_at" not in share_cols:
             conn.execute("ALTER TABLE share_tokens ADD COLUMN revoked_at TEXT")
+        comm_cols = [r["name"] for r in conn.execute("PRAGMA table_info(report_commentary)").fetchall()]
+        if "ai_seed_json" not in comm_cols:
+            conn.execute("ALTER TABLE report_commentary ADD COLUMN ai_seed_json TEXT")
+        if "data_fingerprint" not in comm_cols:
+            conn.execute("ALTER TABLE report_commentary ADD COLUMN data_fingerprint TEXT")
 
         # Migration: provider secrets used to live on per-client connections.
         # Keys are really agency-wide (one Ahrefs account for all clients), so
@@ -354,6 +361,16 @@ def upsert_commentary(client_slug, period, headline, standfirst, notes_json, act
                 notes_json=excluded.notes_json, actions_json=excluded.actions_json,
                 updated_at=excluded.updated_at
         """, (client_slug, period, headline, standfirst, notes_json, actions_json, now))
+
+
+def set_commentary_ai_state(client_slug, period, ai_seed_json, data_fingerprint):
+    """Record what the AI last wrote and the data it read. Kept separate from
+    upsert_commentary so review-screen saves never clobber it."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE report_commentary SET ai_seed_json=?, data_fingerprint=? WHERE client_slug=? AND period=?",
+            (ai_seed_json, data_fingerprint, client_slug, period),
+        )
 
 
 def get_report_by_token(token: str):
