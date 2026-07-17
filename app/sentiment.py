@@ -264,7 +264,9 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
         focus_block = f"""Editorial focus for this client's report:
 {focus_brief}
 
-This focus decides the report's emphasis: the headline, standfirst, intro and the ordering of ideas inside every note must lead with the areas it names as primary, and treat the rest as supporting context. Recommended actions should also skew toward the primary areas."""
+This focus decides the report's emphasis: the headline, standfirst, intro and the ordering of ideas inside every note must lead with the areas it names as primary, and treat the rest as supporting context. Recommended actions should also skew toward the primary areas.
+
+This holds even when another area has the month's most dramatic numbers. A big coverage month for a traffic-led report is a supporting paragraph, never the headline. If the primary area's data is thin or flat, lead with it anyway and say so honestly - a quiet month in the focus area IS the story, and the louder area still goes below it."""
     else:
         focus_block = f"""This client's report covers these sections: {", ".join(enabled) if enabled else "the default set"}. Weight the headline, standfirst and intro toward the areas where this month's data shows the most meaningful movement, and do not dwell on areas outside the enabled sections."""
 
