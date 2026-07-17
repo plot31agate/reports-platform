@@ -85,7 +85,8 @@
             <button class="chip-link" type="button" onclick="browseFor('{{ src.key }}')">Browse</button>
             <button class="chip-link ws-source__help" type="button" onclick="toggleHint('{{ src.key }}')"
                     title="CSV needs columns: {{ src.cols }}" aria-label="Show the CSV format for {{ src.title }}">?</button>
-            <input type="file" id="file-{{ src.key }}" accept=".csv,.xlsx,.xls" style="display:none;">
+            <input type="file" id="file-{{ src.key }}" accept=".csv,.xlsx,.xls" style="display:none;"
+                   {% if src.key == 'linkedin_company' %}multiple{% endif %}>
           </div>
         </div>
       {% endmacro %}
@@ -289,7 +290,7 @@
     fd.append('client_slug', CLIENT);
     fd.append('period', PERIOD);
     fd.append('file', file);
-    fetch('/admin/parse-upload', { method: 'POST', body: fd })
+    return fetch('/admin/parse-upload', { method: 'POST', body: fd })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         filled[key] = (d.status === 'ok' || d.status === 'warning');
@@ -329,10 +330,19 @@
     });
   };
 
-  // Per-row browse
+  // Per-row browse. Sequential uploads so the card's final summary reflects
+  // every file — the LinkedIn card takes all three exports in one pick and
+  // the server merges them.
   window.browseFor = function(key) {
     var input = document.getElementById('file-' + key);
-    input.onchange = function() { if (input.files[0]) { uploadFile(key, input.files[0]); input.value = ''; } };
+    input.onchange = function() {
+      var files = Array.prototype.slice.call(input.files);
+      input.value = '';
+      var chain = Promise.resolve();
+      files.forEach(function(f) {
+        chain = chain.then(function() { return uploadFile(key, f); });
+      });
+    };
     input.click();
   };
 
