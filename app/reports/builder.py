@@ -121,7 +121,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
     # data has changed since the last synthesis (e.g. a scan pulled new
     # mentions) — otherwise the commentary keeps describing numbers that are
     # no longer in the report. The merge below still protects operator edits.
-    fingerprint = _data_fingerprint(parsed, sentiment)
+    fingerprint = _synthesis_fingerprint(parsed, sentiment, client_config)
     data_changed = bool(saved) and (saved.get("data_fingerprint") or "") != fingerprint
 
     synthesis_health = {"ran": False, "ok": None, "error": None}
@@ -295,10 +295,19 @@ def _str(v):
     return v.strip() if isinstance(v, str) else ""
 
 
-def _data_fingerprint(parsed: dict, sentiment: dict) -> str:
-    """Stable hash of the data the synthesis prompt reads, so a rebuild can
-    tell whether the month's numbers actually changed. Volatile bookkeeping
-    (cache hits, failure counts, per-call rationale text) is left out."""
+def _synthesis_fingerprint(parsed: dict, sentiment: dict, client_config: dict) -> str:
+    """Stable hash of everything the synthesis prompt reads, so a rebuild can
+    tell whether its output would actually differ. Volatile bookkeeping
+    (cache hits, failure counts, per-call rationale text) is left out.
+
+    The editorial config belongs here alongside the data: the focus brief and
+    the enabled-section list steer the prompt just as much as the numbers do.
+    Hashing the data alone means an operator who retunes the focus in settings
+    (say, to stop a report leading on media coverage) keeps being served the
+    commentary written under the old brief, because nothing looks changed.
+    """
+    from app.reports.sections import enabled_sections
+
     payload = {
         "sources": {k: (v or {}).get("data") for k, v in parsed.items()},
         "sentiment": {
@@ -308,6 +317,11 @@ def _data_fingerprint(parsed: dict, sentiment: dict) -> str:
             "negative": sentiment.get("negative"),
             "avg_score": sentiment.get("avg_score"),
             "keys": sorted(s.get("_key") or "" for s in sentiment.get("scored") or []),
+        },
+        "editorial": {
+            "report_focus": (client_config.get("report_focus") or "").strip(),
+            "sentiment_context": (client_config.get("sentiment_context") or "").strip(),
+            "sections": sorted(enabled_sections(client_config)),
         },
     }
     return hashlib.sha1(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
