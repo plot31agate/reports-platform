@@ -52,7 +52,7 @@ SOURCE_DEFS = [
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
     {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
     {"key": "competitor_benchmark",   "title": "Competitor benchmark",  "purpose": "Share of voice vs competitors",               "cols": "month, brand, domain, organic_traffic"},
-    {"key": "linkedin_company",       "title": "LinkedIn (company)",    "purpose": "Impressions, followers, top posts",           "cols": "date, impressions, clicks, followers"},
+    {"key": "linkedin_company",       "title": "LinkedIn (company)",    "purpose": "Impressions, followers, visitors, top posts", "cols": "the three LinkedIn exports: content, followers, visitors (.xls)"},
     {"key": "meta_social",            "title": "Facebook & Instagram",  "purpose": "Views, reach, interactions, link clicks",     "cols": "platform, views, reach, interactions, link clicks (+ date for spikes)"},
     {"key": "tiktok",                 "title": "TikTok",                "purpose": "Views, likes, comments, shares",              "cols": "views, likes, comments, shares (+ date for spikes)"},
     {"key": "influencer_activity",    "title": "Influencer activity",   "purpose": "Creator posts, reach, engagement",            "cols": "influencer, platform, content, reach, engagements, link"},
@@ -178,11 +178,28 @@ def summarise_parsed(source_key: str, data) -> dict:
                 "warnings": [], "row_count": visits}
 
     if source_key == "linkedin_company":
-        followers = (data or {}).get("followers") or 0
-        impressions = (data or {}).get("impressions") or 0
-        s = f"{followers:,} followers, {impressions:,} impressions"
-        return {"status": "ok" if followers > 0 else "warning", "summary": s,
-                "warnings": [], "row_count": followers}
+        d = data or {}
+        kinds = d.get("kinds") or []
+        bits = []
+        if d.get("followers"):
+            bits.append(f"{d['followers']:,} followers")
+        if d.get("follower_growth"):
+            bits.append(f"+{d['follower_growth']:,} new")
+        if d.get("impressions"):
+            bits.append(f"{d['impressions']:,} impressions")
+        if d.get("page_views"):
+            bits.append(f"{d['page_views']:,} page views")
+        warnings = []
+        missing = [k for k in ("content", "followers", "visitors") if k not in kinds]
+        if kinds and missing:
+            warnings.append(
+                f"Have {', '.join(kinds)} - still missing the {', '.join(missing)} "
+                f"export{'s' if len(missing) != 1 else ''}. Drop each LinkedIn file on this card."
+            )
+        return {"status": "ok" if bits else "warning",
+                "summary": ", ".join(bits) or "No LinkedIn metrics found - is this a LinkedIn analytics export?",
+                "warnings": warnings,
+                "row_count": d.get("followers") or d.get("impressions") or 0}
 
     if source_key == "meta_social":
         platforms = (data or {}).get("platforms") or []

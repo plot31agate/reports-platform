@@ -532,6 +532,12 @@
     {% if li.engagements %}
     <div class="stat"><div class="n">{{ li.engagements | thousands }}</div><div class="l">Engagements</div></div>
     {% endif %}
+    {% if li.page_views %}
+    <div class="stat"><div class="n">{{ li.page_views | thousands }}</div><div class="l">Page views</div></div>
+    {% endif %}
+    {% if li.unique_visitors %}
+    <div class="stat"><div class="n">{{ li.unique_visitors | thousands }}</div><div class="l">Unique visitors</div></div>
+    {% endif %}
   </div>
   {% if li.top_posts %}
   <div class="panel panel--wide">

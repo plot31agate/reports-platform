@@ -14,5 +14,6 @@ pandas==2.2.3
 weasyprint==52.5
 python-dateutil==2.9.0.post0
 openpyxl==3.1.5
+xlrd==2.0.1  # LinkedIn's native export is legacy .xls - openpyxl cannot read it
 requests==2.32.3
 google-auth==2.35.0

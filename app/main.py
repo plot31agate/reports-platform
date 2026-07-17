@@ -565,6 +565,21 @@ async def admin_parse_upload(
     content = await file.read()
     dest.write_bytes(content)
 
+    # LinkedIn's native export is three separate files (content, followers,
+    # visitors) that all belong to this one card - suffix each by kind so
+    # they coexist instead of overwriting, and let the parser merge them.
+    if source_key == "linkedin_company" and ext in (".xls", ".xlsx"):
+        from app.ingestion.parsers.linkedin import detect_export_kind
+        kind = detect_export_kind(dest, file.filename)
+        if kind:
+            kind_dest = dest_dir / f"{source_key}_{period}_{kind}{ext}"
+            if kind_dest != dest:
+                kind_dest.unlink(missing_ok=True)
+                dest.rename(kind_dest)
+                dest = kind_dest
+            for old_ext in (".xls", ".xlsx", ".csv"):
+                (dest_dir / f"{source_key}_{period}{old_ext}").unlink(missing_ok=True)
+
     try:
         data = parser(dest)
         result = summarise_parsed(source_key, data)
@@ -591,13 +606,22 @@ def admin_clear_uploads(request: Request, client_slug: str = Form(...), period: 
     _require_admin_or_redirect(request)
     paths = delete_uploads(client_slug, period)
     removed = 0
+    expected_dir = settings.data_dir / client_slug / period
     for p in paths:
         f = Path(p)
         # Only ever delete files inside this client+period's data folder.
-        expected_dir = settings.data_dir / client_slug / period
         if f.exists() and f.parent == expected_dir:
             f.unlink()
             removed += 1
+    # Kind-suffixed uploads (e.g. the three LinkedIn exports) record only the
+    # last file on their upload row - sweep every file a parser would pick up,
+    # or a reset period keeps feeding old data into builds.
+    if expected_dir.exists():
+        for key in PARSER_MAP:
+            for f in expected_dir.glob(f"{key}_*"):
+                if f.is_file():
+                    f.unlink()
+                    removed += 1
     return JSONResponse({"cleared": len(paths), "files_removed": removed})
 
 
