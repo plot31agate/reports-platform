@@ -38,9 +38,19 @@
   <div class="edit-bar__actions">
     <a class="btn btn--secondary" href="/admin/workspace?client={{ client_slug }}&period={{ period }}">Done</a>
     {% if preview_url %}<a class="btn btn--secondary" href="{{ preview_url }}" target="_blank">Open published</a>{% endif %}
+    <button type="submit" form="regen-form" class="btn btn--secondary"
+            title="Throw away the written commentary and rewrite it from this month's data and the current briefs">Rewrite with AI</button>
     <button type="submit" form="review-form" class="btn">Save and regenerate</button>
   </div>
 </div>
+{# Separate form: a rebuild only rewrites text it recorded as AI-authored, so a
+   report written before that tracking existed (or one whose focus brief changed
+   after the fact) needs an explicit way to start the commentary over. #}
+<form method="post" action="/admin/review/regenerate" id="regen-form"
+      onsubmit="return confirm('Rewrite the headline, standfirst, section notes and actions from this month\'s data and the current briefs?\n\nAny edits you have made to this month\'s commentary will be discarded.')">
+  <input type="hidden" name="client_slug" value="{{ client_slug }}">
+  <input type="hidden" name="period" value="{{ period }}">
+</form>
 {% if message %}<div class="edit-message">{{ message }}</div>{% endif %}
 {% if ai_health and ai_health.warnings %}
 {% for w in ai_health.warnings %}

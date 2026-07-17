@@ -54,6 +54,7 @@ from app.db import (
     delete_uploads,
     get_commentary,
     upsert_commentary,
+    clear_commentary_text,
     set_mention_overrides,
     create_client,
     get_client_row,
@@ -667,6 +668,34 @@ def admin_review_get(request: Request, client: str = None, period: str = None, m
 
     html = _env().get_template("report.html").render(**context)
     return HTMLResponse(html)
+
+
+@app.post("/admin/review/regenerate")
+async def admin_review_regenerate(request: Request):
+    """Discard this period's written commentary and rewrite it from the current
+    data and the current briefs.
+
+    The automatic refresh can only rewrite text it knows the AI authored. On a
+    report built before ai_seed_json was recorded there is no such record, so
+    every field reads as a hand-edit and survives forever - which is how a
+    report keeps leading on media after the focus brief says otherwise. This is
+    the operator's way out, and it is deliberately explicit: it throws away any
+    real edits on the period too, so it is never something a build does by itself.
+    """
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period")
+    if not client_slug or not period:
+        return RedirectResponse("/admin?error=Regenerate+was+missing+client+or+period", status_code=302)
+
+    back = f"/admin/review?client={client_slug}&period={period}"
+    clear_commentary_text(client_slug, period)
+    try:
+        build_report(client_slug, period)
+    except Exception as e:
+        return RedirectResponse(f"{back}&message=Commentary+cleared+but+build+failed:+{str(e)[:120]}", status_code=302)
+    return RedirectResponse(f"{back}&message=Commentary+rewritten+from+the+current+data+and+briefs", status_code=302)
 
 
 @app.post("/admin/review")

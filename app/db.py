@@ -373,6 +373,23 @@ def set_commentary_ai_state(client_slug, period, ai_seed_json, data_fingerprint)
         )
 
 
+def clear_commentary_text(client_slug: str, period: str):
+    """Blank a period's written commentary so the next build reseeds it from
+    fresh synthesis. Destructive by design and only ever operator-triggered:
+    the merge cannot tell AI-seeded text from a hand-edit on rows written
+    before ai_seed_json existed, so discarding is a choice, never automatic.
+    Mention overrides and the report row are untouched."""
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE report_commentary
+                  SET headline=NULL, standfirst=NULL, notes_json=NULL, actions_json=NULL,
+                      ai_seed_json=NULL, data_fingerprint=NULL, updated_at=?
+                WHERE client_slug=? AND period=?""",
+            (now, client_slug, period),
+        )
+
+
 def get_report_by_token(token: str):
     with get_conn() as conn:
         row = conn.execute(
