@@ -66,9 +66,18 @@ Classify the following mention:
         }
 
 
-def _mention_hash(mention: dict) -> str:
+def _mention_hash(mention: dict, client_config: dict) -> str:
+    """Key a cached classification to the exact inputs that produced it.
+
+    The brief and the model are part of the key, not just the mention text:
+    an operator who rewrites the brief expects the next build to re-score
+    everything under it, and a cache keyed on content alone would replay the
+    old brief's calls forever.
+    """
     raw = "|".join([
         mention.get("url", ""), mention.get("title", ""), mention.get("snippet", ""),
+        (client_config.get("sentiment_context") or "").strip(),
+        settings.claude_model_sentiment,
     ])
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
@@ -80,8 +89,9 @@ def classify_mentions(
 ) -> dict:
     """Classify a list of mentions and return aggregate + per-item scores.
 
-    Results are cached per client+content hash, so republish/review loads
-    only pay for mentions that haven't been scored before. Failed calls are
+    Results are cached per client + mention content + brief + model, so
+    republish/review loads only pay for mentions that haven't been scored
+    before, and editing the brief re-scores the lot. Failed calls are
     never cached, are excluded from the sentiment score, and are counted in
     `failed` so the UI can flag a degraded build instead of passing failures
     off as neutral coverage.
@@ -103,7 +113,7 @@ def classify_mentions(
     failed = 0
     from_cache = 0
     for i, m in enumerate(mentions):
-        content_hash = _mention_hash(m)
+        content_hash = _mention_hash(m, client_config)
         result = get_sentiment_cached(slug, content_hash)
         if result:
             from_cache += 1
