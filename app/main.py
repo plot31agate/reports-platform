@@ -1015,39 +1015,61 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
     agency_creds = get_agency_credentials()
     client_conns = get_connections(client_slug)
     client_cfgs = {p: _parse_config(client_conns.get(p)) for p in candidates}
-    provider = connectors.pick_provider(source_key, agency_creds, client_cfgs)
-    if not provider:
+    providers = connectors.pick_providers(source_key, agency_creds, client_cfgs)
+    if not providers:
         if not any(p in agency_creds for p in candidates):
             msg = "No agency key for this source - add one on the API keys page"
         else:
             needed = ", ".join(
-                k for p in candidates if p in agency_creds
+                (" or ".join(k) if isinstance(k, tuple) else k)
+                for p in candidates if p in agency_creds
                 for k in connectors.get_def(p).get("requires", {}).get(source_key, [])
             )
             msg = f"Missing client settings ({needed}) - fill them in under API connections below"
         return JSONResponse({"status": "error", "summary": msg, "warnings": [], "row_count": 0})
-    config = _merged_config(provider, client_slug)
-    # Brand context for connectors that report on the client by name.
-    client_cfg = get_client(client_slug)
-    config["competitor_names"] = client_cfg.get("competitors") or []
-    config["client_display_name"] = client_cfg.get("display_name") or client_slug
 
+    client_cfg = get_client(client_slug)
     dest_dir = settings.data_dir / client_slug / period
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{source_key}_{period}.csv"
-    filename = f"API sync · {connectors.get_def(provider)['label']}"
 
-    try:
-        connectors.sync_source(provider, config, source_key, dest, period)
-    except ConnectorError as e:
-        err = {"status": "error", "summary": str(e)[:200], "warnings": [], "row_count": 0}
-        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
-        set_connection_status(client_slug, provider, "error", str(e)[:200])
+    # Try each configured route in preference order. A source with a second
+    # route (search_console: Google direct, then Ahrefs GSC Insights) stays
+    # up when the preferred one errors - a 403 on a property the service
+    # account was never granted shouldn't take search data offline.
+    config = None
+    provider = None
+    fallback_notes = []
+    errors = []
+    for candidate in providers:
+        cfg = _merged_config(candidate, client_slug)
+        # Brand context for connectors that report on the client by name.
+        cfg["competitor_names"] = client_cfg.get("competitors") or []
+        cfg["client_display_name"] = client_cfg.get("display_name") or client_slug
+        label = connectors.get_def(candidate)["label"]
+        try:
+            connectors.sync_source(candidate, cfg, source_key, dest, period)
+        except ConnectorError as e:
+            errors.append(f"{label}: {str(e)[:180]}")
+            set_connection_status(client_slug, candidate, "error", str(e)[:200])
+            continue
+        except Exception as e:
+            errors.append(f"{label}: sync failed - {str(e)[:150]}")
+            continue
+        provider, config = candidate, cfg
+        # A silent downgrade reads as success on the card, so say what failed.
+        fallback_notes = [f"{msg} - fell back to {label}" for msg in errors]
+        break
+
+    if provider is None:
+        summary = " | ".join(errors) if errors else "Sync failed"
+        err = {"status": "error", "summary": summary[:400], "warnings": [], "row_count": 0}
+        upsert_upload(client_slug, period, source_key,
+                      f"API sync · {connectors.get_def(providers[0])['label']}",
+                      str(dest), "error", 0, json.dumps(err))
         return JSONResponse(err)
-    except Exception as e:
-        err = {"status": "error", "summary": f"Sync failed: {str(e)[:150]}", "warnings": [], "row_count": 0}
-        upsert_upload(client_slug, period, source_key, filename, str(dest), "error", 0, json.dumps(err))
-        return JSONResponse(err)
+
+    filename = f"API sync · {connectors.get_def(provider)['label']}"
 
     try:
         label, parser = PARSER_MAP[source_key]
@@ -1055,7 +1077,7 @@ def admin_sync_source(request: Request, client_slug: str = Form(...), period: st
         result = summarise_parsed(source_key, data)
         # Connectors can flag a partial pull (e.g. Meta got Instagram but no
         # Facebook rows) by attaching warnings to the config it was handed.
-        extra = config.get("_warnings") or []
+        extra = (config.get("_warnings") or []) + fallback_notes
         if extra:
             result["warnings"] = (result.get("warnings") or []) + extra
         upsert_upload(client_slug, period, source_key, filename, str(dest),

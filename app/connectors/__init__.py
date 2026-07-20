@@ -27,8 +27,8 @@ CONNECTOR_DEFS = [
             "ahrefs_backlinks": ["target"],
             "ahrefs_trends": ["target"],
             "competitor_benchmark": ["target"],
-            "technical_seo_metrics": ["audit_project_id", "target"],
-            "search_console": ["audit_project_id"],
+            "technical_seo_metrics": [("audit_project_id", "gsc_project_id"), "target"],
+            "search_console": [("audit_project_id", "gsc_project_id")],
         },
         "blurb": "Pulls backlinks, 12-month authority trends, technical SEO metrics (Site Audit), the competitor benchmark, and — when the client's Search Console is connected to the Ahrefs project — search data too. The curated issue register stays a manual upload.",
         "agency_fields": [
@@ -162,21 +162,39 @@ for _d in CONNECTOR_DEFS:
 SOURCE_PROVIDERS["search_console"] = ["google", "ahrefs"]
 
 
-def pick_provider(source_key: str, agency_creds: dict, client_configs: dict):
-    """Choose the first provider for a source that has both its agency key
-    and this client's required settings filled in. Returns provider or None.
+def pick_providers(source_key: str, agency_creds: dict, client_configs: dict) -> list:
+    """Every provider that could feed this source, in preference order.
+
+    A source can have more than one route (search_console: Google direct, or
+    Ahrefs GSC Insights). The caller syncs the first and falls back down the
+    list if it errors, so a misconfigured preferred route doesn't take the
+    source offline when a working one exists.
+
+    A required field given as a tuple means "any of these" — the Ahrefs
+    project ID is stored as gsc_project_id on configs saved before the two
+    project-ID fields were merged, and the sync path still honours both.
 
     agency_creds: {provider: row} (from get_agency_credentials)
     client_configs: {provider: parsed client config dict}
     """
+    out = []
     for provider in SOURCE_PROVIDERS.get(source_key, []):
         if provider not in agency_creds:
             continue
         cfg = client_configs.get(provider) or {}
         required = get_def(provider).get("requires", {}).get(source_key, [])
-        if all((cfg.get(k) or "").strip() for k in required):
-            return provider
-    return None
+        if all(
+            any((cfg.get(k) or "").strip() for k in (req if isinstance(req, tuple) else (req,)))
+            for req in required
+        ):
+            out.append(provider)
+    return out
+
+
+def pick_provider(source_key: str, agency_creds: dict, client_configs: dict):
+    """The preferred provider for a source, or None if nothing is configured."""
+    providers = pick_providers(source_key, agency_creds, client_configs)
+    return providers[0] if providers else None
 
 
 def get_def(provider: str) -> dict:
