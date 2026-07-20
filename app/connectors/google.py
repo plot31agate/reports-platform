@@ -1,21 +1,27 @@
-"""Google connector — GA4 Data API via one service account.
+"""Google connector — GA4 Data API + Search Console API via one service account.
 
 Feeds:
-  ga4_export    — CSV shaped like a GA4 Traffic acquisition export
-                  (channel group, Sessions, Users, Engaged sessions)
-  ga4_geography — CSV of Country, Sessions
+  ga4_export     — CSV shaped like a GA4 Traffic acquisition export
+                   (channel group, Sessions, Users, Engaged sessions)
+  ga4_geography  — CSV of Country, Sessions
+  search_console — CSV shaped like a GSC Queries export, straight from the
+                   Search Console API. Works with no Ahrefs project at all;
+                   clients whose GSC is linked to an Ahrefs project can keep
+                   using GSC Insights instead (the Ahrefs route stays as the
+                   fallback when no site URL is set here).
 
-Search Console is fed by the Ahrefs connector (GSC Insights) instead — no
-per-client Google grant needed. Setup on the Google side: create a service
-account, then add its email as a viewer on each GA4 property.
+Setup on the Google side: create a service account, then add its email as a
+viewer on each GA4 property and as a user on each Search Console property.
 """
 import json
+from urllib.parse import quote
 
 from app.connectors._util import ConnectorError, period_range, write_csv
 
 TIMEOUT = 30
 SCOPES = [
     "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/webmasters.readonly",
 ]
 
 
@@ -48,12 +54,40 @@ def _post(session, url, payload, provider_label):
     except Exception as e:
         raise ConnectorError(f"Could not reach {provider_label}: {e}")
     if resp.status_code == 403:
-        raise ConnectorError(
-            f"{provider_label} says no access (403) - add the service account email as a viewer and retry"
-        )
+        grant = ("add the service account email as a user on the property in Search Console settings"
+                 if provider_label == "Search Console"
+                 else "add the service account email as a viewer")
+        raise ConnectorError(f"{provider_label} says no access (403) - {grant} and retry")
     if resp.status_code != 200:
         raise ConnectorError(f"{provider_label} error {resp.status_code}: {resp.text[:150]}")
     return resp.json()
+
+
+def _normalise_site(site: str) -> str:
+    """Accept a bare domain, a URL, or an sc-domain: property as saved.
+
+    'example.com'          -> 'sc-domain:example.com' (domain property)
+    'https://example.com/' -> unchanged (URL-prefix property)
+    'sc-domain:example.com'-> unchanged
+    """
+    site = site.strip().rstrip()
+    if site.startswith("sc-domain:") or site.startswith("http://") or site.startswith("https://"):
+        return site
+    return f"sc-domain:{site.lower().strip('/').removeprefix('www.')}"
+
+
+def _gsc_query(session, site, start, end, limit=1000):
+    url = (
+        "https://searchconsole.googleapis.com/webmasters/v3/sites/"
+        f"{quote(_normalise_site(site), safe='')}/searchAnalytics/query"
+    )
+    payload = {
+        "startDate": start,
+        "endDate": end,
+        "dimensions": ["query"],
+        "rowLimit": limit,
+    }
+    return _post(session, url, payload, "Search Console")
 
 
 def _ga4_report(session, property_id, start, end, dimensions, metrics, limit=100):
@@ -83,15 +117,25 @@ def test(config) -> tuple[bool, str]:
         return False, str(e)
 
     prop = (config.get("ga4_property_id") or "").strip()
-    if not prop:
-        return False, "Key parses, but add a GA4 property ID to connect anything"
+    site = (config.get("gsc_site_url") or "").strip()
+    if not prop and not site:
+        return False, "Key parses, but add a GA4 property ID or a Search Console property to connect anything"
 
     start, end = period_range_last_week()
-    try:
-        _ga4_report(session, prop, start, end, ["sessionDefaultChannelGroup"], ["sessions"], limit=5)
-    except ConnectorError as e:
-        return False, f"GA4: {e}"
-    return True, f"Key OK ({email}) - GA4 OK"
+    parts = []
+    if prop:
+        try:
+            _ga4_report(session, prop, start, end, ["sessionDefaultChannelGroup"], ["sessions"], limit=5)
+            parts.append("GA4 OK")
+        except ConnectorError as e:
+            return False, f"GA4: {e}"
+    if site:
+        try:
+            _gsc_query(session, site, start, end, limit=5)
+            parts.append("Search Console OK")
+        except ConnectorError as e:
+            return False, f"Search Console: {e}"
+    return True, f"Key OK ({email}) - " + ", ".join(parts)
 
 
 def period_range_last_week():
@@ -126,7 +170,46 @@ def sync(config, source_key, dest, period):
         write_geo_csv(rows, dest)
         return len(rows)
 
+    if source_key == "search_console":
+        site = (config.get("gsc_site_url") or "").strip()
+        if not site:
+            raise ConnectorError("No Search Console property saved")
+        data = _gsc_query(session, site, start, end)
+        rows = data.get("rows") or []
+        if not rows:
+            raise ConnectorError(
+                f"Search Console returned no query rows for {period} - "
+                "check the property spelling and that the period has data"
+            )
+        write_gsc_csv(rows, dest)
+        return len(rows)
+
     raise ConnectorError(f"Google connector can't feed {source_key}")
+
+
+def write_gsc_csv(rows, dest):
+    """Search Analytics rows -> Queries-export-shaped CSV for parse_search_console.
+
+    Same shape as the Ahrefs GSC Insights CSV, so the parser and report are
+    identical whichever route fed the data. CTR is recomputed from
+    clicks/impressions rather than trusting the API's fraction.
+    """
+    header = ["Top queries", "Clicks", "Impressions", "CTR", "Position"]
+    out = []
+    for r in rows:
+        keys = r.get("keys") or [""]
+        clicks = int(round(r.get("clicks") or 0))
+        impressions = int(round(r.get("impressions") or 0))
+        ctr = round(clicks / impressions * 100, 2) if impressions else 0.0
+        out.append([
+            keys[0],
+            clicks,
+            impressions,
+            f"{ctr}%",
+            round(float(r.get("position") or 0), 1),
+        ])
+    out.sort(key=lambda row: row[1], reverse=True)
+    write_csv(dest, header, out)
 
 
 def write_ga4_csv(rows, dest):

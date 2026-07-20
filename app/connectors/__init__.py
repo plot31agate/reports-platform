@@ -57,32 +57,34 @@ CONNECTOR_DEFS = [
     # Similarweb was retired in favour of GA4 geography: real measured
     # country data from an account we already have, instead of paying for
     # panel estimates. The connector module remains if it's ever wanted back.
-    # Google's Search Console feed was retired: search data comes from Ahrefs
-    # GSC Insights instead (free API calls, no per-client Google grant).
-    # Google now only covers GA4, which Ahrefs can't supply.
     {
         "provider": "google",
-        "label": "Google — GA4",
-        "sources": ["ga4_export", "ga4_geography"],
+        "label": "Google — GA4 & Search Console",
+        "sources": ["ga4_export", "ga4_geography", "search_console"],
         "requires": {
             "ga4_export": ["ga4_property_id"],
             "ga4_geography": ["ga4_property_id"],
+            "search_console": ["gsc_site_url"],
         },
-        "blurb": "One service account covers GA4 traffic and geography for every client.",
+        "blurb": "One service account covers GA4 traffic, GA4 geography, and Search Console for every client. Search Console pulls straight from Google — no Ahrefs project needed; set the property below and it takes over from the Ahrefs GSC Insights route.",
         "agency_fields": [
             {"key": "service_account_json", "label": "Service account JSON", "type": "textarea", "secret": True},
         ],
         "client_fields": [
             {"key": "ga4_property_id", "label": "GA4 property ID", "type": "text",
              "placeholder": "123456789", "hint": "GA4 → Admin → Property settings (numbers only)"},
+            {"key": "gsc_site_url", "label": "Search Console property", "type": "text",
+             "placeholder": "example.com or https://www.example.com/",
+             "hint": "A bare domain means the domain property (sc-domain:). Paste the full URL only for URL-prefix properties. Needs the service account email added as a user in Search Console → Settings → Users and permissions. Leave blank if this client's search data comes via Ahrefs GSC Insights."},
         ],
         "key_help": [
             "Go to console.cloud.google.com → create (or pick) a project",
-            "APIs & Services → Enable APIs → enable \"Google Analytics Data API\"",
+            "APIs & Services → Enable APIs → enable \"Google Analytics Data API\" and \"Google Search Console API\"",
             "IAM & Admin → Service accounts → Create service account (any name, no roles needed)",
             "Open the account → Keys → Add key → Create new key → JSON — a file downloads",
             "Paste the whole JSON file here",
             "Then grant it access per client: in GA4 → Admin → Property access management → add the service account's email as Viewer",
+            "And for Search Console: Settings → Users and permissions → Add user → the service account's email (Full or Restricted both work)",
         ],
     },
     {
@@ -148,12 +150,16 @@ CONNECTOR_DEFS = [
 _MODULES = {"ahrefs": ahrefs, "google": google, "meta": meta, "serper": serper}
 
 # source_key -> providers that can feed it, in preference order (defs order).
-# Every source currently has exactly one provider; search_console is Ahrefs
-# (GSC Insights), GA4 sources are Google.
 SOURCE_PROVIDERS: dict = {}
 for _d in CONNECTOR_DEFS:
     for _src in _d["sources"]:
         SOURCE_PROVIDERS.setdefault(_src, []).append(_d["provider"])
+
+# search_console has two routes: direct from Google, or Ahrefs GSC Insights.
+# Prefer Google when its site URL is set — it's the primary source and an
+# explicit opt-in, and it stops a client whose Ahrefs project merely exists
+# (for Site Audit) but has no GSC linked from shadowing the working route.
+SOURCE_PROVIDERS["search_console"] = ["google", "ahrefs"]
 
 
 def pick_provider(source_key: str, agency_creds: dict, client_configs: dict):

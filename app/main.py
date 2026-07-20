@@ -397,7 +397,7 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
 
     # Which sources can be pulled straight from an API? A source is connected
     # when some provider has both its agency key and this client's required
-    # settings; search_console prefers Ahrefs GSC Insights over Google.
+    # settings; search_console prefers direct Google over Ahrefs GSC Insights.
     conns = get_connections(slug)
     agency_creds = get_agency_credentials()
     client_cfgs = {p: _parse_config(conns.get(p)) for p in conns}
