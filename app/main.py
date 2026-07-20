@@ -743,6 +743,34 @@ async def admin_review_post(request: Request):
         if caveat:
             notes[f"callout_{key}"] = caveat
 
+    # Stat-box overrides: every rendered box submits its edited value/label,
+    # keep tick, position, and the computed defaults. Only deviations from
+    # the defaults are stored, so an untouched box keeps tracking the data.
+    stat_overrides = {}
+    for field in form.keys():
+        if not (field.startswith("stat_") and field.endswith("__dvalue")):
+            continue
+        sid = field[len("stat_"):-len("__dvalue")]
+        value = (form.get(f"stat_{sid}__value") or "").strip()
+        label = (form.get(f"stat_{sid}__label") or "").strip()
+        ov = {}
+        if value and value != (form.get(field) or "").strip():
+            ov["value"] = value
+        if label and label != (form.get(f"stat_{sid}__dlabel") or "").strip():
+            ov["label"] = label
+        if form.get(f"stat_{sid}__show") != "1":
+            ov["hide"] = True
+        try:
+            order = int(form.get(f"stat_{sid}__order"))
+            if order != int(form.get(f"stat_{sid}__dorder")):
+                ov["order"] = order
+        except (TypeError, ValueError):
+            pass
+        if ov:
+            stat_overrides[sid] = ov
+    if stat_overrides:
+        notes["stats"] = stat_overrides
+
     def _bucket(prefix):
         items = []
         for i in range(3):

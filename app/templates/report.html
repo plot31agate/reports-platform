@@ -32,6 +32,47 @@
 {% endif %}
 {% endmacro %}
 
+{# Number cards, built as data in builder._build_stat_groups. In review mode
+   every card gets editable value/label fields, a keep-tick and move arrows;
+   published mode renders kept cards in the saved order. #}
+{% macro stats_group(gkey) %}
+{% set g = stat_groups.get(gkey) %}
+{% if g and editable %}
+<div class="{{ g.cls }} stats--edit">
+  {% for s in g.stats %}
+  <div class="stat{% if s.hide %} stat--off{% endif %}">
+    <div class="stat-tools">
+      <button type="button" class="stat-move" data-dir="-1" title="Move left">←</button>
+      <button type="button" class="stat-move" data-dir="1" title="Move right">→</button>
+      <label class="stat-keep" title="Untick to drop this box from the published report">
+        <input type="checkbox" class="stat-show" name="stat_{{ s.id }}__show" value="1"{% if not s.hide %} checked{% endif %}> keep
+      </label>
+    </div>
+    <div class="stat-nrow">
+      <input class="stat-input stat-input--n" name="stat_{{ s.id }}__value" value="{{ s.value }}">
+      {% if s.unit %}<span class="u">{{ s.unit }}</span>{% endif %}
+    </div>
+    <input class="stat-input stat-input--l" name="stat_{{ s.id }}__label" value="{{ s.label }}">
+    <input type="hidden" name="stat_{{ s.id }}__dvalue" value="{{ s.default_value }}">
+    <input type="hidden" name="stat_{{ s.id }}__dlabel" value="{{ s.default_label }}">
+    <input type="hidden" class="stat-order" name="stat_{{ s.id }}__order" value="{{ loop.index0 }}">
+    <input type="hidden" name="stat_{{ s.id }}__dorder" value="{{ s.default_order }}">
+    {% if s.extra %}{{ s.extra | safe }}{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% elif g %}
+{% set kept = g.stats | rejectattr('hide') | list %}
+{% if kept %}
+<div class="{{ g.cls }}">
+  {% for s in kept %}
+  <div class="stat"><div class="n">{{ s.value }}{% if s.unit %}<span class="u">{{ s.unit }}</span>{% endif %}</div><div class="l">{{ s.label }}</div>{% if s.extra %}{{ s.extra | safe }}{% endif %}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endmacro %}
+
 {% if editable %}
 <div class="edit-bar">
   <div class="edit-bar__label">Editing {{ client.display_name }} · {{ period_display }} — comments show where they will appear</div>
@@ -47,7 +88,7 @@
    report written before that tracking existed (or one whose focus brief changed
    after the fact) needs an explicit way to start the commentary over. #}
 <form method="post" action="/admin/review/regenerate" id="regen-form"
-      onsubmit="return confirm('Rewrite the headline, standfirst, section notes and actions from this month\'s data and the current briefs?\n\nAny edits you have made to this month\'s commentary will be discarded.')">
+      onsubmit="return confirm('Rewrite the headline, standfirst, section notes and actions from this month\'s data and the current briefs?\n\nAny edits you have made to this month\'s commentary and stat boxes will be discarded.')">
   <input type="hidden" name="client_slug" value="{{ client_slug }}">
   <input type="hidden" name="period" value="{{ period }}">
 </form>
@@ -158,15 +199,7 @@
   {% endif %}
 
   {% if mentions_total and mentions_total > 0 %}
-  <div class="stats">
-    <div class="stat"><div class="n">{{ mentions_total | thousands }}</div><div class="l">Tracked mentions</div></div>
-    {% if sentiment.configured and sentiment.total %}
-    <div class="stat"><div class="n">{{ '{:+.2f}'.format(sentiment.avg_score) if sentiment.avg_score is not none else '—' }}</div><div class="l">Net sentiment, −1 to +1</div></div>
-    {% endif %}
-    {% if exec_mentions %}
-    <div class="stat"><div class="n">{{ exec_mentions | length }}</div><div class="l">Executives in coverage</div></div>
-    {% endif %}
-  </div>
+  {{ stats_group('media') }}
 
   <div class="grid2">
     {% if sentiment.configured and sentiment.total > 0 %}
@@ -335,28 +368,8 @@
   <p class="muted muted--internal">No GA4 or Search Console data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
 
-  {% if gsc %}
-  <div class="stats stats--4">
-    <div class="stat"><div class="n">{{ (gsc.clicks or 0) | thousands }}</div><div class="l">Organic clicks</div></div>
-    <div class="stat"><div class="n">{{ (gsc.impressions or 0) | thousands }}</div><div class="l">Impressions</div></div>
-    <div class="stat"><div class="n">{% if gsc.avg_ctr %}{{ gsc.avg_ctr | round(2) }}%{% else %}—{% endif %}</div><div class="l">Average CTR</div></div>
-    <div class="stat"><div class="n">{% if gsc.avg_position %}{{ gsc.avg_position | round(1) }}{% else %}—{% endif %}</div><div class="l">Average position</div></div>
-  </div>
-  {% endif %}
-  {% if ga4 %}
-  <div class="stats{% if ga4.new_users or ga4.avg_engagement_secs %} stats--4{% endif %}">
-    <div class="stat"><div class="n">{{ (ga4.users or 0) | thousands }}</div><div class="l">Users</div></div>
-    {% if ga4.new_users %}
-    <div class="stat"><div class="n">{{ ga4.new_users | thousands }}</div><div class="l">New users</div></div>
-    {% endif %}
-    <div class="stat"><div class="n">{{ (ga4.sessions or 0) | thousands }}</div><div class="l">Sessions</div></div>
-    {% if ga4.avg_engagement_secs %}
-    <div class="stat"><div class="n">{{ ga4.avg_engagement_secs | duration }}</div><div class="l">Avg engagement time</div></div>
-    {% elif ga4.engaged_sessions %}
-    <div class="stat"><div class="n">{{ ga4.engaged_sessions | thousands }}</div><div class="l">Engaged sessions</div></div>
-    {% endif %}
-  </div>
-  {% endif %}
+  {{ stats_group('gsc') }}
+  {{ stats_group('ga4') }}
 
   {% if ga4 and ga4.channels %}
   <div class="panel panel--wide">
@@ -521,24 +534,7 @@
   <p class="muted muted--internal">No LinkedIn data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
   {% if li %}
-  <div class="stats stats--4">
-    <div class="stat"><div class="n">{{ (li.followers or 0) | thousands }}</div><div class="l">Followers</div></div>
-    {% if li.follower_growth %}
-    <div class="stat"><div class="n">+{{ li.follower_growth | thousands }}</div><div class="l">New followers</div></div>
-    {% endif %}
-    {% if li.impressions %}
-    <div class="stat"><div class="n">{{ li.impressions | thousands }}</div><div class="l">Post impressions</div></div>
-    {% endif %}
-    {% if li.engagements %}
-    <div class="stat"><div class="n">{{ li.engagements | thousands }}</div><div class="l">Engagements</div></div>
-    {% endif %}
-    {% if li.page_views %}
-    <div class="stat"><div class="n">{{ li.page_views | thousands }}</div><div class="l">Page views</div></div>
-    {% endif %}
-    {% if li.unique_visitors %}
-    <div class="stat"><div class="n">{{ li.unique_visitors | thousands }}</div><div class="l">Unique visitors</div></div>
-    {% endif %}
-  </div>
+  {{ stats_group('linkedin') }}
   {% if li.top_posts %}
   <div class="panel panel--wide">
     <h3>Top posts by reach</h3>
@@ -605,12 +601,7 @@
   <p class="muted muted--internal">No TikTok data uploaded for this period. This section will not appear in the published report.</p>
   {% endif %}
   {% if has_tk %}
-  <div class="stats stats--4">
-    <div class="stat"><div class="n">{{ tk.views | thousands }}</div><div class="l">Views</div></div>
-    {% if tk.likes is not none %}<div class="stat"><div class="n">{{ tk.likes | thousands }}</div><div class="l">Likes</div></div>{% endif %}
-    {% if tk.comments is not none %}<div class="stat"><div class="n">{{ tk.comments | thousands }}</div><div class="l">Comments</div></div>{% endif %}
-    {% if tk.shares is not none %}<div class="stat"><div class="n">{{ tk.shares | thousands }}</div><div class="l">Shares</div></div>{% endif %}
-  </div>
+  {{ stats_group('tiktok') }}
   {% if tk.top_day %}
   <p class="meta">Biggest day: {{ tk.top_day.date }} with {{ tk.top_day.value | thousands }} views.</p>
   {% endif %}
@@ -684,23 +675,10 @@
   {% if technical_seo %}
   {% set tseo = technical_seo %}
   {% set cur = tseo.current %}
-  <div class="stats">
-    <div class="stat">
-      <div class="n">{{ cur.health_score }}<span class="u">/100</span></div>
-      <div class="l">Health score</div>
-      {% if not tseo.is_baseline and tseo.health_delta %}
-      <div class="mt {{ 'up' if tseo.health_delta > 0 else 'down' }}">{{ '↑' if tseo.health_delta > 0 else '↓' }} {{ '{:+d}'.format(tseo.health_delta) }} pts</div>
-      {% elif tseo.is_baseline %}
-      <div class="mt note">◆ Baseline month</div>
-      {% endif %}
-    </div>
-    <div class="stat"><div class="n">{{ cur.domain_rating }}</div><div class="l">Domain rating</div></div>
-    <div class="stat">
-      <div class="n">{{ tseo.open_issues | length }}</div>
-      <div class="l">Open findings</div>
-      {% if cur.high_open %}<div class="mt down">{{ cur.high_open }} high severity</div>{% endif %}
-    </div>
-  </div>
+  {% if editable and tseo.register_missing %}
+  <p class="muted muted--internal">No issue register uploaded for this period, so the findings count comes from the Site Audit metrics and the findings table below is empty. Upload <code>technical_seo_register.csv</code> to list the individual findings. The Ahrefs sync only feeds the metrics half.</p>
+  {% endif %}
+  {{ stats_group('technical_seo') }}
   {% if tseo.high_med_issues %}
   <div class="panel panel--wide">
     <h3>Open findings — high and medium severity</h3>
@@ -875,6 +853,23 @@ document.querySelectorAll('.edit-input').forEach(function(el) {
   function grow() { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
   el.addEventListener('input', grow);
   grow();
+});
+// Stat boxes: arrows reorder within the group (the hidden order inputs are
+// renumbered to match), the keep tick greys a box it will drop on save.
+document.querySelectorAll('.stats--edit .stat-move').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var stat = btn.closest('.stat'), group = btn.closest('.stats--edit');
+    var sib = btn.dataset.dir === '-1' ? stat.previousElementSibling : stat.nextElementSibling;
+    if (!sib) return;
+    if (btn.dataset.dir === '-1') group.insertBefore(stat, sib);
+    else group.insertBefore(sib, stat);
+    group.querySelectorAll('.stat-order').forEach(function(inp, i) { inp.value = i; });
+  });
+});
+document.querySelectorAll('.stats--edit .stat-show').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    cb.closest('.stat').classList.toggle('stat--off', !cb.checked);
+  });
 });
 </script>
 {% endif %}

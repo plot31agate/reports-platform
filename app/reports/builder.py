@@ -179,11 +179,13 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
     client_logo = f"/static/img/clients/{client_slug}.png" if logo_path.exists() else None
 
     technical_seo = _build_technical_seo(parsed, period)
+    exec_mentions = _detect_exec_mentions(parsed, client_config)
 
     return {
         "client": client_config,
         "enabled_sections": set(enabled_sections(client_config)),
-        "exec_mentions": _detect_exec_mentions(parsed, client_config),
+        "exec_mentions": exec_mentions,
+        "stat_groups": _build_stat_groups(parsed, sentiment, exec_mentions, technical_seo, commentary),
         "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
         "client_logo": client_logo,
@@ -268,7 +270,15 @@ def _blanked_ai_fields(row: dict | None) -> bool:
         return True
     seed_notes = _dict(seed.get("notes"))
     notes = _dict(_loads(row.get("notes_json")))
-    return any(_str(seed_notes.get(k)) and not _str(notes.get(k)) for k in seed_notes)
+    if any(_str(seed_notes.get(k)) and not _str(notes.get(k)) for k in seed_notes):
+        return True
+    # Same rule for the action buckets. Saving the review screen always writes
+    # every bucket, so leaving "what worked" blank stores an empty list - which
+    # would otherwise read as a deliberate edit and suppress the section for
+    # good, even on months where the AI had written one.
+    seed_actions = _dict(seed.get("actions"))
+    actions = _dict(_loads(row.get("actions_json")))
+    return any(seed_actions.get(k) and not actions.get(k) for k in seed_actions)
 
 
 def _has_intro(row: dict | None) -> bool:
@@ -387,10 +397,20 @@ def _load_or_seed_commentary(client_slug: str, period: str, synth_content: dict 
             if current in ("", _str(prev_notes.get(key))) and current != val:
                 notes[key] = val
                 changed = True
-        if seed_actions and (not actions or actions == prev_seed.get("actions")):
-            if actions != seed_actions:
-                actions = seed_actions
-                changed = True
+        # Merge action buckets one at a time, the same way notes are handled.
+        # All-or-nothing meant a single edited bucket froze every other one,
+        # so a blank "what worked" could never be refilled by a later build.
+        if seed_actions:
+            prev_actions = _dict(prev_seed.get("actions"))
+            merged = _dict(actions)
+            for bucket in ACTION_BUCKETS:
+                val = seed_actions.get(bucket)
+                current = merged.get(bucket)
+                if val and (not current or current == prev_actions.get(bucket)):
+                    if current != val:
+                        merged[bucket] = val
+                        changed = True
+            actions = merged or None
 
         if changed:
             upsert_commentary(
@@ -567,6 +587,117 @@ def _detect_exec_mentions(parsed: dict, client_config: dict) -> list:
     return out
 
 
+def _build_stat_groups(parsed: dict, sentiment: dict, exec_mentions: list,
+                       technical_seo: dict | None, commentary: dict) -> dict:
+    """The number cards, assembled as data instead of hardcoded in the template
+    so the review screen can edit them: relabel, rewrite the value, hide, or
+    reorder. Overrides live in the commentary notes under 'stats', keyed
+    '<group>.<stat>' — only deviations from the computed default are stored,
+    so an untouched box keeps tracking the data on every rebuild."""
+    def th(v):
+        return f"{v:,}" if isinstance(v, (int, float)) else v
+
+    groups: dict = {}
+
+    def group(gkey, cls, stats):
+        if stats:
+            groups[gkey] = {"cls": cls, "stats": stats}
+
+    def stat(gkey, key, value, label, unit="", extra=""):
+        return {"id": f"{gkey}.{key}", "value": str(value), "label": label,
+                "unit": unit, "extra": extra}
+
+    mentions_total = ((parsed.get("mentions") or {}).get("data") or {}).get("total")
+    if mentions_total:
+        stats = [stat("media", "total", th(mentions_total), "Tracked mentions")]
+        if sentiment.get("configured") and sentiment.get("total"):
+            avg = sentiment.get("avg_score")
+            stats.append(stat("media", "sentiment",
+                              "{:+.2f}".format(avg) if avg is not None else "—",
+                              "Net sentiment, −1 to +1"))
+        if exec_mentions:
+            stats.append(stat("media", "execs", len(exec_mentions), "Executives in coverage"))
+        group("media", "stats", stats)
+
+    gsc = (parsed.get("search_console") or {}).get("data")
+    if gsc:
+        group("gsc", "stats stats--4", [
+            stat("gsc", "clicks", th(gsc.get("clicks") or 0), "Organic clicks"),
+            stat("gsc", "impressions", th(gsc.get("impressions") or 0), "Impressions"),
+            stat("gsc", "ctr", f"{round(gsc['avg_ctr'], 2)}%" if gsc.get("avg_ctr") else "—", "Average CTR"),
+            stat("gsc", "position", round(gsc["avg_position"], 1) if gsc.get("avg_position") else "—", "Average position"),
+        ])
+
+    ga4 = (parsed.get("ga4_export") or {}).get("data")
+    if ga4:
+        wide = ga4.get("new_users") or ga4.get("avg_engagement_secs")
+        stats = [stat("ga4", "users", th(ga4.get("users") or 0), "Users")]
+        if ga4.get("new_users"):
+            stats.append(stat("ga4", "new_users", th(ga4["new_users"]), "New users"))
+        stats.append(stat("ga4", "sessions", th(ga4.get("sessions") or 0), "Sessions"))
+        if ga4.get("avg_engagement_secs"):
+            stats.append(stat("ga4", "engagement", _fmt_duration(ga4["avg_engagement_secs"]), "Avg engagement time"))
+        elif ga4.get("engaged_sessions"):
+            stats.append(stat("ga4", "engaged", th(ga4["engaged_sessions"]), "Engaged sessions"))
+        group("ga4", "stats stats--4" if wide else "stats", stats)
+
+    li = (parsed.get("linkedin_company") or {}).get("data")
+    if li:
+        stats = [stat("linkedin", "followers", th(li.get("followers") or 0), "Followers")]
+        if li.get("follower_growth"):
+            stats.append(stat("linkedin", "growth", "+" + th(li["follower_growth"]), "New followers"))
+        if li.get("impressions"):
+            stats.append(stat("linkedin", "impressions", th(li["impressions"]), "Post impressions"))
+        if li.get("engagements"):
+            stats.append(stat("linkedin", "engagements", th(li["engagements"]), "Engagements"))
+        if li.get("page_views"):
+            stats.append(stat("linkedin", "page_views", th(li["page_views"]), "Page views"))
+        if li.get("unique_visitors"):
+            stats.append(stat("linkedin", "visitors", th(li["unique_visitors"]), "Unique visitors"))
+        group("linkedin", "stats stats--4", stats)
+
+    tk = (parsed.get("tiktok") or {}).get("data")
+    if tk and tk.get("views"):
+        stats = [stat("tiktok", "views", th(tk["views"]), "Views")]
+        if tk.get("likes") is not None:
+            stats.append(stat("tiktok", "likes", th(tk["likes"]), "Likes"))
+        if tk.get("comments") is not None:
+            stats.append(stat("tiktok", "comments", th(tk["comments"]), "Comments"))
+        if tk.get("shares") is not None:
+            stats.append(stat("tiktok", "shares", th(tk["shares"]), "Shares"))
+        group("tiktok", "stats stats--4", stats)
+
+    if technical_seo:
+        cur = technical_seo["current"]
+        if not technical_seo["is_baseline"] and technical_seo["health_delta"]:
+            d = technical_seo["health_delta"]
+            arrow, direction = ("↑", "up") if d > 0 else ("↓", "down")
+            health_extra = f'<div class="mt {direction}">{arrow} {d:+d} pts</div>'
+        elif technical_seo["is_baseline"]:
+            health_extra = '<div class="mt note">◆ Baseline month</div>'
+        else:
+            health_extra = ""
+        open_extra = (f'<div class="mt down">{cur.get("high_open")} high severity</div>'
+                      if cur.get("high_open") else "")
+        group("technical_seo", "stats", [
+            stat("technical_seo", "health", cur.get("health_score"), "Health score", unit="/100", extra=health_extra),
+            stat("technical_seo", "dr", cur.get("domain_rating"), "Domain rating"),
+            stat("technical_seo", "open", technical_seo["open_count"], "Open findings", extra=open_extra),
+        ])
+
+    overrides = ((commentary.get("notes") or {}).get("stats")) or {}
+    for g in groups.values():
+        for i, s in enumerate(g["stats"]):
+            ov = overrides.get(s["id"]) or {}
+            s["default_value"], s["default_label"], s["default_order"] = s["value"], s["label"], i
+            s["value"] = ov.get("value") or s["value"]
+            s["label"] = ov.get("label") or s["label"]
+            s["hide"] = bool(ov.get("hide"))
+            s["order"] = ov["order"] if isinstance(ov.get("order"), int) else i
+        g["stats"].sort(key=lambda s: (s["order"], s["default_order"]))
+    return groups
+
+
 def _build_technical_seo(parsed: dict, period: str) -> dict | None:
     """Combine metrics + register into a single context dict with delta logic."""
     metrics_rows = (parsed.get("technical_seo_metrics") or {}).get("data") or []
@@ -604,12 +735,21 @@ def _build_technical_seo(parsed: dict, period: str) -> dict | None:
     high_med = [i for i in open_issues if i.get("severity") in ("High", "Medium")]
     low = [i for i in open_issues if i.get("severity") == "Low"]
 
+    # The findings count comes from the register, but the severity badge and
+    # the AI's prose read the metrics row. With no register uploaded that
+    # renders as "0 open findings" under an "N high severity" badge, so fall
+    # back to the metrics total and flag the gap on the review screen.
+    register_missing = not register_rows
+    open_count = current.get("total_open", 0) if register_missing else len(open_issues)
+
     return {
         "current": current,
         "is_baseline": is_baseline,
         "health_delta": health_delta,
         "dr_delta": dr_delta,
         "open_issues": open_issues,
+        "open_count": open_count,
+        "register_missing": register_missing,
         "high_med_issues": high_med,
         "low_issues": low,
         "low_count": len(low),
