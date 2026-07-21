@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +30,7 @@ def _env() -> Environment:
     )
     env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else v
     env.filters["duration"] = _fmt_duration
+    env.filters["rowkey"] = _rowkey
     # Same cache-buster the admin app uses, so restyled reports refresh too.
     try:
         css_dir = Path(__file__).parent.parent / "static" / "css"
@@ -186,6 +188,9 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         "enabled_sections": set(enabled_sections(client_config)),
         "exec_mentions": exec_mentions,
         "stat_groups": _build_stat_groups(parsed, sentiment, exec_mentions, technical_seo, commentary),
+        # Rows the operator has dropped on the review screen. Published mode
+        # skips them; review mode renders them unticked so they can come back.
+        "hidden": set((commentary.get("notes") or {}).get("hidden") or []),
         "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
         "client_logo": client_logo,
@@ -754,6 +759,18 @@ def _build_technical_seo(parsed: dict, period: str) -> dict | None:
         "low_issues": low,
         "low_count": len(low),
     }
+
+
+def _rowkey(value) -> str:
+    """Stable, form-safe id for one row or list item.
+
+    Built from the row's own content (a domain, a query, an issue id) rather
+    than its position, so hiding a row survives the data reshuffling on the
+    next sync. Long values are truncated - collisions only ever affect rows
+    that read identically anyway.
+    """
+    s = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+    return s[:60] or "item"
 
 
 def _fmt_duration(secs) -> str:

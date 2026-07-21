@@ -32,6 +32,24 @@
 {% endif %}
 {% endmacro %}
 
+{# Row-level keep/drop for every table row and bar item. Review mode renders a
+   tick per row (unticked = dropped from the published report, and it stays in
+   the list so it can come back); published mode skips dropped rows entirely.
+   Skip a row in published mode with `{% raw %}{% if editable or (key|rowkey) not in hidden %}{% endraw %}`. #}
+{% macro keepcell(key) %}
+{%- if editable %}{% set k = key | rowkey %}
+<td class="rk"><input type="checkbox" name="keep_{{ k }}" value="1"{% if k not in hidden %} checked{% endif %}
+    title="Untick to drop this row from the published report"><input type="hidden" name="rowkey_{{ k }}" value="1"></td>
+{%- endif %}
+{% endmacro %}
+{% macro keephead() %}{% if editable %}<th class="rk" title="Untick a row to drop it">Keep</th>{% endif %}{% endmacro %}
+{% macro keepbox(key) %}
+{%- if editable %}{% set k = key | rowkey %}
+<label class="rk-inline"><input type="checkbox" name="keep_{{ k }}" value="1"{% if k not in hidden %} checked{% endif %}
+    title="Untick to drop this from the published report"><input type="hidden" name="rowkey_{{ k }}" value="1"></label>
+{%- endif %}
+{% endmacro %}
+
 {# Number cards, built as data in builder._build_stat_groups. In review mode
    every card gets editable value/label fields, a keep-tick and move arrows;
    published mode renders kept cards in the saved order. #}
@@ -233,10 +251,13 @@
       {{ callout('execs') }}
       {% if exec_mentions %}
       <table>
-        <thead><tr><th>Name</th><th class="num">Mentions</th></tr></thead>
+        <thead><tr>{{ keephead() }}<th>Name</th><th class="num">Mentions</th></tr></thead>
         <tbody>
           {% for e in exec_mentions %}
-          <tr><td>{{ e.name }}{% if e.examples %}<div class="meta" style="margin-top:2px;">"{{ e.examples[0].title[:90] }}"{% if e.examples[0].source %} — {{ e.examples[0].source }}{% endif %}</div>{% endif %}</td><td class="num">{{ e.count }}</td></tr>
+          {% set k = ('exec-' ~ e.name) | rowkey %}
+          {% if editable or k not in hidden %}
+          <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('exec-' ~ e.name) }}<td>{{ e.name }}{% if e.examples %}<div class="meta" style="margin-top:2px;">"{{ e.examples[0].title[:90] }}"{% if e.examples[0].source %} — {{ e.examples[0].source }}{% endif %}</div>{% endif %}</td><td class="num">{{ e.count }}</td></tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -337,15 +358,19 @@
     <div class="panel">
       <h3>Benchmark</h3>
       <table>
-        <thead><tr><th>Brand</th><th class="num">DR</th><th class="num">Ref. domains</th><th class="num">Organic traffic</th></tr></thead>
+        <thead><tr>{{ keephead() }}<th>Brand</th><th class="num">DR</th><th class="num">Ref. domains</th><th class="num">Organic traffic</th></tr></thead>
         <tbody>
           {% for r in sov.rows %}
-          <tr {% if r.is_client %}class="hot"{% endif %}>
+          {% set k = ('bench-' ~ r.brand) | rowkey %}
+          {% if editable or k not in hidden %}
+          <tr class="{% if r.is_client %}hot{% endif %} {% if k in hidden %}rk-off{% endif %}">
+            {{ keepcell('bench-' ~ r.brand) }}
             <td>{{ r.brand }}</td>
             <td class="num">{{ r.domain_rating if r.domain_rating is not none else '—' }}</td>
             <td class="num">{{ r.referring_domains | thousands if r.referring_domains is not none else '—' }}</td>
             <td class="num">{{ r.organic_traffic | thousands }}/mo</td>
           </tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -375,16 +400,20 @@
   <div class="panel panel--wide">
     <h3>Engagement by channel</h3>
     <table>
-      <thead><tr><th>Channel</th><th class="num">Sessions</th>{% if ga4.channels[0].new_users is not none %}<th class="num">New users</th>{% endif %}{% if ga4.channels[0].engagement_rate is not none %}<th class="num">Engagement rate</th>{% endif %}{% if ga4.channels[0].avg_engagement_secs is not none %}<th class="num">Avg engagement</th>{% endif %}</tr></thead>
+      <thead><tr>{{ keephead() }}<th>Channel</th><th class="num">Sessions</th>{% if ga4.channels[0].new_users is not none %}<th class="num">New users</th>{% endif %}{% if ga4.channels[0].engagement_rate is not none %}<th class="num">Engagement rate</th>{% endif %}{% if ga4.channels[0].avg_engagement_secs is not none %}<th class="num">Avg engagement</th>{% endif %}</tr></thead>
       <tbody>
         {% for ch in ga4.channels %}
-        <tr>
+        {% set k = ('chan-' ~ ch.channel) | rowkey %}
+        {% if editable or k not in hidden %}
+        <tr class="{% if k in hidden %}rk-off{% endif %}">
+          {{ keepcell('chan-' ~ ch.channel) }}
           <td>{{ ch.channel }}</td>
           <td class="num">{{ ch.sessions | thousands }}</td>
           {% if ch.new_users is not none %}<td class="num">{{ ch.new_users | thousands }}</td>{% endif %}
           {% if ch.engagement_rate is not none %}<td class="num">{{ ch.engagement_rate }}%</td>{% endif %}
           {% if ch.avg_engagement_secs is not none %}<td class="num">{{ ch.avg_engagement_secs | duration }}</td>{% endif %}
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -396,25 +425,39 @@
     {% if gsc and gsc.top_queries %}
     <div class="panel">
       <h3>Top queries by clicks</h3>
+      {# Review shows a deeper list so dropping a junk query promotes the next
+         one; the published report still shows five. #}
+      {% set qkept = [] %}
+      {% for q in gsc.top_queries[:8] %}
+        {% if editable or ('query-' ~ q.query) | rowkey not in hidden %}{% set _ = qkept.append(q) %}{% endif %}
+      {% endfor %}
       {% set maxq = gsc.top_queries[0].clicks or 1 %}
-      {% for q in gsc.top_queries[:5] %}
-      <div class="bar">
-        <div class="bl"><span>{{ q.query }}</span><span>{{ q.clicks | thousands }}</span></div>
+      {% for q in (qkept if editable else qkept[:5]) %}
+      {% set k = ('query-' ~ q.query) | rowkey %}
+      <div class="bar {% if k in hidden %}rk-off{% endif %}">
+        <div class="bl"><span>{{ keepbox('query-' ~ q.query) }}{{ q.query }}</span><span>{{ q.clicks | thousands }}</span></div>
         <div class="track"><div class="fill" style="width:{{ ((q.clicks / maxq * 100) | round | int) if maxq else 0 }}%"></div></div>
       </div>
       {% endfor %}
+      {% if editable %}<p class="muted muted--internal">The published report shows the first five kept.</p>{% endif %}
     </div>
     {% endif %}
     {% if ga4 and ga4.top_pages %}
     <div class="panel">
       <h3>Top pages by views</h3>
+      {% set pkept = [] %}
+      {% for p in ga4.top_pages[:8] %}
+        {% if editable or ('page-' ~ p.name) | rowkey not in hidden %}{% set _ = pkept.append(p) %}{% endif %}
+      {% endfor %}
       {% set maxp = ga4.top_pages[0].value or 1 %}
-      {% for p in ga4.top_pages[:5] %}
-      <div class="bar">
-        <div class="bl"><span>{{ p.name[:52] }}</span><span>{{ p.value | thousands }}</span></div>
+      {% for p in (pkept if editable else pkept[:5]) %}
+      {% set k = ('page-' ~ p.name) | rowkey %}
+      <div class="bar {% if k in hidden %}rk-off{% endif %}">
+        <div class="bl"><span>{{ keepbox('page-' ~ p.name) }}{{ p.name[:52] }}</span><span>{{ p.value | thousands }}</span></div>
         <div class="track"><div class="fill ink" style="width:{{ ((p.value / maxp * 100) | round | int) if maxp else 0 }}%"></div></div>
       </div>
       {% endfor %}
+      {% if editable %}<p class="muted muted--internal">The published report shows the first five kept.</p>{% endif %}
     </div>
     {% endif %}
   </div>
@@ -441,11 +484,14 @@
     {% set maxc = geo.top_countries[0].share or 1 %}
     {% set regions = client.regions_of_interest or [] %}
     {% for c in geo.top_countries[:8] %}
+    {% set k = ('country-' ~ c.country) | rowkey %}
+    {% if editable or k not in hidden %}
     {% set hot = c.country in regions %}
-    <div class="bar">
-      <div class="bl"><span {% if hot %}class="hot"{% endif %}>{{ c.country }}</span><span>{{ c.share }}%</span></div>
+    <div class="bar {% if k in hidden %}rk-off{% endif %}">
+      <div class="bl"><span {% if hot %}class="hot"{% endif %}>{{ keepbox('country-' ~ c.country) }}{{ c.country }}</span><span>{{ c.share }}%</span></div>
       <div class="track"><div class="fill {% if not hot %}n{% endif %}" style="width:{{ ((c.share / maxc * 100) | round | int) if maxc else 0 }}%"></div></div>
     </div>
+    {% endif %}
     {% endfor %}
     {% if geo.total_visits %}<p class="meta">{{ geo.total_visits | thousands }} total {{ 'sessions' if geo_label == 'GA4' else 'visits' }} this month.</p>{% endif %}
   </div>
@@ -509,10 +555,13 @@
     <div class="panel">
       <h3>Top referring domains</h3>
       <table>
-        <thead><tr><th>Domain</th><th class="num">Links</th></tr></thead>
+        <thead><tr>{{ keephead() }}<th>Domain</th><th class="num">Links</th></tr></thead>
         <tbody>
           {% for d in ah.top_referring_domains[:6] %}
-          <tr><td>{{ d.domain }}</td><td class="num">{{ d.backlinks }}</td></tr>
+          {% set k = ('refdom-' ~ d.domain) | rowkey %}
+          {% if editable or k not in hidden %}
+          <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('refdom-' ~ d.domain) }}<td>{{ d.domain }}</td><td class="num">{{ d.backlinks }}</td></tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -539,10 +588,13 @@
   <div class="panel panel--wide">
     <h3>Top posts by reach</h3>
     <table>
-      <thead><tr><th>Post</th><th class="num">Impressions</th></tr></thead>
+      <thead><tr>{{ keephead() }}<th>Post</th><th class="num">Impressions</th></tr></thead>
       <tbody>
-        {% for p in li.top_posts[:5] %}
-        <tr><td>{{ p.title[:110] }}</td><td class="num">{{ p.impressions | thousands }}</td></tr>
+        {% for p in li.top_posts[:6] %}
+        {% set k = ('lipost-' ~ p.title[:60]) | rowkey %}
+        {% if editable or k not in hidden %}
+        <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('lipost-' ~ p.title[:60]) }}<td>{{ p.title[:110] }}</td><td class="num">{{ p.impressions | thousands }}</td></tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -625,16 +677,20 @@
   <div class="panel panel--wide">
     <h3>Activity this month</h3>
     <table>
-      <thead><tr><th>Creator</th><th>Platform</th><th>Content</th><th class="num">Reach</th><th class="num">Engagements</th></tr></thead>
+      <thead><tr>{{ keephead() }}<th>Creator</th><th>Platform</th><th>Content</th><th class="num">Reach</th><th class="num">Engagements</th></tr></thead>
       <tbody>
         {% for r in inf.rows[:10] %}
-        <tr>
+        {% set k = ('inf-' ~ r.name ~ '-' ~ (r.content or '')[:30]) | rowkey %}
+        {% if editable or k not in hidden %}
+        <tr class="{% if k in hidden %}rk-off{% endif %}">
+          {{ keepcell('inf-' ~ r.name ~ '-' ~ (r.content or '')[:30]) }}
           <td>{{ r.name }}</td>
           <td>{{ r.platform or '—' }}</td>
           <td>{% if r.link %}<a href="{{ r.link }}" target="_blank" rel="noopener">{{ (r.content or 'View post')[:90] }}</a>{% else %}{{ (r.content or '—')[:90] }}{% endif %}</td>
           <td class="num">{{ r.reach | thousands if r.reach is not none else '—' }}</td>
           <td class="num">{{ r.engagements | thousands if r.engagements is not none else '—' }}</td>
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -683,15 +739,19 @@
   <div class="panel panel--wide">
     <h3>Open findings — high and medium severity</h3>
     <table>
-      <thead><tr><th>ID</th><th>Finding</th><th>Severity</th><th>Timeframe</th></tr></thead>
+      <thead><tr>{{ keephead() }}<th>ID</th><th>Finding</th><th>Severity</th><th>Timeframe</th></tr></thead>
       <tbody>
-        {% for issue in tseo.high_med_issues[:6] %}
-        <tr>
+        {% for issue in tseo.high_med_issues[:8] %}
+        {% set k = ('issue-' ~ issue.issue_id) | rowkey %}
+        {% if editable or k not in hidden %}
+        <tr class="{% if k in hidden %}rk-off{% endif %}">
+          {{ keepcell('issue-' ~ issue.issue_id) }}
           <td class="num">{{ issue.issue_id }}</td>
           <td>{{ issue.finding[:180] }}{% if issue.finding | length > 180 %}…{% endif %}</td>
           <td>{% if issue.severity == 'High' %}<span class="tag red">High</span>{% else %}<span class="tag amb">Medium</span>{% endif %}</td>
           <td style="white-space:nowrap;">{{ issue.timeframe or '—' }}</td>
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>

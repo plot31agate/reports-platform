@@ -805,6 +805,16 @@ async def admin_review_post(request: Request):
     if stat_overrides:
         notes["stats"] = stat_overrides
 
+    # Dropped rows: every rendered row submits a rowkey_ marker, and a ticked
+    # keep_ alongside it. A marker with no keep means the operator unticked it.
+    dropped = [
+        field[len("rowkey_"):]
+        for field in form.keys()
+        if field.startswith("rowkey_") and form.get("keep_" + field[len("rowkey_"):]) != "1"
+    ]
+    if dropped:
+        notes["hidden"] = sorted(set(dropped))
+
     def _bucket(prefix):
         items = []
         for i in range(3):

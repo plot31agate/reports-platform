@@ -162,11 +162,24 @@
           <div class="flash flash--err" style="margin:0;" id="build-error-msg"></div>
         </div>
       </div>
+      {% if report %}
+      <div class="ws-built">
+        <div class="ws-built__label">The published {{ period | monthname }} report</div>
+        <div class="ws-actions">
+          <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}" target="_blank" rel="noopener">View</a>
+          <a class="button button--ghost button--sm" href="/admin/review?client={{ selected_client }}&period={{ period }}" target="_blank" rel="noopener">Edit</a>
+          <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}?format=pdf" target="_blank" rel="noopener">PDF</a>
+        </div>
+        <div class="ws-built__views" title="Opens via portal and share links">
+          {{ views.total }} view{{ 's' if views.total != 1 }}{% if views.last_viewed %} · last {{ views.last_viewed[:10] }}{% endif %}
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <div class="panel">
       <div class="panel__head">
-        <h2>All reports</h2>
+        <h2>Other months</h2>
         <span class="ws-views">{{ months | selectattr('generated_at') | list | length }} built</span>
       </div>
       {% if months %}
@@ -176,8 +189,8 @@
            href="/admin/workspace?client={{ selected_client }}&period={{ m.period }}">
           <div class="ws-month__top">
             <span class="ws-month__name">{{ m.period | monthname }}</span>
-            {% if m.period == period %}<span class="ws-month__tag ws-month__tag--now">On screen</span>
-            {% elif not m.generated_at %}<span class="ws-month__tag">Data only</span>
+            {% if m.period == period %}<span class="ws-month__tag ws-month__tag--now">Open above</span>
+            {% elif not m.generated_at %}<span class="ws-month__tag">Data, no report</span>
             {% elif m.stale %}<span class="ws-month__tag ws-month__tag--stale">Data newer</span>
             {% endif %}
           </div>
@@ -194,20 +207,6 @@
     </div>
 
     {% if report %}
-    <div class="panel">
-      <div class="panel__head">
-        <h2>{{ period | monthname }} report</h2>
-        <span class="ws-views" title="Opens via portal + share links">
-          {{ views.total }} view{{ 's' if views.total != 1 }}{% if views.last_viewed %} · last {{ views.last_viewed[:10] }}{% endif %}
-        </span>
-      </div>
-      <div class="ws-actions">
-        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}" target="_blank" rel="noopener">View</a>
-        <a class="button button--ghost button--sm" href="/admin/review?client={{ selected_client }}&period={{ period }}" target="_blank" rel="noopener">Edit commentary</a>
-        <a class="button button--ghost button--sm" href="/c/{{ selected_client }}/{{ period }}?format=pdf" target="_blank" rel="noopener">PDF</a>
-      </div>
-    </div>
-
     <div class="panel">
       <div class="panel__head"><h2>Share links</h2></div>
       {% for s in shares %}

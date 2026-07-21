@@ -369,6 +369,11 @@ tr.hot td:last-child { border-radius: 0 8px 8px 0; }
 }
 .section__note--edit { margin: 10px 0 6px; }
 
+/* -------- Row keep/drop (review screen only) -------- */
+th.rk, td.rk { width: 46px; text-align: center; }
+.rk-inline { display: inline-flex; align-items: center; margin-right: 7px; vertical-align: middle; }
+.rk-off { opacity: 0.35; }
+
 /* -------- Editable stat boxes (review screen only) -------- */
 .stat-tools { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .stat-move {
