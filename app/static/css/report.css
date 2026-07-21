@@ -369,6 +369,18 @@ tr.hot td:last-child { border-radius: 0 8px 8px 0; }
 }
 .section__note--edit { margin: 10px 0 6px; }
 
+/* -------- Section include/exclude (review screen only) -------- */
+.sec-toggle {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  border: 1px dashed var(--bar-muted); border-radius: 999px;
+  padding: 5px 12px; margin: 0 0 14px;
+}
+.sec-toggle--off { color: var(--magenta); border-color: var(--magenta); border-style: solid; }
+.sec-hidden > *:not(.slabel):not(.sec-toggle) { opacity: 0.3; }
+.navyband .sec-toggle { color: var(--cover-muted); border-color: rgba(255,255,255,0.4); }
+
 /* -------- Row keep/drop (review screen only) -------- */
 th.rk, td.rk { width: 46px; text-align: center; }
 .rk-inline { display: inline-flex; align-items: center; margin-right: 7px; vertical-align: middle; }

@@ -191,6 +191,9 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         # Rows the operator has dropped on the review screen. Published mode
         # skips them; review mode renders them unticked so they can come back.
         "hidden": set((commentary.get("notes") or {}).get("hidden") or []),
+        # Whole sections switched off for this month only. The client's
+        # standing section list in settings is left alone.
+        "hidden_sections": set((commentary.get("notes") or {}).get("hidden_sections") or []),
         "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
         "client_logo": client_logo,

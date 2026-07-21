@@ -815,6 +815,16 @@ async def admin_review_post(request: Request):
     if dropped:
         notes["hidden"] = sorted(set(dropped))
 
+    # Whole sections switched off for this month, same marker pattern.
+    hidden_sections = [
+        field[len("sectionkey_"):]
+        for field in form.keys()
+        if field.startswith("sectionkey_")
+        and form.get("section_" + field[len("sectionkey_"):] + "__show") != "1"
+    ]
+    if hidden_sections:
+        notes["hidden_sections"] = sorted(set(hidden_sections))
+
     def _bucket(prefix):
         items = []
         for i in range(3):

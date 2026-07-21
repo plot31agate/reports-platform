@@ -43,6 +43,19 @@
 {%- endif %}
 {% endmacro %}
 {% macro keephead() %}{% if editable %}<th class="rk" title="Untick a row to drop it">Keep</th>{% endif %}{% endmacro %}
+{# Whole-section include/exclude, saved per month. Unticking drops the section
+   from the published report for this month only, without touching the
+   client's standing section list in settings. #}
+{% macro sectiontoggle(key) %}
+{%- if editable %}
+<label class="sec-toggle{% if key in hidden_sections %} sec-toggle--off{% endif %}">
+  <input type="checkbox" class="sec-show" name="section_{{ key }}__show" value="1"{% if key not in hidden_sections %} checked{% endif %}>
+  <span>{% if key in hidden_sections %}Hidden this month - tick to put it back{% else %}Include this section this month{% endif %}</span>
+  <input type="hidden" name="sectionkey_{{ key }}" value="1">
+</label>
+{%- endif %}
+{% endmacro %}
+
 {% macro keepbox(key) %}
 {%- if editable %}{% set k = key | rowkey %}
 <label class="rk-inline"><input type="checkbox" name="keep_{{ k }}" value="1"{% if k not in hidden %} checked{% endif %}
@@ -164,9 +177,10 @@
 <div class="wrap">
 
 {# ================== EXECUTIVE SUMMARY (the story of the month) ================== #}
-{% if editable or notes.get('intro') %}
+{% if (editable or 'intro' not in hidden_sections) and (editable or notes.get('intro')) %}
 <div class="section section--intro">
   <div class="slabel">The month in brief</div>
+  {{ sectiontoggle('intro') }}
   {{ note('intro') }}
   {% if editable and not notes.get('intro') %}
   <p class="muted muted--internal">No executive summary yet - it is written by the AI on the next rebuild, or write your own above.</p>
@@ -175,9 +189,10 @@
 {% endif %}
 
 {# ================== MONTH ON MONTH ================== #}
-{% if mom and mom.metrics and (editable or mom.metrics | length > 0 or notes.get('mom') or notes.get('callout_mom')) %}
+{% if (editable or 'mom' not in hidden_sections) and (mom and mom.metrics and (editable or mom.metrics | length > 0 or notes.get('mom') or notes.get('callout_mom'))) %}
 <div class="section">
   <div class="slabel">Month on month</div>
+  {{ sectiontoggle('mom') }}
   <h2>{% if mom.has_prev %}{{ mom.month_name }} against {{ mom.prev_name }}{% else %}{{ mom.month_name }} baseline{% endif %}</h2>
   {{ note('mom') }}
   {% if editable and not mom.has_prev %}
@@ -185,8 +200,10 @@
   {% endif %}
   <div class="strip">
     {% for m in mom.metrics %}
-    <div class="mom">
-      <div class="ml">{{ m.label }}</div>
+    {% set k = ('mom-' ~ m.label) | rowkey %}
+    {% if editable or k not in hidden %}
+    <div class="mom {% if k in hidden %}rk-off{% endif %}">
+      <div class="ml">{{ keepbox('mom-' ~ m.label) }}{{ m.label }}</div>
       <div class="mv">{{ m.value }}</div>
       {% if m.prev is not none %}
       <div class="mp">{{ mom.prev_name }}: <strong>{{ m.prev }}</strong></div>
@@ -198,6 +215,7 @@
       <div class="mt note">◆ New baseline</div>
       {% endif %}
     </div>
+    {% endif %}
     {% endfor %}
   </div>
   {{ callout('mom') }}
@@ -206,9 +224,10 @@
 
 {# ================== MEDIA COVERAGE ================== #}
 {% set mentions_total = (data.mentions.data.total if data.mentions.data else none) %}
-{% if 'media' in enabled_sections and (editable or (mentions_total and mentions_total > 0) or notes.get('media') or notes.get('callout_media')) %}
+{% if (editable or 'media' not in hidden_sections) and ('media' in enabled_sections and (editable or (mentions_total and mentions_total > 0) or notes.get('media') or notes.get('callout_media'))) %}
 <div class="section">
   <div class="slabel">Media coverage</div>
+  {{ sectiontoggle('media') }}
   <h2>Earned coverage</h2>
   {{ note('media') }}
   {{ callout('media') }}
@@ -330,9 +349,10 @@
 {# ================== SHARE OF VOICE ================== #}
 {% set sov = data.competitor_benchmark.data if data.competitor_benchmark else none %}
 {% set has_sov = sov and sov.rows %}
-{% if 'sov' in enabled_sections and (editable or has_sov or notes.get('sov') or notes.get('callout_sov')) %}
+{% if (editable or 'sov' not in hidden_sections) and ('sov' in enabled_sections and (editable or has_sov or notes.get('sov') or notes.get('callout_sov'))) %}
 <div class="section">
   <div class="slabel">Competitive landscape</div>
+  {{ sectiontoggle('sov') }}
   <h2>Share of voice</h2>
   {{ note('sov') }}
   {{ callout('sov') }}
@@ -383,9 +403,10 @@
 {# ================== SEARCH & TRAFFIC ================== #}
 {% set gsc = data.search_console.data %}
 {% set ga4 = data.ga4_export.data %}
-{% if 'traffic' in enabled_sections and (editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic')) %}
+{% if (editable or 'traffic' not in hidden_sections) and ('traffic' in enabled_sections and (editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic'))) %}
 <div class="section">
   <div class="slabel">Search &amp; traffic</div>
+  {{ sectiontoggle('traffic') }}
   <h2>Search and site performance</h2>
   {{ note('traffic') }}
   {{ callout('traffic') }}
@@ -469,9 +490,10 @@
 {# GA4 country data preferred; Similarweb kept as fallback for old months. #}
 {% set geo = data.ga4_geography.data if data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries else data.similarweb_traffic.data %}
 {% set geo_label = 'GA4' if (data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries) else 'SimilarWeb' %}
-{% if 'geography' in enabled_sections and (editable or (geo and geo.top_countries) or notes.get('campaigns') or notes.get('callout_campaigns')) %}
+{% if (editable or 'geography' not in hidden_sections) and ('geography' in enabled_sections and (editable or (geo and geo.top_countries) or notes.get('campaigns') or notes.get('callout_campaigns'))) %}
 <div class="section">
   <div class="slabel">Geography</div>
+  {{ sectiontoggle('geography') }}
   <h2>Where visits come from</h2>
   {{ note('campaigns') }}
   {{ callout('campaigns') }}
@@ -503,9 +525,10 @@
 {% set ah = data.ahrefs_backlinks.data %}
 {% set tr = data.ahrefs_trends.data if data.ahrefs_trends else none %}
 {% set has_trends = tr and tr.points and tr.points | length > 1 %}
-{% if 'links' in enabled_sections and (editable or ah or has_trends or notes.get('backlinks') or notes.get('callout_backlinks')) %}
+{% if (editable or 'links' not in hidden_sections) and ('links' in enabled_sections and (editable or ah or has_trends or notes.get('backlinks') or notes.get('callout_backlinks'))) %}
 <div class="section">
   <div class="slabel">Authority &amp; links</div>
+  {{ sectiontoggle('links') }}
   <h2>Domain authority and backlinks</h2>
   {{ note('backlinks') }}
   {{ callout('backlinks') }}
@@ -573,9 +596,10 @@
 
 {# ================== LINKEDIN ================== #}
 {% set li = data.linkedin_company.data %}
-{% if 'linkedin' in enabled_sections and (editable or li or notes.get('linkedin') or notes.get('callout_linkedin')) %}
+{% if (editable or 'linkedin' not in hidden_sections) and ('linkedin' in enabled_sections and (editable or li or notes.get('linkedin') or notes.get('callout_linkedin'))) %}
 <div class="section">
   <div class="slabel">LinkedIn performance</div>
+  {{ sectiontoggle('linkedin') }}
   <h2>Owned channel</h2>
   {{ note('linkedin') }}
   {{ callout('linkedin') }}
@@ -607,9 +631,10 @@
 {# ================== FACEBOOK & INSTAGRAM ================== #}
 {% set ms = data.meta_social.data if data.meta_social else none %}
 {% set has_ms = ms and ms.platforms %}
-{% if 'social' in enabled_sections and (editable or has_ms or notes.get('social') or notes.get('callout_social')) %}
+{% if (editable or 'social' not in hidden_sections) and ('social' in enabled_sections and (editable or has_ms or notes.get('social') or notes.get('callout_social'))) %}
 <div class="section">
   <div class="slabel">Social performance</div>
+  {{ sectiontoggle('social') }}
   <h2>Facebook &amp; Instagram</h2>
   {{ note('social') }}
   {{ callout('social') }}
@@ -643,9 +668,10 @@
 {# ================== TIKTOK ================== #}
 {% set tk = data.tiktok.data if data.tiktok else none %}
 {% set has_tk = tk and tk.views %}
-{% if 'tiktok' in enabled_sections and (editable or has_tk or notes.get('tiktok') or notes.get('callout_tiktok')) %}
+{% if (editable or 'tiktok' not in hidden_sections) and ('tiktok' in enabled_sections and (editable or has_tk or notes.get('tiktok') or notes.get('callout_tiktok'))) %}
 <div class="section">
   <div class="slabel">Social performance</div>
+  {{ sectiontoggle('tiktok') }}
   <h2>TikTok</h2>
   {{ note('tiktok') }}
   {{ callout('tiktok') }}
@@ -664,9 +690,10 @@
 {# ================== INFLUENCER ACTIVITY ================== #}
 {% set inf = data.influencer_activity.data if data.influencer_activity else none %}
 {% set has_inf = inf and inf.rows %}
-{% if 'influencers' in enabled_sections and (editable or has_inf or notes.get('influencers') or notes.get('callout_influencers')) %}
+{% if (editable or 'influencers' not in hidden_sections) and ('influencers' in enabled_sections and (editable or has_inf or notes.get('influencers') or notes.get('callout_influencers'))) %}
 <div class="section">
   <div class="slabel">Influencer activity</div>
+  {{ sectiontoggle('influencers') }}
   <h2>Creator partnerships</h2>
   {{ note('influencers') }}
   {{ callout('influencers') }}
@@ -703,9 +730,10 @@
 {% endif %}
 
 {# ================== MISC (free-text custom section) ================== #}
-{% if 'misc' in enabled_sections and (editable or notes.get('misc') or notes.get('callout_misc')) %}
+{% if (editable or 'misc' not in hidden_sections) and ('misc' in enabled_sections and (editable or notes.get('misc') or notes.get('callout_misc'))) %}
 <div class="section">
   <div class="slabel">Also this month</div>
+  {{ sectiontoggle('misc') }}
   <h2>{{ client.misc_title or 'Additional notes' }}</h2>
   {{ note('misc') }}
   {{ callout('misc') }}
@@ -717,11 +745,12 @@
 
 {# ================== TECHNICAL SEO (navy chapter band) ================== #}
 </div>
-{% if 'technical_seo' in enabled_sections and (editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo')) %}
+{% if (editable or 'technical_seo' not in hidden_sections) and ('technical_seo' in enabled_sections and (editable or technical_seo or notes.get('technical_seo') or notes.get('callout_technical_seo'))) %}
 <div class="navyband">
 <div class="wrap">
 <div class="section">
   <div class="slabel">Technical SEO</div>
+  {{ sectiontoggle('technical_seo') }}
   <h2>Site health</h2>
   {{ note('technical_seo') }}
   {{ callout('technical_seo') }}
@@ -770,9 +799,10 @@
 {# ================== WHAT WORKED / WHAT TO WATCH ================== #}
 {% set worked_items = (actions.content.worked if (actions.configured and actions.content) else none) or [] %}
 {% set watch_items = (actions.content.watch if (actions.configured and actions.content) else none) or [] %}
-{% if editable or worked_items or watch_items %}
+{% if (editable or 'worked' not in hidden_sections) and (editable or worked_items or watch_items) %}
 <div class="section">
   <div class="slabel">Read on the month</div>
+  {{ sectiontoggle('worked') }}
   <h2>What worked, what to watch</h2>
   <div class="edit-cards">
     {% if editable %}
@@ -825,9 +855,10 @@
 {% endif %}
 
 {# ================== RECOMMENDED FOCUS ================== #}
-{% if editable or (actions.configured and actions.content) %}
+{% if (editable or 'actions' not in hidden_sections) and (editable or (actions.configured and actions.content)) %}
 <div class="section">
   <div class="slabel">Recommended focus</div>
+  {{ sectiontoggle('actions') }}
   <h2>Next month</h2>
   {% if editable %}
   <div class="focus">
@@ -929,6 +960,25 @@ document.querySelectorAll('.stats--edit .stat-move').forEach(function(btn) {
 document.querySelectorAll('.stats--edit .stat-show').forEach(function(cb) {
   cb.addEventListener('change', function() {
     cb.closest('.stat').classList.toggle('stat--off', !cb.checked);
+  });
+});
+// Row ticks grey their row; the section tick greys the whole section, so the
+// shape of the published report is visible before saving.
+document.querySelectorAll('input[name^="keep_"]').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var row = cb.closest('tr') || cb.closest('.bar') || cb.closest('.mom');
+    if (row) row.classList.toggle('rk-off', !cb.checked);
+  });
+});
+document.querySelectorAll('.sec-show').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var sec = cb.closest('.section');
+    if (sec) sec.classList.toggle('sec-hidden', !cb.checked);
+    cb.closest('.sec-toggle').classList.toggle('sec-toggle--off', !cb.checked);
+    var span = cb.parentNode.querySelector('span');
+    if (span) span.textContent = cb.checked
+      ? 'Include this section this month'
+      : 'Hidden this month - tick to put it back';
   });
 });
 </script>
