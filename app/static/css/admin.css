@@ -556,6 +556,42 @@
 .ws-group__body .ws-source:first-child { border-top: none; }
 
 .ws-hint { font-size: 12px; color: var(--grey-600); margin: 0 0 12px; line-height: 1.5; }
+
+/* Build panel: what exists for the month on screen, before you overwrite it */
+.ws-state {
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 12px; background: var(--grey-50, #FAFAFB);
+}
+.ws-state__row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.ws-state__row + .ws-state__row { margin-top: 6px; }
+.ws-state__k { color: var(--grey-600); }
+.ws-state__v { color: var(--ink); font-weight: 700; white-space: nowrap; }
+.ws-warn {
+  font-size: 12px; line-height: 1.5; margin: 0 0 12px;
+  background: rgba(245,158,11,0.12); color: var(--amber-strong);
+  border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 9px 12px;
+}
+
+/* Rail index of every month that has a report or data */
+.ws-months { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; }
+.ws-month {
+  display: block; text-decoration: none; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ws-month:hover { border-color: var(--ink); box-shadow: var(--shadow-sm); }
+.ws-month--now { border-color: var(--df-pink); background: rgba(236,15,141,0.04); }
+.ws-month__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ws-month__name { font-size: 13px; font-weight: 700; color: var(--ink); }
+.ws-month__tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--grey-600); background: var(--grey-100);
+  border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+}
+.ws-month__tag--now { background: var(--df-pink); color: #fff; }
+.ws-month__tag--stale { background: rgba(245,158,11,0.16); color: var(--amber-strong); }
+.ws-month__meta { font-size: 11px; color: var(--grey-400); margin-top: 3px; }
+
 .ws-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .ws-actions .button { flex: 1; text-align: center; justify-content: center; }
 

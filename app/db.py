@@ -4,6 +4,7 @@ Tables: clients, reports, share_tokens, uploads, report_commentary,
 client_users (portal logins), report_views (engagement), sentiment_cache.
 """
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -297,6 +298,92 @@ def upsert_report(client_slug: str, period: str, html_path: str, pdf_path: str):
             (client_slug, period, html_path, pdf_path, now, now),
         )
         return cur.lastrowid
+
+
+def data_months(client_slug: str) -> dict:
+    """{period: {'source_count', 'changed_at'}} read from the data folder.
+
+    The builder reads the disk, not the uploads table, so the disk is what
+    decides whether a month can be generated. Anything that arrives outside
+    the upload path (seeded, FTP'd, restored from a backup) exists here and
+    nowhere else, so the workspace has to look at both.
+    """
+    out = {}
+    root = settings.data_dir / client_slug
+    if not root.is_dir():
+        return out
+    for folder in root.iterdir():
+        if not folder.is_dir() or not re.match(r"^\d{4}-\d{2}$", folder.name):
+            continue
+        files = [f for f in folder.iterdir() if f.is_file() and not f.name.startswith(".")]
+        if not files:
+            continue
+        newest = max(f.stat().st_mtime for f in files)
+        out[folder.name] = {
+            "source_count": len(files),
+            "changed_at": datetime.utcfromtimestamp(newest).isoformat(),
+        }
+    return out
+
+
+def report_index(client_slug: str) -> list:
+    """Every month this client has a report or data for, newest first.
+
+    Carries when the report was generated and when its data last changed, so
+    the workspace can show what already exists and flag a report whose data
+    has moved on since - the two things you need before regenerating over a
+    month you may not have meant to touch.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT period,
+                   MAX(report_updated) AS report_updated,
+                   MAX(data_changed)   AS data_changed,
+                   MAX(source_count)   AS source_count
+            FROM (
+                SELECT period, updated_at AS report_updated,
+                       NULL AS data_changed, 0 AS source_count
+                  FROM reports WHERE client_slug = ?
+                UNION ALL
+                SELECT period, NULL AS report_updated,
+                       MAX(uploaded_at) AS data_changed, COUNT(*) AS source_count
+                  FROM uploads WHERE client_slug = ? GROUP BY period
+            )
+            GROUP BY period
+            ORDER BY period DESC
+            """,
+            (client_slug, client_slug),
+        ).fetchall()
+
+    on_disk = data_months(client_slug)
+    merged = {}
+    for r in rows:
+        merged[r["period"]] = {
+            "generated_at": r["report_updated"],
+            "data_changed_at": r["data_changed"],
+            "source_count": r["source_count"] or 0,
+        }
+    for period, info in on_disk.items():
+        row = merged.setdefault(period, {"generated_at": None, "data_changed_at": None, "source_count": 0})
+        # Prefer whichever record saw the data move most recently.
+        row["source_count"] = max(row["source_count"], info["source_count"])
+        if not row["data_changed_at"] or info["changed_at"] > row["data_changed_at"]:
+            row["data_changed_at"] = info["changed_at"]
+
+    out = []
+    for period in sorted(merged, reverse=True):
+        row = merged[period]
+        generated, changed = row["generated_at"], row["data_changed_at"]
+        out.append({
+            "period": period,
+            "generated_at": generated,
+            "data_changed_at": changed,
+            "source_count": row["source_count"],
+            # Timestamps are ISO strings from utcnow(), so they compare as text.
+            "stale": bool(generated and changed and changed > generated),
+        })
+    return out
 
 
 def create_share_token(report_id: int, token: str, expires_at: Optional[str] = None):

@@ -67,6 +67,7 @@ from app.db import (
     touch_client_user_login,
     revoke_client_user,
     record_report_view,
+    report_index,
     report_view_stats,
     update_client_config_key,
     upsert_connection,
@@ -119,6 +120,28 @@ env = Environment(
     autoescape=select_autoescape(["html"]),
 )
 env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) else v
+
+
+def _month_name(period: str) -> str:
+    """'2026-06' -> 'June 2026'."""
+    try:
+        return datetime.strptime(period, "%Y-%m").strftime("%B %Y")
+    except (ValueError, TypeError):
+        return period or ""
+
+
+def _stamp(iso: str) -> str:
+    """ISO timestamp -> '9 Jul 2026, 14:43'. Blank stays blank."""
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(iso).strftime("%-d %b %Y, %H:%M")
+    except (ValueError, TypeError):
+        return str(iso)[:16].replace("T", " ")
+
+
+env.filters["monthname"] = _month_name
+env.filters["stamp"] = _stamp
 
 # Cache-buster for stylesheets: changes whenever the newest CSS file changes,
 # so browsers pick up redeployed styles instead of serving stale cached ones.
@@ -451,6 +474,15 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
          "sub": f"{len(enabled_sections(client_config))} of {len(SECTION_DEFS)}"},
     ]
 
+    # What already exists for this client, and whether the month on screen has
+    # data newer than its last build - shown in the rail so a regenerate is
+    # never a guess about which month is being overwritten.
+    months = report_index(slug)
+    this_month = next((m for m in months if m["period"] == period), None)
+    # The builder reads the data folder, so a month with files on disk can be
+    # generated even when no upload row exists for it (seeded or FTP'd data).
+    has_data = bool(list_uploads(slug, period)) or bool(this_month and this_month["source_count"])
+
     return _render(
         "admin/workspace.html",
         active="workspace",
@@ -459,11 +491,13 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         client=client_config,
         selected_client=slug,
         period=period,
+        months=months,
+        this_month=this_month,
         source_defs=client_source_defs,
         source_groups=source_groups,
         setup_items=setup_items,
         report=report,
-        has_uploads=bool(list_uploads(slug, period)),
+        has_uploads=has_data,
         shares=shares,
         views=views,
         portal_member_count=len(portal_members),

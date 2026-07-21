@@ -116,15 +116,37 @@
   <div class="ws-rail">
 
     <div class="panel">
-      <div class="panel__head"><h2>Build</h2></div>
+      <div class="panel__head"><h2>{{ period | monthname }}</h2></div>
       <div class="ws-build">
         <div id="build-idle">
-          <p class="ws-hint">Builds run in the background — sentiment, recommendations, page and PDF. You can keep working while it runs.</p>
-          <button class="button button--primary" id="build-btn" onclick="startBuild()" style="width:100%;"
-                  {% if not report and not has_uploads %}disabled{% endif %}>
-            {{ 'Rebuild report' if report else 'Build report' }}
+          {% if report %}
+          <div class="ws-state">
+            <div class="ws-state__row">
+              <span class="ws-state__k">Report generated</span>
+              <span class="ws-state__v">{{ report.updated_at | stamp }}</span>
+            </div>
+            {% if this_month and this_month.data_changed_at %}
+            <div class="ws-state__row">
+              <span class="ws-state__k">Data last changed</span>
+              <span class="ws-state__v">{{ this_month.data_changed_at | stamp }}</span>
+            </div>
+            {% endif %}
+          </div>
+          {% if this_month and this_month.stale %}
+          <p class="ws-warn">Data has changed since this report was generated. Regenerate to bring it up to date.</p>
+          {% endif %}
+          <button class="button button--primary" id="build-btn" onclick="startBuild()" style="width:100%;">
+            Regenerate {{ period | monthname }}
           </button>
-          <p class="ws-hint" id="build-gate" style="margin:8px 0 0;{% if report or has_uploads %}display:none;{% endif %}">Waiting for data — add or sync at least one source first.</p>
+          <p class="ws-hint" style="margin:8px 0 0;">Replaces the {{ period | monthname }} report. Your commentary edits are kept.</p>
+          {% else %}
+          <p class="ws-hint">No report for {{ period | monthname }} yet. Builds run in the background - sentiment, recommendations, page and PDF. You can keep working while it runs.</p>
+          <button class="button button--primary" id="build-btn" onclick="startBuild()" style="width:100%;"
+                  {% if not has_uploads %}disabled{% endif %}>
+            Generate {{ period | monthname }} report
+          </button>
+          <p class="ws-hint" id="build-gate" style="margin:8px 0 0;{% if has_uploads %}display:none;{% endif %}">Waiting for data - add or sync at least one source first.</p>
+          {% endif %}
         </div>
         <div id="build-progress" style="display:none;">
           <div class="ws-progress__label" id="build-stage">Starting…</div>
@@ -142,10 +164,39 @@
       </div>
     </div>
 
+    <div class="panel">
+      <div class="panel__head">
+        <h2>All reports</h2>
+        <span class="ws-views">{{ months | selectattr('generated_at') | list | length }} built</span>
+      </div>
+      {% if months %}
+      <div class="ws-months">
+        {% for m in months %}
+        <a class="ws-month{% if m.period == period %} ws-month--now{% endif %}"
+           href="/admin/workspace?client={{ selected_client }}&period={{ m.period }}">
+          <div class="ws-month__top">
+            <span class="ws-month__name">{{ m.period | monthname }}</span>
+            {% if m.period == period %}<span class="ws-month__tag ws-month__tag--now">On screen</span>
+            {% elif not m.generated_at %}<span class="ws-month__tag">Data only</span>
+            {% elif m.stale %}<span class="ws-month__tag ws-month__tag--stale">Data newer</span>
+            {% endif %}
+          </div>
+          <div class="ws-month__meta">
+            {% if m.generated_at %}Generated {{ m.generated_at | stamp }}{% else %}Not generated yet{% endif %}
+            {% if m.source_count %} · {{ m.source_count }} source{{ 's' if m.source_count != 1 }}{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="ws-hint" style="margin:0;">No reports or data yet for {{ client.display_name }}. Add data for a month, then generate it.</p>
+      {% endif %}
+    </div>
+
     {% if report %}
     <div class="panel">
       <div class="panel__head">
-        <h2>Report</h2>
+        <h2>{{ period | monthname }} report</h2>
         <span class="ws-views" title="Opens via portal + share links">
           {{ views.total }} view{{ 's' if views.total != 1 }}{% if views.last_viewed %} · last {{ views.last_viewed[:10] }}{% endif %}
         </span>
