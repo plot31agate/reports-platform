@@ -12,7 +12,7 @@ from app.clients import get_client
 from app.config import settings
 from app.db import (
     upsert_report, get_commentary, upsert_commentary,
-    get_mention_overrides, set_commentary_ai_state,
+    get_mention_overrides, set_commentary_ai_state, get_report_layout,
 )
 from app.ingestion.parsers import parse_all
 from app.reports.pdf import render_pdf
@@ -182,22 +182,23 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
 
     technical_seo = _build_technical_seo(parsed, period)
     exec_mentions = _detect_exec_mentions(parsed, client_config)
+    layout_notes, layout_state = _resolve_layout(client_slug, period, commentary)
 
     return {
         "client": client_config,
         "enabled_sections": set(enabled_sections(client_config)),
         "exec_mentions": exec_mentions,
-        "stat_groups": _build_stat_groups(parsed, sentiment, exec_mentions, technical_seo, commentary),
-        # Rows the operator has dropped on the review screen. Published mode
-        # skips them; review mode renders them unticked so they can come back.
-        "hidden": set((commentary.get("notes") or {}).get("hidden") or []),
-        # Whole sections switched off for this month only. The client's
-        # standing section list in settings is left alone.
-        "hidden_sections": set((commentary.get("notes") or {}).get("hidden_sections") or []),
-        # Rewritten cell text, keyed the same way as rows. Only cells the
-        # operator actually changed are stored, so everything else keeps
-        # tracking the data on the next sync.
-        "cells": (commentary.get("notes") or {}).get("cells") or {},
+        "stat_groups": _build_stat_groups(parsed, sentiment, exec_mentions, technical_seo,
+                                          {**commentary, "notes": layout_notes}),
+        # Rows dropped on the review screen. Published mode skips them; review
+        # mode renders them unticked so they can come back.
+        "hidden": set(layout_notes.get("hidden") or []),
+        # Whole sections switched off. Never touches the client's standing
+        # section list in settings.
+        "hidden_sections": set(layout_notes.get("hidden_sections") or []),
+        # Rewritten cell text, keyed the same way as rows.
+        "cells": layout_notes.get("cells") or {},
+        "layout_state": layout_state,
         "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
         "client_logo": client_logo,
@@ -766,6 +767,66 @@ def _build_technical_seo(parsed: dict, period: str) -> dict | None:
         "low_issues": low,
         "low_count": len(low),
     }
+
+
+LAYOUT_KEYS = ("hidden_sections", "hidden", "cells", "stats")
+
+
+def layout_from_notes(notes: dict) -> dict:
+    """The carry-forward slice of a month's review edits.
+
+    Everything structural travels: which sections show, which rows are
+    dropped, renamed text, and the shape of the number cards. A stat box's
+    *value* is dropped on the way out - that number belongs to the month it
+    was written for and must never follow the layout into the next one.
+    """
+    out = {}
+    for key in LAYOUT_KEYS:
+        val = notes.get(key)
+        if not val:
+            continue
+        if key == "stats":
+            stats = {
+                sid: {k: v for k, v in ov.items() if k != "value"}
+                for sid, ov in val.items()
+            }
+            stats = {sid: ov for sid, ov in stats.items() if ov}
+            if stats:
+                out[key] = stats
+        else:
+            out[key] = val
+    return out
+
+
+def _resolve_layout(client_slug: str, period: str, commentary: dict) -> tuple[dict, dict]:
+    """Merge the client's standing layout with this month's own edits.
+
+    A month the operator has saved owns its structure outright - its stored
+    values are complete, so an absent section means shown, not "inherit".
+    A month never reviewed follows the saved layout, but only from the month
+    the layout was set onwards, so republishing an older delivered report
+    never silently restructures it.
+    """
+    notes = dict(commentary.get("notes") or {})
+    layout = get_report_layout(client_slug)
+    edited = bool(notes.get("_edited"))
+    from_period = layout.get("from_period") or ""
+    applies = bool(layout) and not edited and period >= from_period
+
+    state = {
+        "has_layout": bool(layout),
+        "from_period": from_period,
+        "month_edited": edited,
+        "following": applies,
+    }
+    if not applies:
+        return notes, state
+
+    merged = dict(notes)
+    for key in LAYOUT_KEYS:
+        if layout.get(key):
+            merged[key] = layout[key]
+    return merged, state
 
 
 def _rowkey(value) -> str:

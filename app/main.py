@@ -69,6 +69,8 @@ from app.db import (
     record_report_view,
     report_index,
     report_view_stats,
+    get_report_layout,
+    save_report_layout,
     update_client_config_key,
     upsert_connection,
     get_connections,
@@ -105,7 +107,7 @@ REVIEW_NOTE_SECTIONS = [
     ("misc", "Misc"),
     ("technical_seo", "Technical SEO"),
 ]
-from app.reports.builder import build_report
+from app.reports.builder import build_report, layout_from_notes, LAYOUT_KEYS
 
 
 app = FastAPI(title="Digital Footprints Reporting")
@@ -756,6 +758,50 @@ async def admin_review_regenerate(request: Request):
     return RedirectResponse(f"{back}&message=Commentary+rewritten+from+the+current+data+and+briefs", status_code=302)
 
 
+@app.post("/admin/review/reset-layout")
+async def admin_review_reset_layout(request: Request):
+    """Undo structure. `scope=month` drops this month's own layout edits so it
+    follows the client layout again; `scope=client` clears the saved layout so
+    later months start from the data with nothing carried forward."""
+    _require_admin_or_redirect(request)
+    form = await request.form()
+    client_slug = form.get("client_slug")
+    period = form.get("period")
+    scope = form.get("scope")
+    if not client_slug or not period:
+        return RedirectResponse("/admin?error=Reset+was+missing+client+or+period", status_code=302)
+    back = f"/admin/review?client={client_slug}&period={period}"
+
+    if scope == "client":
+        save_report_layout(client_slug, {})
+        msg = "Saved+layout+cleared+-+later+months+start+from+the+data"
+    else:
+        row = get_commentary(client_slug, period)
+        try:
+            notes = json.loads((row or {}).get("notes_json") or "{}")
+        except (ValueError, TypeError):
+            notes = {}
+        for key in list(LAYOUT_KEYS) + ["_edited"]:
+            notes.pop(key, None)
+        upsert_commentary(client_slug, period, (row or {}).get("headline") or "Performance Report",
+                          (row or {}).get("standfirst") or "", json.dumps(notes),
+                          (row or {}).get("actions_json"))
+        # If this month is the one that set the standing layout, resetting it
+        # has to clear that too - otherwise the month falls straight back onto
+        # a layout encoding the very edits just undone, and nothing changes.
+        if (get_report_layout(client_slug) or {}).get("from_period") == period:
+            save_report_layout(client_slug, {})
+            msg = "This+month+reset+-+the+layout+it+set+is+cleared+too"
+        else:
+            msg = "This+month+reset+-+it+follows+the+saved+layout+again"
+
+    try:
+        build_report(client_slug, period)
+    except Exception as e:
+        return RedirectResponse(f"{back}&message=Reset+but+build+failed:+{str(e)[:100]}", status_code=302)
+    return RedirectResponse(f"{back}&message={msg}", status_code=302)
+
+
 @app.post("/admin/review")
 async def admin_review_post(request: Request):
     _require_admin_or_redirect(request)
@@ -839,6 +885,10 @@ async def admin_review_post(request: Request):
     if cells:
         notes["cells"] = cells
 
+    # This month now owns its structure outright: an absent section means
+    # shown, not "inherit the layout".
+    notes["_edited"] = True
+
     def _bucket(prefix):
         items = []
         for i in range(3):
@@ -870,6 +920,16 @@ async def admin_review_post(request: Request):
         client_slug, period, headline, standfirst,
         json.dumps(notes), json.dumps(actions),
     )
+
+    # Structural choices become the client's standing layout, so the next
+    # month starts where this one left off. Stat box values are stripped on
+    # the way in - that number belongs to this month only.
+    layout = layout_from_notes(notes)
+    if layout:
+        layout["from_period"] = period
+        save_report_layout(client_slug, layout)
+    else:
+        save_report_layout(client_slug, {})
 
     # Per-story mention overrides: a sentiment <select> is rendered for every
     # story (so its key is always in the form); an unticked "keep" checkbox

@@ -381,6 +381,18 @@ tr.hot td:last-child { border-radius: 0 8px 8px 0; }
 .sec-hidden > *:not(.slabel):not(.sec-toggle) { opacity: 0.3; }
 .navyband .sec-toggle { color: var(--cover-muted); border-color: rgba(255,255,255,0.4); }
 
+/* -------- Layout inheritance banner (review screen only) -------- */
+.edit-message--layout {
+  background: var(--tint-pink); display: flex; align-items: center;
+  gap: 12px; flex-wrap: wrap; font-weight: 500;
+}
+.linkbtn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 700; color: var(--magenta);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.linkbtn:hover { color: var(--ink); }
+
 /* -------- Editable cell text (review screen only) -------- */
 .cell-input {
   font-family: inherit; font-size: inherit; color: var(--ink);

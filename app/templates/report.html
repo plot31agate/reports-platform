@@ -136,6 +136,36 @@
   <input type="hidden" name="client_slug" value="{{ client_slug }}">
   <input type="hidden" name="period" value="{{ period }}">
 </form>
+{# Where this month's structure comes from, and how to undo it. Saving the
+   review screen makes these choices the client's standing layout, so the
+   next month opens the same shape. #}
+{% if layout_state %}
+<div class="edit-message edit-message--layout">
+  {% if layout_state.month_edited %}
+    <strong>This month has its own layout.</strong> Its structure was set here and does not change when other months are edited.
+    <form method="post" action="/admin/review/reset-layout" style="display:inline;"
+          onsubmit="return confirm('Drop this month\'s own layout edits?\n\nHidden sections, dropped rows, renamed text and stat box changes for this month are cleared, and it follows the saved layout again.')">
+      <input type="hidden" name="client_slug" value="{{ client_slug }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="scope" value="month">
+      <button type="submit" class="linkbtn">Reset this month</button>
+    </form>
+  {% elif layout_state.following %}
+    <strong>Following the saved layout</strong> from {{ layout_state.from_period }}. Save any change here and this month takes over its own structure.
+  {% else %}
+    <strong>No saved layout yet.</strong> Whatever structure you save here becomes the starting shape for later months.
+  {% endif %}
+  {% if layout_state.has_layout %}
+    <form method="post" action="/admin/review/reset-layout" style="display:inline;"
+          onsubmit="return confirm('Clear the saved layout for this client?\n\nLater months will start from the data with nothing carried forward. Months that already have their own layout keep it.')">
+      <input type="hidden" name="client_slug" value="{{ client_slug }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="scope" value="client">
+      <button type="submit" class="linkbtn">Clear saved layout</button>
+    </form>
+  {% endif %}
+</div>
+{% endif %}
 {% if message %}<div class="edit-message">{{ message }}</div>{% endif %}
 {% if ai_health and ai_health.warnings %}
 {% for w in ai_health.warnings %}

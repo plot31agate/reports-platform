@@ -326,6 +326,24 @@ def data_months(client_slug: str) -> dict:
     return out
 
 
+def get_report_layout(client_slug: str) -> dict:
+    """The client's standing report layout: the structural choices made on the
+    review screen that later months should inherit. Empty when never saved."""
+    row = get_client_row(client_slug)
+    if not row:
+        return {}
+    try:
+        cfg = json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        return {}
+    layout = cfg.get("report_layout")
+    return layout if isinstance(layout, dict) else {}
+
+
+def save_report_layout(client_slug: str, layout: dict):
+    update_client_config_key(client_slug, "report_layout", layout)
+
+
 def report_index(client_slug: str) -> list:
     """Every month this client has a report or data for, newest first.
 
