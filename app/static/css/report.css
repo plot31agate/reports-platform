@@ -381,6 +381,18 @@ tr.hot td:last-child { border-radius: 0 8px 8px 0; }
 .sec-hidden > *:not(.slabel):not(.sec-toggle) { opacity: 0.3; }
 .navyband .sec-toggle { color: var(--cover-muted); border-color: rgba(255,255,255,0.4); }
 
+/* -------- Editable cell text (review screen only) -------- */
+.cell-input {
+  font-family: inherit; font-size: inherit; color: var(--ink);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px dashed var(--bar-muted); border-radius: 6px;
+  padding: 3px 7px; width: 100%; min-width: 0; max-width: 100%;
+}
+.cell-input--wide { min-width: 180px; }
+.bar .cell-input, .mom .cell-input { width: auto; max-width: 220px; }
+.mom .cell-input { font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.navyband .cell-input { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.35); }
+
 /* -------- Row keep/drop (review screen only) -------- */
 th.rk, td.rk { width: 46px; text-align: center; }
 .rk-inline { display: inline-flex; align-items: center; margin-right: 7px; vertical-align: middle; }

@@ -56,6 +56,19 @@
 {%- endif %}
 {% endmacro %}
 
+{# One editable piece of text inside a row. Review mode shows an input seeded
+   with the current text and remembers the computed default alongside it, so
+   only a real rewrite is stored; published mode prints the override if there
+   is one, otherwise the live value. #}
+{% macro cell(key, value, wide=false) %}
+{%- set k = key | rowkey -%}
+{%- set shown = cells.get(k, value) -%}
+{%- if editable -%}
+<input class="cell-input{% if wide %} cell-input--wide{% endif %}" name="cell_{{ k }}__v" value="{{ shown }}"
+       title="Rewrite this text for the published report"><input type="hidden" name="cell_{{ k }}__d" value="{{ value }}">
+{%- else -%}{{ shown }}{%- endif -%}
+{% endmacro %}
+
 {% macro keepbox(key) %}
 {%- if editable %}{% set k = key | rowkey %}
 <label class="rk-inline"><input type="checkbox" name="keep_{{ k }}" value="1"{% if k not in hidden %} checked{% endif %}
@@ -203,7 +216,7 @@
     {% set k = ('mom-' ~ m.label) | rowkey %}
     {% if editable or k not in hidden %}
     <div class="mom {% if k in hidden %}rk-off{% endif %}">
-      <div class="ml">{{ keepbox('mom-' ~ m.label) }}{{ m.label }}</div>
+      <div class="ml">{{ keepbox('mom-' ~ m.label) }}{{ cell('mom-' ~ m.label ~ '-l', m.label) }}</div>
       <div class="mv">{{ m.value }}</div>
       {% if m.prev is not none %}
       <div class="mp">{{ mom.prev_name }}: <strong>{{ m.prev }}</strong></div>
@@ -275,7 +288,7 @@
           {% for e in exec_mentions %}
           {% set k = ('exec-' ~ e.name) | rowkey %}
           {% if editable or k not in hidden %}
-          <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('exec-' ~ e.name) }}<td>{{ e.name }}{% if e.examples %}<div class="meta" style="margin-top:2px;">"{{ e.examples[0].title[:90] }}"{% if e.examples[0].source %} — {{ e.examples[0].source }}{% endif %}</div>{% endif %}</td><td class="num">{{ e.count }}</td></tr>
+          <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('exec-' ~ e.name) }}<td>{{ cell('exec-' ~ e.name ~ '-n', e.name) }}{% if e.examples %}<div class="meta" style="margin-top:2px;">"{{ e.examples[0].title[:90] }}"{% if e.examples[0].source %} — {{ e.examples[0].source }}{% endif %}</div>{% endif %}</td><td class="num">{{ e.count }}</td></tr>
           {% endif %}
           {% endfor %}
         </tbody>
@@ -385,7 +398,7 @@
           {% if editable or k not in hidden %}
           <tr class="{% if r.is_client %}hot{% endif %} {% if k in hidden %}rk-off{% endif %}">
             {{ keepcell('bench-' ~ r.brand) }}
-            <td>{{ r.brand }}</td>
+            <td>{{ cell('bench-' ~ r.brand ~ '-n', r.brand) }}</td>
             <td class="num">{{ r.domain_rating if r.domain_rating is not none else '—' }}</td>
             <td class="num">{{ r.referring_domains | thousands if r.referring_domains is not none else '—' }}</td>
             <td class="num">{{ r.organic_traffic | thousands }}/mo</td>
@@ -428,7 +441,7 @@
         {% if editable or k not in hidden %}
         <tr class="{% if k in hidden %}rk-off{% endif %}">
           {{ keepcell('chan-' ~ ch.channel) }}
-          <td>{{ ch.channel }}</td>
+          <td>{{ cell('chan-' ~ ch.channel ~ '-n', ch.channel) }}</td>
           <td class="num">{{ ch.sessions | thousands }}</td>
           {% if ch.new_users is not none %}<td class="num">{{ ch.new_users | thousands }}</td>{% endif %}
           {% if ch.engagement_rate is not none %}<td class="num">{{ ch.engagement_rate }}%</td>{% endif %}
@@ -456,7 +469,7 @@
       {% for q in (qkept if editable else qkept[:5]) %}
       {% set k = ('query-' ~ q.query) | rowkey %}
       <div class="bar {% if k in hidden %}rk-off{% endif %}">
-        <div class="bl"><span>{{ keepbox('query-' ~ q.query) }}{{ q.query }}</span><span>{{ q.clicks | thousands }}</span></div>
+        <div class="bl"><span>{{ keepbox('query-' ~ q.query) }}{{ cell('query-' ~ q.query ~ '-t', q.query, wide=true) }}</span><span>{{ q.clicks | thousands }}</span></div>
         <div class="track"><div class="fill" style="width:{{ ((q.clicks / maxq * 100) | round | int) if maxq else 0 }}%"></div></div>
       </div>
       {% endfor %}
@@ -474,7 +487,7 @@
       {% for p in (pkept if editable else pkept[:5]) %}
       {% set k = ('page-' ~ p.name) | rowkey %}
       <div class="bar {% if k in hidden %}rk-off{% endif %}">
-        <div class="bl"><span>{{ keepbox('page-' ~ p.name) }}{{ p.name[:52] }}</span><span>{{ p.value | thousands }}</span></div>
+        <div class="bl"><span>{{ keepbox('page-' ~ p.name) }}{{ cell('page-' ~ p.name ~ '-t', p.name[:52], wide=true) }}</span><span>{{ p.value | thousands }}</span></div>
         <div class="track"><div class="fill ink" style="width:{{ ((p.value / maxp * 100) | round | int) if maxp else 0 }}%"></div></div>
       </div>
       {% endfor %}
@@ -510,7 +523,7 @@
     {% if editable or k not in hidden %}
     {% set hot = c.country in regions %}
     <div class="bar {% if k in hidden %}rk-off{% endif %}">
-      <div class="bl"><span {% if hot %}class="hot"{% endif %}>{{ keepbox('country-' ~ c.country) }}{{ c.country }}</span><span>{{ c.share }}%</span></div>
+      <div class="bl"><span {% if hot %}class="hot"{% endif %}>{{ keepbox('country-' ~ c.country) }}{{ cell('country-' ~ c.country ~ '-n', c.country) }}</span><span>{{ c.share }}%</span></div>
       <div class="track"><div class="fill {% if not hot %}n{% endif %}" style="width:{{ ((c.share / maxc * 100) | round | int) if maxc else 0 }}%"></div></div>
     </div>
     {% endif %}
@@ -583,7 +596,7 @@
           {% for d in ah.top_referring_domains[:6] %}
           {% set k = ('refdom-' ~ d.domain) | rowkey %}
           {% if editable or k not in hidden %}
-          <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('refdom-' ~ d.domain) }}<td>{{ d.domain }}</td><td class="num">{{ d.backlinks }}</td></tr>
+          <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('refdom-' ~ d.domain) }}<td>{{ cell('refdom-' ~ d.domain ~ '-n', d.domain, wide=true) }}</td><td class="num">{{ d.backlinks }}</td></tr>
           {% endif %}
           {% endfor %}
         </tbody>
@@ -617,7 +630,7 @@
         {% for p in li.top_posts[:6] %}
         {% set k = ('lipost-' ~ p.title[:60]) | rowkey %}
         {% if editable or k not in hidden %}
-        <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('lipost-' ~ p.title[:60]) }}<td>{{ p.title[:110] }}</td><td class="num">{{ p.impressions | thousands }}</td></tr>
+        <tr class="{% if k in hidden %}rk-off{% endif %}">{{ keepcell('lipost-' ~ p.title[:60]) }}<td>{{ cell('lipost-' ~ p.title[:60] ~ '-t', p.title[:110], wide=true) }}</td><td class="num">{{ p.impressions | thousands }}</td></tr>
         {% endif %}
         {% endfor %}
       </tbody>
@@ -710,8 +723,9 @@
         {% set k = ('inf-' ~ r.name ~ '-' ~ (r.content or '')[:30]) | rowkey %}
         {% if editable or k not in hidden %}
         <tr class="{% if k in hidden %}rk-off{% endif %}">
-          {{ keepcell('inf-' ~ r.name ~ '-' ~ (r.content or '')[:30]) }}
-          <td>{{ r.name }}</td>
+          {% set ik = 'inf-' ~ r.name ~ '-' ~ (r.content or '')[:30] %}
+          {{ keepcell(ik) }}
+          <td>{{ cell(ik ~ '-n', r.name) }}</td>
           <td>{{ r.platform or '—' }}</td>
           <td>{% if r.link %}<a href="{{ r.link }}" target="_blank" rel="noopener">{{ (r.content or 'View post')[:90] }}</a>{% else %}{{ (r.content or '—')[:90] }}{% endif %}</td>
           <td class="num">{{ r.reach | thousands if r.reach is not none else '—' }}</td>
@@ -776,7 +790,7 @@
         <tr class="{% if k in hidden %}rk-off{% endif %}">
           {{ keepcell('issue-' ~ issue.issue_id) }}
           <td class="num">{{ issue.issue_id }}</td>
-          <td>{{ issue.finding[:180] }}{% if issue.finding | length > 180 %}…{% endif %}</td>
+          <td>{{ cell('issue-' ~ issue.issue_id ~ '-f', issue.finding[:180], wide=true) }}{% if not editable and issue.finding | length > 180 %}…{% endif %}</td>
           <td>{% if issue.severity == 'High' %}<span class="tag red">High</span>{% else %}<span class="tag amb">Medium</span>{% endif %}</td>
           <td style="white-space:nowrap;">{{ issue.timeframe or '—' }}</td>
         </tr>

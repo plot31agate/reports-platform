@@ -825,6 +825,20 @@ async def admin_review_post(request: Request):
     if hidden_sections:
         notes["hidden_sections"] = sorted(set(hidden_sections))
 
+    # Rewritten cell text. Each editable cell submits its current value beside
+    # the computed default; only a real change is stored, so an untouched cell
+    # keeps following the data.
+    cells = {}
+    for field in form.keys():
+        if not (field.startswith("cell_") and field.endswith("__d")):
+            continue
+        ckey = field[len("cell_"):-len("__d")]
+        value = (form.get(f"cell_{ckey}__v") or "").strip()
+        if value and value != (form.get(field) or "").strip():
+            cells[ckey] = value
+    if cells:
+        notes["cells"] = cells
+
     def _bucket(prefix):
         items = []
         for i in range(3):

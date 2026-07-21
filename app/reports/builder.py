@@ -194,6 +194,10 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         # Whole sections switched off for this month only. The client's
         # standing section list in settings is left alone.
         "hidden_sections": set((commentary.get("notes") or {}).get("hidden_sections") or []),
+        # Rewritten cell text, keyed the same way as rows. Only cells the
+        # operator actually changed are stored, so everything else keeps
+        # tracking the data on the next sync.
+        "cells": (commentary.get("notes") or {}).get("cells") or {},
         "mom": _build_mom(client_slug, period, parsed, technical_seo),
         "client_slug": client_slug,
         "client_logo": client_logo,
