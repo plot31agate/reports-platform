@@ -12,6 +12,7 @@ it carries the agency's judgement (status, recommendation, owner), which an
 API can't supply.
 """
 import csv as _csv
+import json as _json
 import re
 from datetime import date
 
@@ -293,9 +294,12 @@ def write_gsc_keywords_csv(rows, dest):
     write_csv(dest, header, out)
 
 
-# ---------- core keyword rankings (Rank Tracker) ----------
+# ---------- core keyword rankings (Site Explorer organic keywords) ----------
 
 CORE_KEYWORD_COLS = ["keyword", "location", "volume", "position", "position_prev"]
+
+# How many keywords to report when the client has no core list of their own.
+TOP_KEYWORD_FALLBACK = 25
 
 
 def _core_keyword_list(config) -> list:
@@ -304,58 +308,81 @@ def _core_keyword_list(config) -> list:
 
 
 def _sync_core_keywords(config, dest, period):
-    """Rank Tracker positions for the client's core keywords.
+    """Organic positions for the client's core keywords, from Site Explorer.
+
+    Site Explorer rather than Rank Tracker: it covers every keyword the domain
+    ranks for without anyone having to add them to a project first, and it
+    costs no tracked-keyword slots. The trade is that a keyword the client
+    does not rank for at all comes back empty - which is the honest answer,
+    and lands in the CSV as an unranked row.
 
     One call carries both months: `date` is the period end, `date_compared`
-    the previous month end, so Ahrefs returns this month's position and last
-    month's side by side and we never have to stitch two syncs together.
+    the previous month end, so this month's position and last month's arrive
+    side by side.
     """
-    project_id = _project_id(config)
-    if not project_id:
-        raise ConnectorError("No Ahrefs project ID saved - it's the number in the Rank Tracker URL")
-
+    target = _target(config)
     _start, end = period_range(period)
     prev_at = _previous_month_end(period)
-    select = ["keyword", "location", "volume", "position"]
+    wanted = _core_keyword_list(config)
+
+    select = ["keyword", "keyword_country", "volume", "best_position"]
     params = {
-        "project_id": project_id,
+        "target": target,
+        "mode": "subdomains",
+        "protocol": "both",
         "date": end,
-        "device": "desktop",
-        "limit": 1000,
+        "order_by": "volume:desc",
+        "limit": 1000 if wanted else TOP_KEYWORD_FALLBACK,
     }
+    country = (config.get("keyword_country") or "").strip().upper()
+    if country:
+        params["country"] = country
     if prev_at:
         params["date_compared"] = prev_at[:10]
-        select.append("position_prev")
+        select.append("best_position_prev")
     params["select"] = ",".join(select)
-
-    rows = _get(config, "/rank-tracker/overview", params).get("overviews") or []
-    if not rows:
-        raise ConnectorError(
-            f"Ahrefs Rank Tracker returned no keywords for {period} - check the project has tracked keywords"
+    if wanted:
+        # Filter server-side: Ahrefs bills per row returned, and a domain can
+        # rank for thousands of keywords we are not reporting on.
+        params["where"] = _json.dumps(
+            {"or": [{"field": "keyword", "is": ["eq", k.lower()]} for k in wanted]}
         )
 
-    wanted = _core_keyword_list(config)
-    if wanted:
-        by_keyword = {(r.get("keyword") or "").strip().lower(): r for r in rows}
-        picked = [(k, by_keyword.get(k.lower())) for k in wanted]
-        missing = [k for k, r in picked if not r]
-        rows = [r for _k, r in picked if r]
-        if not rows:
-            raise ConnectorError(
-                "None of this client's core keywords are tracked in the Ahrefs project - "
-                "add them in Rank Tracker, or clear the core keyword list to report on everything tracked"
-            )
-        # A keyword the agency cares about but nobody tracks is a setup gap,
-        # so it goes in the CSV unranked rather than quietly disappearing.
-        for k in missing:
-            rows.append({"keyword": k})
-    else:
-        rows.sort(key=lambda r: -(r.get("volume") or 0))
+    rows = _get(config, "/site-explorer/organic-keywords", params).get("keywords") or []
 
-    out = [[r.get("keyword", ""), r.get("location", ""), r.get("volume", ""),
-            r.get("position", ""), r.get("position_prev", "")] for r in rows]
+    # Without a country filter the same keyword comes back once per market it
+    # ranks in, so keep the strongest showing and report the market with it.
+    best = {}
+    for r in rows:
+        key = (r.get("keyword") or "").strip().lower()
+        if not key:
+            continue
+        held = best.get(key)
+        if held is None or _better_position(r.get("best_position"), held.get("best_position")):
+            best[key] = r
+
+    if wanted:
+        ordered = [best.get(k.lower()) or {"keyword": k} for k in wanted]
+    else:
+        ordered = sorted(best.values(), key=lambda r: -(r.get("volume") or 0))
+        if not ordered:
+            raise ConnectorError(
+                f"Ahrefs found no organic keywords for {target} in {period} - "
+                "check the target domain, or set this client's core keywords"
+            )
+
+    out = [[r.get("keyword", ""), r.get("keyword_country", ""), r.get("volume", ""),
+            r.get("best_position", ""), r.get("best_position_prev", "")] for r in ordered]
     write_csv(dest, CORE_KEYWORD_COLS, out)
     return len(out)
+
+
+def _better_position(candidate, held) -> bool:
+    """True when `candidate` is a higher ranking than `held` (1 beats 9, and
+    any ranking beats none)."""
+    if candidate is None:
+        return False
+    return held is None or candidate < held
 
 
 # ---------- 12-month authority trends ----------

@@ -476,7 +476,7 @@
   <div class="panel panel--wide">
     <h3>Core keywords</h3>
     <table>
-      <thead><tr>{{ keephead() }}<th>Keyword</th><th>Location</th><th class="num">Volume</th><th class="num">Position</th><th class="num">Vs last month</th></tr></thead>
+      <thead><tr>{{ keephead() }}<th>Keyword</th><th>Market</th><th class="num">Volume</th><th class="num">Position</th><th class="num">Vs last month</th></tr></thead>
       <tbody>
         {% for k in kw.rows %}
         {% set rk = ('kw-' ~ k.keyword) | rowkey %}

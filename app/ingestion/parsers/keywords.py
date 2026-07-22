@@ -1,9 +1,12 @@
 """Core keyword ranking parser.
 
-CSV shape (written by the Ahrefs connector's Rank Tracker sync, and equally
-uploadable as a Rank Tracker export):
+CSV shape (written by the Ahrefs connector's Site Explorer sync, and equally
+uploadable as an organic-keywords export):
 
   keyword, location, volume, position, position_prev
+
+`location` is the market the position was read in - a two-letter country code
+from the API, or whatever a hand-made export calls it.
 
 `position` is this month's rank, `position_prev` last month's. Blank means
 the keyword was not ranking in the tracked SERP that month, which is a real

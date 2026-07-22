@@ -51,7 +51,7 @@ SOURCE_DEFS = [
     {"key": "ga4_export",             "title": "GA4",                   "purpose": "Sessions, users, top pages",                  "cols": "sessions, users, pagePath"},
     {"key": "ga4_geography",          "title": "GA4 geography",         "purpose": "Visits by country",                           "cols": "Country, Sessions"},
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
-    {"key": "core_keywords",          "title": "Core keywords",         "purpose": "Rank Tracker positions vs last month",        "cols": "keyword, location, volume, position, position_prev"},
+    {"key": "core_keywords",          "title": "Core keywords",         "purpose": "Organic positions vs last month",             "cols": "keyword, location, volume, position, position_prev"},
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
     {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
     {"key": "competitor_benchmark",   "title": "Competitor benchmark",  "purpose": "Share of voice vs competitors",               "cols": "month, brand, domain, organic_traffic"},
@@ -132,7 +132,7 @@ def summarise_parsed(source_key: str, data) -> dict:
             s += f", {len(d['losses'])} falling"
         unranked = tracked - (d.get("ranked") or 0)
         if unranked:
-            warnings.append(f"{unranked} keyword{'s' if unranked != 1 else ''} not ranking - either genuinely unranked, or not tracked in the Ahrefs project")
+            warnings.append(f"{unranked} keyword{'s' if unranked != 1 else ''} with no position - the site does not rank in the top 100 for {'them' if unranked != 1 else 'it'}")
         return {"status": "ok", "summary": s, "warnings": warnings, "row_count": tracked}
 
     if source_key == "ahrefs_backlinks":
