@@ -15,7 +15,15 @@
       <img class="side__logo" src="/static/img/df-logo-white.png" alt="Digital Footprints">
     </div>
 
-    <div class="side__section">Workspace</div>
+    {# Two collapsible groups inside one scrolling column: on an agency with
+       twenty clients the list ran off the bottom of a 100vh sidebar with no
+       way to reach it. #}
+    <nav class="side__nav">
+    <button type="button" class="side__section side__section--toggle" data-group="workspace" aria-expanded="true" aria-controls="side-group-workspace">
+      <span>Workspace</span>
+      <svg class="side__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div class="side__group" id="side-group-workspace">
     <a class="side__link {% if active == 'dashboard' %}side__link--active{% endif %}" href="/admin">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
       Dashboard
@@ -40,20 +48,33 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .3c0 1.7-2.5 2.2-2.5 3.7"/><path d="M12 17h.01"/></svg>
       How reports work
     </a>
+    </div>
 
-    <div class="side__section">Clients</div>
-    {% for c in nav_clients or [] %}
-    <a class="side__link {% if active_client == c.slug %}side__link--active{% endif %}" href="/admin/workspace?client={{ c.slug }}">
+    {% set clients = nav_clients or [] %}
+    <button type="button" class="side__section side__section--toggle" data-group="clients" aria-expanded="true" aria-controls="side-group-clients">
+      <span>Clients</span>
+      {% if clients %}<span class="side__count">{{ clients | length }}</span>{% endif %}
+      <svg class="side__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div class="side__group" id="side-group-clients">
+    {% if clients | length > 8 %}
+    <input class="side__filter" type="search" placeholder="Filter clients" aria-label="Filter clients">
+    <p class="side__nohits" hidden>No client matches that.</p>
+    {% endif %}
+    {% for c in clients %}
+    <a class="side__link {% if active_client == c.slug %}side__link--active{% endif %}" href="/admin/workspace?client={{ c.slug }}"
+       data-client-name="{{ c.display_name | lower }}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
-      {{ c.display_name }}
+      <span class="side__label">{{ c.display_name }}</span>
     </a>
     {% endfor %}
-    <a class="side__link {% if active == 'new_client' %}side__link--active{% endif %}" href="/admin/clients/new" style="color:rgba(255,255,255,0.55);">
+    <a class="side__link side__link--add {% if active == 'new_client' %}side__link--active{% endif %}" href="/admin/clients/new">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
       Add client
     </a>
+    </div>
+    </nav>
 
-    <div class="side__spacer"></div>
     <div class="side__foot">
       <span class="side__user">Signed in</span>
       <a class="side__signout" href="/admin/logout">Sign out</a>
@@ -64,6 +85,61 @@
     {% block main %}{% endblock %}
   </main>
 </div>
+<script>
+// Sidebar: collapse either group, filter a long client list, and keep the
+// open state across pages. Collapse is ignored on narrow screens, where the
+// sidebar is a wrapping row and the group headers are hidden.
+(function () {
+  var KEY = "df-side-closed";
+  var closed = {};
+  try { closed = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
+
+  document.querySelectorAll(".side__section--toggle").forEach(function (btn) {
+    var group = document.getElementById("side-group-" + btn.dataset.group);
+    if (!group) return;
+    function apply(open) {
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      group.hidden = !open;
+    }
+    apply(!closed[btn.dataset.group]);
+    btn.addEventListener("click", function () {
+      var open = btn.getAttribute("aria-expanded") !== "true";
+      apply(open);
+      closed[btn.dataset.group] = !open;
+      try { localStorage.setItem(KEY, JSON.stringify(closed)); } catch (e) {}
+    });
+  });
+
+  var filter = document.querySelector(".side__filter");
+  if (filter) {
+    var links = document.querySelectorAll("[data-client-name]");
+    var nohits = document.querySelector(".side__nohits");
+    filter.addEventListener("input", function () {
+      var q = this.value.trim().toLowerCase();
+      var hits = 0;
+      links.forEach(function (a) {
+        var match = !q || a.dataset.clientName.indexOf(q) !== -1;
+        a.hidden = !match;
+        if (match) hits++;
+      });
+      if (nohits) nohits.hidden = !q || hits > 0;
+    });
+  }
+
+  // A long list scrolls, so bring the client you are working on into view.
+  // The client link, not the "Workspace" nav link that is also active on this
+  // page - that one lives in a group that may be collapsed shut.
+  var nav = document.querySelector(".side__nav");
+  var active = nav && nav.querySelector("#side-group-clients .side__link--active");
+  if (nav && active) {
+    var a = active.getBoundingClientRect();
+    var n = nav.getBoundingClientRect();
+    if (a.top < n.top || a.bottom > n.bottom) {
+      nav.scrollTop += a.top - n.top - (n.height - a.height) / 2;
+    }
+  }
+})();
+</script>
 {% block body_extra %}{% endblock %}
 </body>
 </html>

@@ -64,6 +64,66 @@
   color: rgba(255,255,255,0.4);
   padding: 16px 10px 6px;
 }
+/* The nav is the only part that scrolls: brand and footer stay put however
+   many clients the agency has. */
+.side__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.22) transparent;
+}
+.side__nav::-webkit-scrollbar { width: 8px; }
+.side__nav::-webkit-scrollbar-track { background: transparent; }
+.side__nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 8px; }
+.side__nav:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.28); }
+button.side__section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  text-align: left;
+}
+button.side__section:hover { color: rgba(255,255,255,0.75); }
+.side__count {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.35);
+}
+.side__chev { width: 13px; height: 13px; flex-shrink: 0; transition: transform 0.15s; }
+.side__count + .side__chev { margin-left: 6px; }
+.side__chev:only-of-type { margin-left: auto; }
+button.side__section[aria-expanded="false"] .side__chev { transform: rotate(-90deg); }
+.side__group { display: flex; flex-direction: column; gap: 2px; }
+.side__group[hidden], .side__link[hidden] { display: none; }
+.side__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side__link--add { color: rgba(255,255,255,0.55); }
+.side__filter {
+  margin: 2px 0 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+}
+.side__filter::placeholder { color: rgba(255,255,255,0.4); }
+.side__filter:focus { outline: none; border-color: rgba(255,255,255,0.35); background: rgba(255,255,255,0.10); }
+.side__nohits { padding: 4px 12px 8px; font-size: 12px; color: rgba(255,255,255,0.45); }
 .side__link {
   display: flex;
   align-items: center;
@@ -451,7 +511,13 @@
 @media (max-width: 1000px) {
   .app { grid-template-columns: 1fr; }
   .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .side__spacer, .side__section { display: none; }
+  .side__spacer { display: none; }
+  /* Sidebar becomes a wrapping row. Nothing scrolls here, so the group
+     headers stay - they are the way back into a collapsed group. */
+  .side__nav { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; align-items: center; overflow: visible; min-height: 0; }
+  button.side__section { flex: 1 1 100%; padding: 10px 10px 2px; }
+  .side__group { flex-direction: row; flex-wrap: wrap; }
+  .side__filter, .side__nohits { display: none; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
