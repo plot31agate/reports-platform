@@ -239,7 +239,18 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
         ],
         "sentiment": report_data.get("sentiment", {}),
         "backlinks": _d("ahrefs_backlinks"),
-        "authority_trends": (_d("ahrefs_trends") or {}).get("deltas") if _d("ahrefs_trends") else None,
+        # Levels and changes, labelled as such. Handing over the delta dict
+        # alone got the change written up as the metric itself ("a domain
+        # rating of 3.0" for a domain rating of 60 that rose 3 points).
+        "authority": {
+            "latest": (_d("ahrefs_trends") or {}).get("latest"),
+            "change_vs_last_month": (_d("ahrefs_trends") or {}).get("deltas"),
+            "change_since": {
+                "from_month": (_d("ahrefs_trends") or {}).get("span_from"),
+                "change": (_d("ahrefs_trends") or {}).get("span_deltas"),
+            },
+        } if _d("ahrefs_trends") else None,
+        "core_keywords": _d("core_keywords"),
         "competitor_benchmark": _d("competitor_benchmark"),
         "traffic": _d("ga4_export"),
         "geography": _d("ga4_geography"),
@@ -297,7 +308,7 @@ Also write the report's editorial framing. This is the part the client's leaders
 - "standfirst": one or two sentences under the headline framing the month's story - the defining development and its strongest number.
 - "notes": an object of section commentaries keyed as below. ALWAYS include "intro". Include the other keys only when the summary above has data for them.
   - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month in the report's primary focus area, connect the threads (how the other areas relate to it this month), and close with where the focus goes next. This is the executive summary at the top of the report.
-  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
+  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic, including core keyword positions and what moved into or out of the top five), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
 
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 

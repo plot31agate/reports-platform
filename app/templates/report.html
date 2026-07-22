@@ -446,19 +446,102 @@
 {# ================== SEARCH & TRAFFIC ================== #}
 {% set gsc = data.search_console.data %}
 {% set ga4 = data.ga4_export.data %}
-{% if (editable or 'traffic' not in hidden_sections) and ('traffic' in enabled_sections and (editable or gsc or ga4 or notes.get('traffic') or notes.get('callout_traffic'))) %}
+{% set kw = data.core_keywords.data if data.core_keywords else none %}
+{# Position movement, read the way a client reads it: up the page is good. #}
+{% macro kwmove(k) %}
+{%- if k.change is not none and k.change > 0 %}<span class="tag grn">↑ {{ k.change }}</span>
+{%- elif k.change is not none and k.change < 0 %}<span class="tag red">↓ {{ -k.change }}</span>
+{%- elif k.change == 0 %}<span class="tag">Held</span>
+{%- elif k.is_new %}<span class="tag ylw">New</span>
+{%- elif k.position_prev %}<span class="tag red">Lost #{{ k.position_prev }}</span>
+{%- else %}—{% endif %}
+{% endmacro %}
+{% if (editable or 'traffic' not in hidden_sections) and ('traffic' in enabled_sections and (editable or gsc or ga4 or (kw and kw.rows) or notes.get('traffic') or notes.get('callout_traffic'))) %}
 <div class="section">
   <div class="slabel">Search &amp; traffic</div>
   {{ sectiontoggle('traffic') }}
   <h2>Search and site performance</h2>
   {{ note('traffic') }}
   {{ callout('traffic') }}
-  {% if editable and not (gsc or ga4) %}
-  <p class="muted muted--internal">No GA4 or Search Console data uploaded for this period. This section will not appear in the published report.</p>
+  {% if editable and not (gsc or ga4 or (kw and kw.rows)) %}
+  <p class="muted muted--internal">No GA4, Search Console or core keyword data for this period. This section will not appear in the published report.</p>
   {% endif %}
 
   {{ stats_group('gsc') }}
   {{ stats_group('ga4') }}
+
+  {# Core keywords — the list the client is judged on, with this month's
+     position against last month's. #}
+  {% if kw and kw.rows %}
+  <div class="panel panel--wide">
+    <h3>Core keywords</h3>
+    <table>
+      <thead><tr>{{ keephead() }}<th>Keyword</th><th>Location</th><th class="num">Volume</th><th class="num">Position</th><th class="num">Vs last month</th></tr></thead>
+      <tbody>
+        {% for k in kw.rows %}
+        {% set rk = ('kw-' ~ k.keyword) | rowkey %}
+        {% if editable or rk not in hidden %}
+        <tr class="{% if rk in hidden %}rk-off{% endif %}">
+          {{ keepcell('kw-' ~ k.keyword) }}
+          <td>{{ cell('kw-' ~ k.keyword ~ '-n', k.keyword, wide=true) }}</td>
+          <td>{{ k.location or '—' }}</td>
+          <td class="num">{{ k.volume | thousands if k.volume is not none else '—' }}</td>
+          <td class="num">{{ k.position if k.position is not none else '—' }}</td>
+          <td class="num">{{ kwmove(k) }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3>Moved into the top 5</h3>
+      {% if kw.gains %}
+      <table>
+        <tbody>
+          {% for k in kw.gains %}
+          {% set rk = ('kwgain-' ~ k.keyword) | rowkey %}
+          {% if editable or rk not in hidden %}
+          <tr class="{% if rk in hidden %}rk-off{% endif %}">
+            {{ keepcell('kwgain-' ~ k.keyword) }}
+            <td>{{ cell('kwgain-' ~ k.keyword ~ '-n', k.keyword, wide=true) }}
+              {% if k.position <= 3 %}<span class="tag grn">Top 3</span>{% endif %}</td>
+            <td class="num">#{{ k.position }} {% if k.position_prev %}<span class="tag grn">↑ {{ k.change }}</span>{% else %}<span class="tag ylw">New</span>{% endif %}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No core keyword broke into the top five this month.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Biggest drops</h3>
+      {% if kw.losses %}
+      <table>
+        <tbody>
+          {% for k in kw.losses %}
+          {% set rk = ('kwloss-' ~ k.keyword) | rowkey %}
+          {% if editable or rk not in hidden %}
+          <tr class="{% if rk in hidden %}rk-off{% endif %}">
+            {{ keepcell('kwloss-' ~ k.keyword) }}
+            <td>{{ cell('kwloss-' ~ k.keyword ~ '-n', k.keyword, wide=true) }}</td>
+            <td class="num">{% if k.lost_ranking %}<span class="tag red">Out of results</span>{% else %}#{{ k.position }} <span class="tag red">↓ {{ k.drop }}</span>{% endif %}
+              <span class="muted">was #{{ k.position_prev }}</span></td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No core keyword lost ground this month.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 
   {% if ga4 and ga4.channels %}
   <div class="panel panel--wide">
@@ -582,13 +665,13 @@
   {% if has_trends %}
   {% macro trendcard(label, key, unit='') %}
   {% set latest = tr.latest.get(key) %}
-  {% set delta = tr.deltas.get(key) %}
+  {% set delta = (tr.span_deltas or {}).get(key) %}
   {% if latest is not none %}
   <div class="stat trend">
     <div class="l">{{ label }}</div>
-    <div class="tv">{{ latest | thousands }}{{ unit }}</div>
+    <div class="tv">{% if key == 'domain_rating' %}{{ '{:g}'.format(latest) }}{% else %}{{ latest | thousands }}{% endif %}{{ unit }}</div>
     {% if delta %}
-    <div class="mt {{ 'up' if delta > 0 else 'down' }}">{{ '↑' if delta > 0 else '↓' }} {% if key == 'domain_rating' %}{{ '{:+g}'.format(delta) }}{% else %}{{ '{:+,}'.format(delta) }}{% endif %} vs 12 months ago</div>
+    <div class="mt {{ 'up' if delta > 0 else 'down' }}">{{ '↑' if delta > 0 else '↓' }} {% if key == 'domain_rating' %}{{ '{:+g}'.format(delta) }}{% else %}{{ '{:+,}'.format(delta) }}{% endif %} since {{ tr.span_from or tr.points[0].month }}</div>
     {% endif %}
     {% if tr.svgs and tr.svgs.get(key) %}
     <img src="{{ tr.svgs[key] }}" alt="{{ label }} 12-month trend">

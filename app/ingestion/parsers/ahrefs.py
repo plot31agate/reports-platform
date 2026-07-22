@@ -67,18 +67,29 @@ def parse_ahrefs_trends(path: Path) -> dict:
 
     latest = points[-1] if points else None
     prev = points[-2] if len(points) > 1 else None
-    deltas = {}
-    if latest and prev:
+
+    def diff(now, then):
+        out = {}
         for m in metrics:
-            if latest.get(m) is not None and prev.get(m) is not None:
-                d = latest[m] - prev[m]
-                deltas[m] = round(d, 1) if m == "domain_rating" else int(d)
+            if now and then and now.get(m) is not None and then.get(m) is not None:
+                d = now[m] - then[m]
+                out[m] = round(d, 1) if m == "domain_rating" else int(d)
+        return out
+
+    # Two different questions, so two different numbers: the month-on-month
+    # move, and the move across the whole charted span. The trend cards read
+    # the span one - a 12-month sparkline captioned with last month's change
+    # was the same mismatch clients kept querying.
+    deltas = diff(latest, prev)
+    span_deltas = diff(latest, points[0]) if len(points) > 1 else {}
 
     maxes = {
         m: max((p[m] for p in points if p.get(m) is not None), default=0) or 1
         for m in metrics
     }
-    return {"points": points, "latest": latest, "deltas": deltas, "max": maxes}
+    return {"points": points, "latest": latest, "deltas": deltas,
+            "span_deltas": span_deltas, "span_from": points[0]["month"] if points else None,
+            "max": maxes}
 
 
 def parse_competitor_benchmark(path: Path) -> dict:

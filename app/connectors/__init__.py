@@ -21,16 +21,17 @@ CONNECTOR_DEFS = [
     {
         "provider": "ahrefs",
         "label": "Ahrefs",
-        "sources": ["ahrefs_backlinks", "ahrefs_trends", "competitor_benchmark", "technical_seo_metrics", "search_console"],
+        "sources": ["ahrefs_backlinks", "ahrefs_trends", "core_keywords", "competitor_benchmark", "technical_seo_metrics", "search_console"],
         # Which client fields each source needs before it can sync.
         "requires": {
             "ahrefs_backlinks": ["target"],
             "ahrefs_trends": ["target"],
+            "core_keywords": [("audit_project_id", "gsc_project_id")],
             "competitor_benchmark": ["target"],
             "technical_seo_metrics": [("audit_project_id", "gsc_project_id"), "target"],
             "search_console": [("audit_project_id", "gsc_project_id")],
         },
-        "blurb": "Pulls backlinks, 12-month authority trends, technical SEO metrics (Site Audit), the competitor benchmark, and — when the client's Search Console is connected to the Ahrefs project — search data too. The curated issue register stays a manual upload.",
+        "blurb": "Pulls backlinks, 12-month authority trends, core keyword rankings (Rank Tracker), technical SEO metrics (Site Audit), the competitor benchmark, and — when the client's Search Console is connected to the Ahrefs project — search data too. The curated issue register stays a manual upload.",
         "agency_fields": [
             {"key": "api_key", "label": "API key", "type": "password", "secret": True},
         ],
@@ -42,7 +43,10 @@ CONNECTOR_DEFS = [
             # the same project_id (the number in any Ahrefs project URL).
             {"key": "audit_project_id", "label": "Ahrefs project ID", "type": "text",
              "placeholder": "e.g. 123456",
-             "hint": "The number in the project's Ahrefs URL, e.g. app.ahrefs.com/site-audit/<id>. Feeds technical SEO, Search Console (GSC Insights - free API calls, needs the client's GSC connected to the project), and the project's competitor list."},
+             "hint": "The number in the project's Ahrefs URL, e.g. app.ahrefs.com/site-audit/<id>. Feeds technical SEO, Rank Tracker keyword positions, Search Console (GSC Insights - free API calls, needs the client's GSC connected to the project), and the project's competitor list."},
+            {"key": "core_keywords", "label": "Core keywords", "type": "textarea",
+             "placeholder": "One keyword per line, e.g.\nonline gambling software\nsafer gambling software\nbetting ai",
+             "hint": "The keywords this client is judged on. Each must be tracked in the project's Rank Tracker - the report shows them in this order with volume, location and the move since last month. Leave blank to report on every tracked keyword, highest volume first."},
             {"key": "competitor_domains", "label": "Competitor domains", "type": "text",
              "placeholder": "betconstruct.com, altenar.com, kambi.com",
              "hint": "Optional - leave blank to pull the competitor list straight from the Ahrefs project. Fill in to override. Brand names come from the client's competitor list automatically."},

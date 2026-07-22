@@ -121,6 +121,9 @@ def sync(config, source_key, dest, period):
     if source_key == "ahrefs_trends":
         return _sync_trends(config, dest, period)
 
+    if source_key == "core_keywords":
+        return _sync_core_keywords(config, dest, period)
+
     if source_key == "competitor_benchmark":
         return _sync_competitors(config, dest, period)
 
@@ -290,6 +293,71 @@ def write_gsc_keywords_csv(rows, dest):
     write_csv(dest, header, out)
 
 
+# ---------- core keyword rankings (Rank Tracker) ----------
+
+CORE_KEYWORD_COLS = ["keyword", "location", "volume", "position", "position_prev"]
+
+
+def _core_keyword_list(config) -> list:
+    raw = config.get("core_keywords") or ""
+    return [k.strip() for k in re.split(r"[\n,]+", raw) if k.strip()]
+
+
+def _sync_core_keywords(config, dest, period):
+    """Rank Tracker positions for the client's core keywords.
+
+    One call carries both months: `date` is the period end, `date_compared`
+    the previous month end, so Ahrefs returns this month's position and last
+    month's side by side and we never have to stitch two syncs together.
+    """
+    project_id = _project_id(config)
+    if not project_id:
+        raise ConnectorError("No Ahrefs project ID saved - it's the number in the Rank Tracker URL")
+
+    _start, end = period_range(period)
+    prev_at = _previous_month_end(period)
+    select = ["keyword", "location", "volume", "position"]
+    params = {
+        "project_id": project_id,
+        "date": end,
+        "device": "desktop",
+        "limit": 1000,
+    }
+    if prev_at:
+        params["date_compared"] = prev_at[:10]
+        select.append("position_prev")
+    params["select"] = ",".join(select)
+
+    rows = _get(config, "/rank-tracker/overview", params).get("overviews") or []
+    if not rows:
+        raise ConnectorError(
+            f"Ahrefs Rank Tracker returned no keywords for {period} - check the project has tracked keywords"
+        )
+
+    wanted = _core_keyword_list(config)
+    if wanted:
+        by_keyword = {(r.get("keyword") or "").strip().lower(): r for r in rows}
+        picked = [(k, by_keyword.get(k.lower())) for k in wanted]
+        missing = [k for k, r in picked if not r]
+        rows = [r for _k, r in picked if r]
+        if not rows:
+            raise ConnectorError(
+                "None of this client's core keywords are tracked in the Ahrefs project - "
+                "add them in Rank Tracker, or clear the core keyword list to report on everything tracked"
+            )
+        # A keyword the agency cares about but nobody tracks is a setup gap,
+        # so it goes in the CSV unranked rather than quietly disappearing.
+        for k in missing:
+            rows.append({"keyword": k})
+    else:
+        rows.sort(key=lambda r: -(r.get("volume") or 0))
+
+    out = [[r.get("keyword", ""), r.get("location", ""), r.get("volume", ""),
+            r.get("position", ""), r.get("position_prev", "")] for r in rows]
+    write_csv(dest, CORE_KEYWORD_COLS, out)
+    return len(out)
+
+
 # ---------- 12-month authority trends ----------
 
 def _sync_trends(config, dest, period):
@@ -320,6 +388,18 @@ def _sync_trends(config, dest, period):
 
     if not months:
         raise ConnectorError(f"Ahrefs returned no history for {target}")
+
+    # Ahrefs dates each monthly history point to the first of the month, so the
+    # reporting month's DR would be its value on day one - six points adrift of
+    # the DR the Site Audit sync records for the same month, and of what the
+    # client sees in Ahrefs. Overwrite the last point with the period-end
+    # reading from the same endpoint technical SEO uses, so one report never
+    # shows two domain ratings.
+    if period in months:
+        dr_data = _get(config, "/site-explorer/domain-rating", {"target": target, "date": end})
+        dr_now = (dr_data.get("domain_rating") or {}).get("domain_rating")
+        if dr_now is not None:
+            months[period]["domain_rating"] = round(float(dr_now), 1)
 
     header = ["month", "domain_rating", "referring_domains", "organic_traffic"]
     out = [[m,

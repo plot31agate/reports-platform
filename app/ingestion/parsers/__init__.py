@@ -9,6 +9,7 @@ from app.ingestion.parsers.ahrefs import parse_ahrefs, parse_ahrefs_trends, pars
 from app.ingestion.parsers.similarweb import parse_similarweb
 from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_geography
 from app.ingestion.parsers.search_console import parse_search_console
+from app.ingestion.parsers.keywords import parse_core_keywords
 from app.ingestion.parsers.linkedin import parse_linkedin
 from app.ingestion.parsers.mentions import parse_mentions
 from app.ingestion.parsers.technical_seo import (
@@ -33,6 +34,7 @@ PARSER_MAP = {
     "ga4_export":              ("GA4 export",                  parse_ga4),
     "ga4_geography":           ("GA4 geography",               parse_ga4_geography),
     "search_console":          ("Search Console",              parse_search_console),
+    "core_keywords":           ("Core keywords",               parse_core_keywords),
     "linkedin_company":        ("LinkedIn (company)",          parse_linkedin),
     "meta_social":             ("Facebook & Instagram",        parse_meta_social),
     "tiktok":                  ("TikTok",                      parse_tiktok),
@@ -49,6 +51,7 @@ SOURCE_DEFS = [
     {"key": "ga4_export",             "title": "GA4",                   "purpose": "Sessions, users, top pages",                  "cols": "sessions, users, pagePath"},
     {"key": "ga4_geography",          "title": "GA4 geography",         "purpose": "Visits by country",                           "cols": "Country, Sessions"},
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
+    {"key": "core_keywords",          "title": "Core keywords",         "purpose": "Rank Tracker positions vs last month",        "cols": "keyword, location, volume, position, position_prev"},
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
     {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
     {"key": "competitor_benchmark",   "title": "Competitor benchmark",  "purpose": "Share of voice vs competitors",               "cols": "month, brand, domain, organic_traffic"},
@@ -65,7 +68,7 @@ SOURCE_DEFS = [
 # in one accordion. Order inside "sources" is the display order.
 SOURCE_GROUPS = [
     {"key": "media",     "label": "Media & PR",              "sources": ["mentions"]},
-    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "ga4_geography"]},
+    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "core_keywords", "ga4_geography"]},
     {"key": "authority", "label": "Authority & competitors", "sources": ["ahrefs_backlinks", "ahrefs_trends", "competitor_benchmark"]},
     {"key": "social",    "label": "Social & influencers",    "sources": ["linkedin_company", "meta_social", "tiktok", "influencer_activity"]},
     {"key": "technical", "label": "Technical SEO",           "sources": ["technical_seo_metrics", "technical_seo_register"]},
@@ -115,6 +118,22 @@ def summarise_parsed(source_key: str, data) -> dict:
             s += f", {queries} top queries"
         return {"status": "ok" if clicks > 0 or impressions > 0 else "warning",
                 "summary": s, "warnings": [], "row_count": clicks}
+
+    if source_key == "core_keywords":
+        d = data or {}
+        tracked = d.get("tracked") or 0
+        if not tracked:
+            return {"status": "warning", "summary": "No keywords found - needs a keyword column",
+                    "warnings": [], "row_count": 0}
+        s = f"{tracked} keywords, {d.get('top3', 0)} in the top 3, {d.get('top10', 0)} in the top 10"
+        if d.get("gains"):
+            s += f", {len(d['gains'])} new top 5"
+        if d.get("losses"):
+            s += f", {len(d['losses'])} falling"
+        unranked = tracked - (d.get("ranked") or 0)
+        if unranked:
+            warnings.append(f"{unranked} keyword{'s' if unranked != 1 else ''} not ranking - either genuinely unranked, or not tracked in the Ahrefs project")
+        return {"status": "ok", "summary": s, "warnings": warnings, "row_count": tracked}
 
     if source_key == "ahrefs_backlinks":
         rd = (data or {}).get("referring_domains") or 0
