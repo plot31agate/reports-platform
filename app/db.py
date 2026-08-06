@@ -127,6 +127,11 @@ CREATE TABLE IF NOT EXISTS agency_credentials (
     status_detail  TEXT,
     updated_at     TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS deleted_seeds (
+    slug        TEXT PRIMARY KEY,   -- a seed-registry client the operator deleted
+    deleted_at  TEXT NOT NULL       -- so init_db doesn't re-seed it on next boot
+);
 """
 
 
@@ -199,7 +204,13 @@ def init_db():
         # truth at runtime; code modules act only as seed data for first boot.
         from app.clients import CLIENTS
 
+        deleted_seed_slugs = {
+            r["slug"] for r in conn.execute("SELECT slug FROM deleted_seeds").fetchall()
+        }
         for slug, config in CLIENTS.items():
+            # A seed client the operator deleted stays deleted — don't re-seed it.
+            if slug in deleted_seed_slugs:
+                continue
             row = conn.execute(
                 "SELECT slug, config_json FROM clients WHERE slug = ?", (slug,)
             ).fetchone()
@@ -252,6 +263,61 @@ def create_client(slug: str, display_name: str, config_json: str):
             "INSERT INTO clients (slug, display_name, created_at, config_json) VALUES (?, ?, ?, ?)",
             (slug, display_name, datetime.utcnow().isoformat(), config_json),
         )
+
+
+def delete_client(slug: str) -> list:
+    """Remove a client and every row that belongs to it, in one transaction.
+
+    Returns the on-disk file paths (generated report HTML/PDF and stored
+    uploads) so the caller can clean them off disk — the DB layer doesn't
+    touch the filesystem. If the client came from the code seed registry,
+    its slug is recorded in deleted_seeds so init_db won't re-add it on the
+    next boot.
+    """
+    from app.clients import CLIENTS
+
+    stored_paths = []
+    with get_conn() as conn:
+        report_rows = conn.execute(
+            "SELECT id, html_path, pdf_path FROM reports WHERE client_slug = ?", (slug,)
+        ).fetchall()
+        report_ids = [r["id"] for r in report_rows]
+        for r in report_rows:
+            if r["html_path"]:
+                stored_paths.append(r["html_path"])
+            if r["pdf_path"]:
+                stored_paths.append(r["pdf_path"])
+
+        upload_rows = conn.execute(
+            "SELECT stored_path FROM uploads WHERE client_slug = ?", (slug,)
+        ).fetchall()
+        stored_paths.extend(r["stored_path"] for r in upload_rows if r["stored_path"])
+
+        # share_tokens FKs reports(id), so clear them before the reports go.
+        for report_id in report_ids:
+            conn.execute("DELETE FROM share_tokens WHERE report_id = ?", (report_id,))
+
+        for table in (
+            "reports",
+            "uploads",
+            "report_commentary",
+            "client_users",
+            "report_views",
+            "sentiment_cache",
+            "mention_overrides",
+            "client_connections",
+        ):
+            conn.execute(f"DELETE FROM {table} WHERE client_slug = ?", (slug,))
+
+        conn.execute("DELETE FROM clients WHERE slug = ?", (slug,))
+
+        if slug in CLIENTS:
+            conn.execute(
+                "INSERT OR REPLACE INTO deleted_seeds (slug, deleted_at) VALUES (?, ?)",
+                (slug, datetime.utcnow().isoformat()),
+            )
+
+    return stored_paths
 
 
 def list_reports(client_slug: Optional[str] = None):

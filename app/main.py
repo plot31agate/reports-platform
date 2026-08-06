@@ -20,6 +20,7 @@ Routes:
 import json
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -57,6 +58,7 @@ from app.db import (
     clear_commentary_text,
     set_mention_overrides,
     create_client,
+    delete_client,
     get_client_row,
     list_share_tokens,
     revoke_share_token,
@@ -379,6 +381,35 @@ async def admin_new_client_post(request: Request):
 
     create_client(slug, display_name, json.dumps(config))
     return RedirectResponse(f"/admin?message=Client+{display_name}+added", status_code=302)
+
+
+@app.post("/admin/clients/delete")
+def admin_delete_client(request: Request, client_slug: str = Form(...)):
+    _require_admin_or_redirect(request)
+    row = get_client_row(client_slug)
+    if not row:
+        return RedirectResponse("/admin?error=Client+not+found", status_code=302)
+
+    display_name = row["display_name"]
+    # Drop every DB row for this client; get back the on-disk files to remove.
+    stored_paths = delete_client(client_slug)
+
+    for p in stored_paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+    # Wipe the client's uploaded-data and generated-report folders too.
+    for folder in (settings.data_dir / client_slug, settings.reports_out_dir / client_slug):
+        try:
+            shutil.rmtree(folder, ignore_errors=True)
+        except OSError:
+            pass
+
+    from urllib.parse import quote_plus
+    return RedirectResponse(
+        f"/admin?message={quote_plus(display_name + ' deleted')}", status_code=302
+    )
 
 
 # ------------------- ADMIN UPLOAD -------------------

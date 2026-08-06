@@ -133,6 +133,11 @@
     <div class="client-card__foot">
       <a class="button button--primary button--sm" style="flex:1;text-align:center;" href="/admin/workspace?client={{ client.slug }}">Open workspace</a>
       <a class="button button--ghost button--sm" href="/admin/portal?client={{ client.slug }}">Portal</a>
+      <form method="post" action="/admin/clients/delete" style="display:inline;"
+            onsubmit="return confirm('Delete {{ client.display_name }}?\n\nThis permanently removes the client and every report, upload, share link, portal login and API connection for it. This cannot be undone.');">
+        <input type="hidden" name="client_slug" value="{{ client.slug }}">
+        <button class="button button--ghost button--sm button--danger" type="submit" title="Delete client">Delete</button>
+      </form>
     </div>
   </div>
   {% endfor %}
