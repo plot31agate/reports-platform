@@ -206,6 +206,8 @@ button.side__section[aria-expanded="false"] .side__chev { transform: rotate(-90d
 .button--dark { background: var(--ink); color: #fff; }
 .button--dark:hover { background: #26282b; }
 .button--sm { padding: 7px 12px; font-size: 12px; border-radius: 8px; }
+.button--danger { color: var(--negative); border-color: rgba(255,79,64,0.3); }
+.button--danger:hover { background: rgba(255,79,64,0.07); border-color: var(--negative); color: var(--negative); }
 
 /* -------- KPI overview cards -------- */
 .kpi-grid {

@@ -226,6 +226,24 @@
     </form>
   </details>
 
+  <!-- Danger zone: permanently delete this client and all of its data -->
+  <details class="panel ws-connections" id="danger-zone">
+    <summary>
+      <span class="ws-connections__title">Delete client</span>
+      <span class="ws-connections__sub">Permanently remove {{ client.display_name }} and all of its data</span>
+    </summary>
+    <p class="ws-hint" style="margin:0 0 12px;">
+      This deletes {{ client.display_name }} from the workspace along with every report,
+      uploaded file, share link, portal login and API connection. Generated report files
+      and uploaded data on disk are removed too. This cannot be undone.
+    </p>
+    <form method="post" action="/admin/clients/delete"
+          onsubmit="return confirm('Delete {{ client.display_name }}?\n\nThis permanently removes the client and every report, upload, share link, portal login and API connection for it. This cannot be undone.');">
+      <input type="hidden" name="client_slug" value="{{ selected_client }}">
+      <button class="button button--ghost button--sm button--danger" type="submit">Delete {{ client.display_name }}</button>
+    </form>
+  </details>
+
 </div>
 
 <script>
