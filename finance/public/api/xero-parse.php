@@ -26,9 +26,12 @@ function xero_period_columns(array $rows): array {
 
 /**
  * Parse a ProfitAndLoss report.
+ * @param array $unmapped  Filled with the titles of any account-bearing section
+ *                         we couldn't classify, so callers can flag skipped
+ *                         categories instead of losing them silently.
  * @return array [periodKey => [bucket => [account => amount]]]
  */
-function xero_parse_pl(array $report): array {
+function xero_parse_pl(array $report, array &$unmapped = []): array {
   $rows = $report['Rows'] ?? [];
   $cols = xero_period_columns($rows);
   if (!$cols) return [];
@@ -38,8 +41,19 @@ function xero_parse_pl(array $report): array {
 
   foreach ($rows as $section) {
     if (($section['RowType'] ?? '') !== 'Section') continue;
-    $bucket = section_bucket((string) ($section['Title'] ?? ''));
-    if ($bucket === null) continue; // e.g. an untitled or "Gross Profit" section
+    $title = trim((string) ($section['Title'] ?? ''));
+    $bucket = section_bucket($title);
+    if ($bucket === null) {
+      // A titled section we couldn't place. Record it ONLY if it actually holds
+      // account rows and isn't a computed summary block (Gross/Net/Operating
+      // Profit) — those are meant to be skipped, not warned about.
+      if ($title !== '' && !preg_match('/(gross|net|operating) profit|profit for the|net income/i', $title)) {
+        foreach (($section['Rows'] ?? []) as $r) {
+          if (($r['RowType'] ?? '') === 'Row') { $unmapped[] = $title; break; }
+        }
+      }
+      continue; // e.g. an untitled or "Gross Profit" section
+    }
     foreach (($section['Rows'] ?? []) as $r) {
       if (($r['RowType'] ?? '') !== 'Row') continue; // skip SummaryRow totals
       $cells = $r['Cells'] ?? [];

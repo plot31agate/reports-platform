@@ -165,6 +165,15 @@ function XeroCard({ onSynced }: { onSynced: () => void }) {
         </div>
       </div>
       {busy && <Working label="Pulling from Xero…" />}
+      {connected && status?.lastSyncSummary?.unmapped?.length ? (
+        <div className="pc-note" style={{ marginTop: 14 }}>
+          Last sync skipped {status.lastSyncSummary.unmapped.length} P&amp;L section
+          {status.lastSyncSummary.unmapped.length === 1 ? '' : 's'} it couldn't categorise:{' '}
+          <b>{status.lastSyncSummary.unmapped.join(', ')}</b>. Those accounts aren't in the figures —
+          in Xero, check the Profit &amp; Loss layout groups these under standard headings
+          (Income, Cost of Sales, Operating Expenses).
+        </div>
+      ) : null}
     </div>
   );
 }

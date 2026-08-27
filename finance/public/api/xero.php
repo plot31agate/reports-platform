@@ -98,14 +98,20 @@ function xero_run_sync(array &$store, array $cfg): array {
   $token = xero_valid_token($store, $cfg);
   $tenant = (string) ($store['tenantId'] ?? '');
 
-  // Profit & Loss: 12 monthly columns (current + 11 prior).
-  $pl = xero_api_get(XERO_API . '/Reports/ProfitAndLoss?' . http_build_query(['periods' => 11, 'timeframe' => 'MONTH']), $token, $tenant);
+  // Profit & Loss: 12 monthly columns (current + 11 prior). standardLayout=true
+  // bypasses the org's custom/published P&L layout so we get the FULL standard
+  // report — every account, grouped under Xero's standard section titles
+  // (Income / Cost of Sales / Operating Expenses / …) that the classifier knows.
+  // Without it Xero returns DF's custom layout, which can collapse accounts into
+  // summary lines and use section names we'd drop.
+  $pl = xero_api_get(XERO_API . '/Reports/ProfitAndLoss?' . http_build_query(['periods' => 11, 'timeframe' => 'MONTH', 'standardLayout' => 'true']), $token, $tenant);
   if ($pl['status'] !== 200) fail('Xero P&L request failed (HTTP ' . $pl['status'] . ')', 502);
   $report = $pl['data']['Reports'][0] ?? null;
   if (!$report) fail('Xero returned no P&L report', 502);
 
   $fin = finance_store();
-  $acc = xero_parse_pl($report);
+  $unmapped = [];
+  $acc = xero_parse_pl($report, $unmapped);
   $imported = [];
   foreach ($acc as $pk => $buckets) {
     $period = finance_put_period($fin, $pk, $buckets, 'xero-api');
@@ -115,9 +121,9 @@ function xero_run_sync(array &$store, array $cfg): array {
   }
   usort($imported, fn($a, $c) => strcmp($a['key'], $c['key']));
 
-  // Balance Sheet (as at today).
+  // Balance Sheet (as at today), standard layout for the same reason.
   $balSummary = null;
-  $bs = xero_api_get(XERO_API . '/Reports/BalanceSheet', $token, $tenant);
+  $bs = xero_api_get(XERO_API . '/Reports/BalanceSheet?standardLayout=true', $token, $tenant);
   if ($bs['status'] === 200 && !empty($bs['data']['Reports'][0])) {
     $b2 = xero_parse_bs($bs['data']['Reports'][0]);
     $fin['balance'] = $b2 + ['source' => 'xero-api', 'importedAt' => time()];
@@ -127,11 +133,16 @@ function xero_run_sync(array &$store, array $cfg): array {
   $fin['updatedAt'] = time();
   store_write('finance', $fin);
 
+  // Any P&L section we couldn't place is reported (not silently dropped) so a
+  // "thin" pull is diagnosable — the caller can warn that categories were skipped.
+  $unmapped = array_values(array_unique($unmapped));
+
   $store['lastSync'] = time();
   $store['lastSyncSummary'] = ['months' => count($imported), 'at' => time()];
+  if ($unmapped) $store['lastSyncSummary']['unmapped'] = $unmapped;
   store_write('xero', $store);
 
-  return ['periods' => $imported, 'accounts' => count($imported), 'balance' => $balSummary];
+  return ['periods' => $imported, 'accounts' => count($imported), 'balance' => $balSummary, 'unmapped' => $unmapped];
 }
 
 // Everything below is HTTP request routing. The CLI cron (cron-sync.php) only

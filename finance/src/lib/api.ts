@@ -63,11 +63,11 @@ export interface AiResponse<T> { ok: boolean; needsKey?: boolean; error?: string
 export interface XeroStatus {
   ok: boolean; configured: boolean; connected: boolean;
   tenantName: string | null; lastSync: number;
-  lastSyncSummary: { months: number; at: number } | null;
+  lastSyncSummary: { months: number; at: number; unmapped?: string[] } | null;
 }
 export interface XeroSyncResult {
   ok: boolean; error?: string; tenantName?: string;
-  summary?: { periods: { key: string; label: string; income: number; netProfit: number }[]; balance: ImportBSSummary | null };
+  summary?: { periods: { key: string; label: string; income: number; netProfit: number }[]; balance: ImportBSSummary | null; unmapped?: string[] };
 }
 
 /* ---- Board reports (reports.php) ---- */
