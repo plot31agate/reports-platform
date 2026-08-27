@@ -19,7 +19,11 @@ const XERO_AUTHORIZE = 'https://login.xero.com/identity/connect/authorize';
 const XERO_TOKEN = 'https://identity.xero.com/connect/token';
 const XERO_CONNECTIONS = 'https://api.xero.com/connections';
 const XERO_API = 'https://api.xero.com/api.xro/2.0';
-const XERO_SCOPES = 'openid profile email accounting.reports.read accounting.settings.read offline_access';
+// Xero split the old catch-all accounting.reports.read into per-report scopes;
+// request exactly the two reports the sync pulls (P&L + Balance Sheet). Plus
+// offline_access for the rotating refresh token. Settings isn't used (tenants
+// come from the /connections endpoint, which needs no extra scope).
+const XERO_SCOPES = 'openid profile email offline_access accounting.reports.profitandloss.read accounting.reports.balancesheet.read';
 
 function xero_cfg(): ?array {
   $f = __DIR__ . '/xero-config.php';
