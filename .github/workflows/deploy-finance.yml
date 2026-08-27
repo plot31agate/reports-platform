@@ -41,20 +41,20 @@ jobs:
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
-          # The MAIN cPanel account (wwwdfootdigi), jailed to the home dir
-          # /home/wwwdfootdigi/ — NOT the reporting deploy's FTP_USERNAME/PASSWORD,
-          # which is jailed to apps/reporting and can't reach the web root.
+          # Dedicated FTP account jailed to the finance folder itself:
+          #   /home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance
+          # (the reporting deploy's account is jailed to apps/reporting and can't
+          # reach the web root). So its FTP root IS the finance folder.
           username: ${{ secrets.FTP_FINANCE_USERNAME }}
           password: ${{ secrets.FTP_FINANCE_PASSWORD }}
           protocol: ftps
           port: 21
           # local-dir is the built app only — nothing else in the repo goes up.
           local-dir: ./finance/dist/
-          # Lands directly in the reports subdomain web root as /finance, where
-          # PHP and the .htaccess Basic Auth run natively (docroot = automatic
-          # AllowOverride All + PHP-FPM). server-dir is relative to the main
-          # account's FTP home (/home/wwwdfootdigi/).
-          server-dir: ./public_html/reports.digital-footprints.co.uk/finance/
+          # The account is homed AT the finance folder, so upload straight to ./.
+          # Being inside the subdomain docroot, PHP + the .htaccess Basic Auth run
+          # natively (automatic AllowOverride All + PHP-FPM).
+          server-dir: ./
           log-level: minimal
           security: loose
           timeout: 60000
@@ -73,4 +73,5 @@ jobs:
             api/claude-config.php
             api/xero-config.php
             data/*.json
+            .htpasswd
             **/.htpasswd
