@@ -201,13 +201,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $state = bin2hex(random_bytes(16));
     $store['state'] = $state;
     store_write('xero', $store);
+    // RFC3986 encoding: the scope separators must be %20, not the default '+'.
+    // Xero's authorize endpoint rejects '+'-joined scopes as invalid_scope.
     $url = XERO_AUTHORIZE . '?' . http_build_query([
       'response_type' => 'code',
       'client_id' => $cfg['client_id'],
       'redirect_uri' => $cfg['redirect_uri'],
       'scope' => XERO_SCOPES,
       'state' => $state,
-    ]);
+    ], '', '&', PHP_QUERY_RFC3986);
     header('Location: ' . $url);
     http_response_code(302);
     exit;
