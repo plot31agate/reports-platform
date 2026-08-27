@@ -56,6 +56,9 @@ Wire it up as a cPanel **Cron Job**, daily:
 /usr/local/bin/php /home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance/api/cron-sync.php >> /home/wwwdfootdigi/finance-cron.log 2>&1
 ```
 
+Each run appends a timestamped line to `~/finance-cron.log`; `tail ~/finance-cron.log`
+shows the last pull (month count) and whether a board report was written.
+
 ## Board report share links
 
 Same HMAC trick as the client portal's plan links: the signing secret is
