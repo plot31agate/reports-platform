@@ -4,17 +4,17 @@
 # user. Fail-closed: a wrong AuthUserFile path returns 500, never open.
 #
 # ⚠ PER-DEPLOY FILE. The realm (AuthName) and the ABSOLUTE AuthUserFile path
-# are specific to the hosting account. Finance HQ deploys to /home/wwwdfootdigi/
-# apps/finance/ (right next to apps/reporting) and keeps its OWN login — a
-# separate .htpasswd in this folder, distinct from the reporting module, since
-# these are the internal books.
+# are specific to the hosting account. Finance HQ deploys into the /finance
+# folder of the reports subdomain web root and keeps its OWN login — a separate
+# .htpasswd in this folder, distinct from the reporting module, since these are
+# the internal books.
 #
 # Create the .htpasswd once at the path below (cPanel → Directory Privacy on the
-# apps/finance folder, or `htpasswd -c /home/wwwdfootdigi/apps/finance/.htpasswd
-# <user>`). Fails closed (500) until the file exists at exactly this path.
+# finance folder, or `htpasswd -c <path> <user>`). Fails closed (500) until the
+# file exists at exactly this path.
 AuthType Basic
 AuthName "Digital Footprints · Finance HQ"
-AuthUserFile "/home/wwwdfootdigi/apps/finance/.htpasswd"
+AuthUserFile "/home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance/.htpasswd"
 Require valid-user
 
 ErrorDocument 401 "Authentication required"

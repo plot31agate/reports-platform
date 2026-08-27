@@ -40,18 +40,21 @@ jobs:
       - name: Upload built app over FTPS
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          # EXACT same FTP account as the reporting deploy.
           server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          # The MAIN cPanel account (wwwdfootdigi), jailed to the home dir
+          # /home/wwwdfootdigi/ — NOT the reporting deploy's FTP_USERNAME/PASSWORD,
+          # which is jailed to apps/reporting and can't reach the web root.
+          username: ${{ secrets.FTP_FINANCE_USERNAME }}
+          password: ${{ secrets.FTP_FINANCE_PASSWORD }}
           protocol: ftps
           port: 21
           # local-dir is the built app only — nothing else in the repo goes up.
           local-dir: ./finance/dist/
-          # That account lands in /home/wwwdfootdigi/apps/reporting (reporting's
-          # server-dir is ./). Finance sits right next to it in apps/finance, so
-          # from the account's home that's one level up and into finance/.
-          server-dir: ../finance/
+          # Lands directly in the reports subdomain web root as /finance, where
+          # PHP and the .htaccess Basic Auth run natively (docroot = automatic
+          # AllowOverride All + PHP-FPM). server-dir is relative to the main
+          # account's FTP home (/home/wwwdfootdigi/).
+          server-dir: ./public_html/reports.digital-footprints.co.uk/finance/
           log-level: minimal
           security: loose
           timeout: 60000

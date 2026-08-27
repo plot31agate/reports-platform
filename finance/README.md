@@ -83,38 +83,32 @@ A push to `main` touching `finance/**` runs `npm run build` (which copies the PH
 backend in `public/` into `dist/`, so `dist/` is the whole `/finance/` payload)
 and FTPS-uploads `dist/` into `apps/finance/`.
 
-It uses the **exact same FTP account as the reporting deploy** — that account
-lands in `apps/reporting` (`server-dir: ./`), so finance goes one up and over
-with `server-dir: ../finance/`. The reporting deploy is untouched. Finance then
-lives at `/home/wwwdfootdigi/apps/finance/`, right next to `apps/reporting/`.
+It deploys into the reports subdomain web root at
+`/home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance`, where
+PHP and the `.htaccess` auth run natively (docroot = automatic AllowOverride All
++ PHP-FPM). The reporting deploy's FTP login is jailed to `apps/reporting` and
+can't reach the web root, so finance uses the **main `wwwdfootdigi` cPanel FTP
+login** (jailed to the home dir) via its own secrets. The reporting deploy is
+untouched.
 
 **One-time server setup (by hand, never in git):**
 
-1. **Expose it on the subdomain.** apps/finance is outside the reports
-   subdomain's web docroot
-   (`/home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk`), so add a
-   symlink and the proxy hole:
-   - `ln -s /home/wwwdfootdigi/apps/finance /home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance`
-   - Add `ProxyPass /finance/ !` from
-     [`deploy/apache-proxy.conf`](../deploy/apache-proxy.conf) to the live reports
-     vhost includes (next to `/vivogaming/ !`), then rebuild + restart httpd.
-
-   Served through the docroot symlink, PHP and the `.htaccess` auth run natively
-   — no Alias, no FPM handler.
-2. **Its own login.** Create `.htpasswd` at
-   `/home/wwwdfootdigi/apps/finance/.htpasswd` (cPanel → Directory Privacy on the
-   folder, or `htpasswd -c`). Realm `Digital Footprints · Finance HQ`; fails
-   closed until it exists.
-3. **The secret configs**, uploaded once to `apps/finance/api/`:
+1. **The proxy hole.** Add `ProxyPass /finance/ !` from
+   [`deploy/apache-proxy.conf`](../deploy/apache-proxy.conf) to the live reports
+   vhost includes (next to `/vivogaming/ !`), then rebuild + restart httpd. This
+   stops the FastAPI proxy from swallowing `/finance/`.
+2. **GitHub secrets.** Repo → Settings → Secrets and variables → Actions:
+   `FTP_SERVER` (reused), plus `FTP_FINANCE_USERNAME` / `FTP_FINANCE_PASSWORD`
+   set to the **main `wwwdfootdigi` cPanel account** credentials.
+3. **Its own login.** Create `.htpasswd` at
+   `/home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance/.htpasswd`
+   (cPanel → Directory Privacy on the finance folder, or `htpasswd -c`). Realm
+   `Digital Footprints · Finance HQ`; fails closed until it exists.
+4. **The secret configs**, uploaded once to the finance `api/` folder:
    - `claude-config.php` (Anthropic key) — for Ask, scenarios, board reports.
    - `xero-config.php` (Xero app id/secret/redirect) — for live sync. Register
      `https://reports.digital-footprints.co.uk/finance/api/xero.php` as the Xero
      redirect URI.
-
-> If the first deploy errors because the FTP account is locked to its own folder
-> (can't do `../`), point that account's directory one level up at
-> `/home/wwwdfootdigi/apps` in cPanel → FTP Accounts, then change the reporting
-> `server-dir` to `./reporting/` and this one to `./finance/`.
 
 The deploy's `exclude:` list protects all three of the above **and the live
 `data/*.json` stores** — your imported figures, budgets and saved board reports
