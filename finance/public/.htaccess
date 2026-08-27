@@ -1,0 +1,43 @@
+# HTTP Basic Auth — Finance HQ is internal, so the WHOLE app sits behind one
+# login. There are no public exceptions here (unlike the client portal's media/
+# plan share doors): every file, including every API endpoint, needs a valid
+# user. Fail-closed: a wrong AuthUserFile path returns 500, never open.
+#
+# ⚠ PER-DEPLOY FILE. The realm (AuthName) and the ABSOLUTE AuthUserFile path
+# are specific to the hosting account. Finance HQ deploys to /home/wwwdfootdigi/
+# apps/finance/ (right next to apps/reporting) and keeps its OWN login — a
+# separate .htpasswd in this folder, distinct from the reporting module, since
+# these are the internal books.
+#
+# Create the .htpasswd once at the path below (cPanel → Directory Privacy on the
+# apps/finance folder, or `htpasswd -c /home/wwwdfootdigi/apps/finance/.htpasswd
+# <user>`). Fails closed (500) until the file exists at exactly this path.
+AuthType Basic
+AuthName "Digital Footprints · Finance HQ"
+AuthUserFile "/home/wwwdfootdigi/apps/finance/.htpasswd"
+Require valid-user
+
+ErrorDocument 401 "Authentication required"
+ErrorDocument 403 "Forbidden"
+
+# Never serve dotfiles (.htpasswd, .htaccess, the JSON stores' .htaccess).
+<FilesMatch "^\.ht">
+  Require all denied
+</FilesMatch>
+
+# The one public door: board.php serves a single board report to whoever holds
+# its HMAC link (a director, no login). It is token-guarded and read-only, and
+# fail-closed without the server key. Everything else stays behind valid-user.
+<Files "board.php">
+  Require all granted
+</Files>
+
+<IfModule mod_headers.c>
+  # Keep the whole finance app out of every index. "always" is load-bearing so
+  # the header rides even the 401 challenge.
+  Header always set X-Robots-Tag "noindex, nofollow, noarchive, nosnippet"
+
+  <FilesMatch "index\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>

@@ -38,6 +38,9 @@ jobs:
             data/**
             reports_out/**
             sample_data/**
+            # Finance HQ has its own build+deploy (deploy-finance.yml) into the
+            # subdomain's /finance folder — keep its source out of the Python app dir.
+            finance/**
 
       - name: Restart service via webhook
         run: |

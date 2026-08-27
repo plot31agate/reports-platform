@@ -1,0 +1,73 @@
+name: Deploy Finance HQ
+
+# Finance HQ is a Vite app, so unlike the reporting module (raw Python files
+# FTP'd as-is) it has to be BUILT before upload. This workflow builds in CI,
+# then FTPS-uploads the built app into the /finance subfolder of the reports
+# subdomain — isolated from, but alongside, the reporting module.
+#
+# vite build copies everything in finance/public/ (the PHP api/, board.php,
+# .htaccess and data/.htaccess) into dist/ automatically, so finance/dist/ is
+# the COMPLETE /finance/ payload: index.html + hashed assets + the PHP backend.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'finance/**'
+      - '.github/workflows/deploy-finance.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: finance/package-lock.json
+
+      - name: Build Finance HQ
+        working-directory: finance
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload built app over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # EXACT same FTP account as the reporting deploy.
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          # local-dir is the built app only — nothing else in the repo goes up.
+          local-dir: ./finance/dist/
+          # That account lands in /home/wwwdfootdigi/apps/reporting (reporting's
+          # server-dir is ./). Finance sits right next to it in apps/finance, so
+          # from the account's home that's one level up and into finance/.
+          server-dir: ../finance/
+          log-level: minimal
+          security: loose
+          timeout: 60000
+          # Own sync-state file so a finance deploy never races the reporting
+          # deploy's .ftp-deploy-sync-state.json.
+          state-name: .ftp-deploy-finance.json
+          # These live ONLY on the server (secrets + imported figures) and are
+          # never in dist/. Excluding them stops the sync from DELETING them:
+          #   - the two by-hand secret configs
+          #   - every live JSON store (imported P&L, budgets, saved board reports)
+          #   - the Basic Auth password file
+          # data/.htaccess and the app's own .htaccess DO ship (they're in dist/).
+          exclude: |
+            **/.git*
+            **/.git*/**
+            api/claude-config.php
+            api/xero-config.php
+            data/*.json
+            **/.htpasswd

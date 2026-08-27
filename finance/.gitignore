@@ -1,0 +1,6 @@
+node_modules
+dist
+# Secrets and live data never go in git (uploaded to the server by hand):
+public/api/claude-config.php
+public/api/xero-config.php
+public/data/*.json
