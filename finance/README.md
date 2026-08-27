@@ -91,8 +91,10 @@ lives at `/home/wwwdfootdigi/apps/finance/`, right next to `apps/reporting/`.
 **One-time server setup (by hand, never in git):**
 
 1. **Expose it on the subdomain.** apps/finance is outside the reports
-   subdomain's web docroot, so add a symlink and the proxy hole:
-   - `ln -s /home/wwwdfootdigi/apps/finance <docroot>/finance`
+   subdomain's web docroot
+   (`/home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk`), so add a
+   symlink and the proxy hole:
+   - `ln -s /home/wwwdfootdigi/apps/finance /home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance`
    - Add `ProxyPass /finance/ !` from
      [`deploy/apache-proxy.conf`](../deploy/apache-proxy.conf) to the live reports
      vhost includes (next to `/vivogaming/ !`), then rebuild + restart httpd.

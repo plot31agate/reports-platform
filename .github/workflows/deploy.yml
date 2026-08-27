@@ -3,6 +3,10 @@ name: Deploy to VPS
 on:
   push:
     branches: [main]
+    # Finance HQ has its own deploy (deploy-finance.yml); a finance-only push
+    # must not redeploy/restart the reporting service.
+    paths-ignore:
+      - 'finance/**'
   workflow_dispatch:
 
 jobs:
