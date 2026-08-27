@@ -12,8 +12,8 @@
    GET ?id=<id>      -> one full report + shareUrl
    POST {action:generate, month}  -> compute KPIs, write the narrative, store
    POST {action:delete, id} */
-require __DIR__ . '/claude.php';
-require __DIR__ . '/model.php';
+require_once __DIR__ . '/claude.php';
+require_once __DIR__ . '/model.php';
 
 function board_store(): array {
   $s = store_read('board', ['reports' => []]);
@@ -70,6 +70,79 @@ function board_kpis(array $model, string $month): ?array {
   ];
 }
 
+/* Board-pack generation, factored out so the web POST route AND the CLI cron
+   (cron-sync.php) build reports identically: compute the KPI snapshot, have
+   Claude write the narrative anchored to it, store it, return the report. Pass
+   a month (YYYY-MM) or null for the latest. Exits via fail()/respond() on error
+   or a missing Claude key. */
+function board_generate(?string $month = null): array {
+  $store = board_store();
+  $model = finance_model();
+  if ($model['meta']['count'] === 0) fail('Import a Xero report first — there is nothing to report on yet.');
+  $month = ($month !== null && $month !== '') ? $month : (string) $model['meta']['last'];
+  $kpis = board_kpis($model, $month);
+  if (!$kpis) fail('no data for that month');
+
+  $periodLabel = month_label($month);
+  $brief = finance_brief();
+
+  // The figures, spelled out for the prompt so commentary is anchored to them.
+  $fig = fn($v) => $v === null ? 'n/a' : '£' . number_format((float) $v, 0);
+  $revDelta = $kpis['revenueDelta'] ? sprintf(' (%+.1f%% vs %s)', $kpis['revenueDelta']['pct'] ?? 0, $kpis['prevLabel']) : '';
+  $netDelta = $kpis['netDelta'] ? sprintf(' (%+.1f%% vs %s)', $kpis['netDelta']['pct'] ?? 0, $kpis['prevLabel']) : '';
+  $runwayTxt = $kpis['runwayMonths'] !== null ? ", cash runway ~{$kpis['runwayMonths']} months" : ', cash-positive';
+  $figures = "Computed figures for $periodLabel (comment on these; do not restate different numbers):\n"
+    . '  Revenue: ' . $fig($kpis['revenue']) . $revDelta . "\n"
+    . '  Gross profit: ' . $fig($kpis['grossProfit']) . " ({$kpis['grossMargin']}% margin)\n"
+    . '  Net profit: ' . $fig($kpis['netProfit']) . $netDelta . "\n"
+    . '  Overheads: ' . $fig($kpis['opex']) . ', Cost of sales: ' . $fig($kpis['cogs']) . "\n"
+    . '  Cash: ' . $fig($kpis['cash']) . ', owed to us: ' . $fig($kpis['debtors']) . ', we owe: ' . $fig($kpis['creditors']) . "\n"
+    . '  Recent average net/month: ' . $fig($kpis['avgNet']) . $runwayTxt . "\n";
+
+  $schema = [
+    'type' => 'object',
+    'properties' => [
+      'title' => ['type' => 'string', 'description' => "A board-pack title, e.g. 'Board Report — $periodLabel'."],
+      'summary' => ['type' => 'string', 'description' => 'Executive summary: 3–5 sentences a director reads first.'],
+      'performance' => ['type' => 'string', 'description' => 'What drove revenue and profit this period, vs the prior month.'],
+      'costs' => ['type' => 'string', 'description' => 'Cost & efficiency commentary: where money went, what moved.'],
+      'cashPosition' => ['type' => 'string', 'description' => 'Cash, receivables, payables and runway in plain terms.'],
+      'risks' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => '3–5 risks / watch items.'],
+      'recommendations' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => '3–5 decisions/actions for the board.'],
+      'taxNote' => ['type' => 'string', 'description' => 'A short UK tax & compliance note (Corporation Tax/VAT), flagged as an estimate to confirm with the accountant.'],
+      'outlook' => ['type' => 'string', 'description' => 'Forward look for the coming month/quarter.'],
+    ],
+    'required' => ['title', 'summary', 'performance', 'costs', 'cashPosition', 'risks', 'recommendations', 'taxNote', 'outlook'],
+    'additionalProperties' => false,
+  ];
+
+  $user = "Write the board report for Digital Footprints for $periodLabel.\n\n$figures\n\n"
+    . "Full data for context:\n$brief\n\n"
+    . "Write for the board: crisp, honest about dips, quantified in £. This is a UK "
+    . "limited company. Keep the tax note brief and clearly an estimate.";
+
+  $narrative = claude_json(claude_system(), $user, $schema, 2600);
+
+  $id = bin2hex(random_bytes(8));
+  $report = [
+    'id' => $id,
+    'period' => $month,
+    'periodLabel' => $periodLabel,
+    'title' => (string) $narrative['title'],
+    'generatedAt' => time(),
+    'kpis' => $kpis,
+    'narrative' => $narrative,
+  ];
+  $store['reports'][] = $report;
+  $store['updatedAt'] = time();
+  store_write('board', $store);
+  return $report;
+}
+
+// Everything below is HTTP request routing; the CLI cron only needs the
+// functions above.
+if (PHP_SAPI === 'cli') return;
+
 /* ---- Routes ---- */
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $store = board_store();
@@ -103,64 +176,5 @@ if ($action === 'delete') {
 
 if ($action !== 'generate') fail('unknown action');
 
-$model = finance_model();
-if ($model['meta']['count'] === 0) respond(['ok' => false, 'error' => 'Import a Xero report first — there is nothing to report on yet.']);
-$month = (string) ($b['month'] ?? $model['meta']['last']);
-$kpis = board_kpis($model, $month);
-if (!$kpis) fail('no data for that month');
-
-$periodLabel = month_label($month);
-$brief = finance_brief();
-
-// The figures, spelled out for the prompt so commentary is anchored to them.
-$fig = fn($v) => $v === null ? 'n/a' : '£' . number_format((float) $v, 0);
-$revDelta = $kpis['revenueDelta'] ? sprintf(' (%+.1f%% vs %s)', $kpis['revenueDelta']['pct'] ?? 0, $kpis['prevLabel']) : '';
-$netDelta = $kpis['netDelta'] ? sprintf(' (%+.1f%% vs %s)', $kpis['netDelta']['pct'] ?? 0, $kpis['prevLabel']) : '';
-$runwayTxt = $kpis['runwayMonths'] !== null ? ", cash runway ~{$kpis['runwayMonths']} months" : ', cash-positive';
-$figures = "Computed figures for $periodLabel (comment on these; do not restate different numbers):\n"
-  . '  Revenue: ' . $fig($kpis['revenue']) . $revDelta . "\n"
-  . '  Gross profit: ' . $fig($kpis['grossProfit']) . " ({$kpis['grossMargin']}% margin)\n"
-  . '  Net profit: ' . $fig($kpis['netProfit']) . $netDelta . "\n"
-  . '  Overheads: ' . $fig($kpis['opex']) . ', Cost of sales: ' . $fig($kpis['cogs']) . "\n"
-  . '  Cash: ' . $fig($kpis['cash']) . ', owed to us: ' . $fig($kpis['debtors']) . ', we owe: ' . $fig($kpis['creditors']) . "\n"
-  . '  Recent average net/month: ' . $fig($kpis['avgNet']) . $runwayTxt . "\n";
-
-$schema = [
-  'type' => 'object',
-  'properties' => [
-    'title' => ['type' => 'string', 'description' => "A board-pack title, e.g. 'Board Report — $periodLabel'."],
-    'summary' => ['type' => 'string', 'description' => 'Executive summary: 3–5 sentences a director reads first.'],
-    'performance' => ['type' => 'string', 'description' => 'What drove revenue and profit this period, vs the prior month.'],
-    'costs' => ['type' => 'string', 'description' => 'Cost & efficiency commentary: where money went, what moved.'],
-    'cashPosition' => ['type' => 'string', 'description' => 'Cash, receivables, payables and runway in plain terms.'],
-    'risks' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => '3–5 risks / watch items.'],
-    'recommendations' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => '3–5 decisions/actions for the board.'],
-    'taxNote' => ['type' => 'string', 'description' => 'A short UK tax & compliance note (Corporation Tax/VAT), flagged as an estimate to confirm with the accountant.'],
-    'outlook' => ['type' => 'string', 'description' => 'Forward look for the coming month/quarter.'],
-  ],
-  'required' => ['title', 'summary', 'performance', 'costs', 'cashPosition', 'risks', 'recommendations', 'taxNote', 'outlook'],
-  'additionalProperties' => false,
-];
-
-$user = "Write the board report for Digital Footprints for $periodLabel.\n\n$figures\n\n"
-  . "Full data for context:\n$brief\n\n"
-  . "Write for the board: crisp, honest about dips, quantified in £. This is a UK "
-  . "limited company. Keep the tax note brief and clearly an estimate.";
-
-$narrative = claude_json(claude_system(), $user, $schema, 2600);
-
-$id = bin2hex(random_bytes(8));
-$report = [
-  'id' => $id,
-  'period' => $month,
-  'periodLabel' => $periodLabel,
-  'title' => (string) $narrative['title'],
-  'generatedAt' => time(),
-  'kpis' => $kpis,
-  'narrative' => $narrative,
-];
-$store['reports'][] = $report;
-$store['updatedAt'] = time();
-store_write('board', $store);
-
-respond(['ok' => true, 'report' => $report, 'shareUrl' => share_url($id)]);
+$report = board_generate($b['month'] ?? null);
+respond(['ok' => true, 'report' => $report, 'shareUrl' => share_url($report['id'])]);

@@ -12,8 +12,8 @@
    Tokens live in the flat store (data/xero.json — behind Basic Auth, gitignored,
    never served). The access token lasts 30 min; the refresh token rotates on
    every use and is good for 60 days of inactivity. */
-require __DIR__ . '/model.php';        // config + classify + finance_store/put_period
-require __DIR__ . '/xero-parse.php';
+require_once __DIR__ . '/model.php';   // config + classify + finance_store/put_period
+require_once __DIR__ . '/xero-parse.php';
 
 const XERO_AUTHORIZE = 'https://login.xero.com/identity/connect/authorize';
 const XERO_TOKEN = 'https://identity.xero.com/connect/token';
@@ -83,6 +83,56 @@ function html_exit(string $body, int $code = 200): void {
     . '<body style="font:16px system-ui;padding:60px;text-align:center;color:#2b4863">' . $body . '</body>';
   exit;
 }
+
+/* The sync itself, factored out so the web POST route AND the CLI cron script
+   (cron-sync.php) run identical code — a manual pull and an automatic one
+   produce the same months. Assumes $cfg is valid and the store is connected
+   (the caller checks). Refreshes the token, pulls P&L + Balance Sheet, merges
+   them into the finance model, stamps lastSync, and returns an import summary.
+   Exits via fail() on a Xero/token error. */
+function xero_run_sync(array &$store, array $cfg): array {
+  $token = xero_valid_token($store, $cfg);
+  $tenant = (string) ($store['tenantId'] ?? '');
+
+  // Profit & Loss: 12 monthly columns (current + 11 prior).
+  $pl = xero_api_get(XERO_API . '/Reports/ProfitAndLoss?' . http_build_query(['periods' => 11, 'timeframe' => 'MONTH']), $token, $tenant);
+  if ($pl['status'] !== 200) fail('Xero P&L request failed (HTTP ' . $pl['status'] . ')', 502);
+  $report = $pl['data']['Reports'][0] ?? null;
+  if (!$report) fail('Xero returned no P&L report', 502);
+
+  $fin = finance_store();
+  $acc = xero_parse_pl($report);
+  $imported = [];
+  foreach ($acc as $pk => $buckets) {
+    $period = finance_put_period($fin, $pk, $buckets, 'xero-api');
+    if ($period === null) continue;
+    $t = period_totals($period);
+    $imported[] = ['key' => $pk, 'label' => $period['label'], 'income' => $t['income'], 'netProfit' => $t['netProfit']];
+  }
+  usort($imported, fn($a, $c) => strcmp($a['key'], $c['key']));
+
+  // Balance Sheet (as at today).
+  $balSummary = null;
+  $bs = xero_api_get(XERO_API . '/Reports/BalanceSheet', $token, $tenant);
+  if ($bs['status'] === 200 && !empty($bs['data']['Reports'][0])) {
+    $b2 = xero_parse_bs($bs['data']['Reports'][0]);
+    $fin['balance'] = $b2 + ['source' => 'xero-api', 'importedAt' => time()];
+    $balSummary = $b2;
+  }
+
+  $fin['updatedAt'] = time();
+  store_write('finance', $fin);
+
+  $store['lastSync'] = time();
+  $store['lastSyncSummary'] = ['months' => count($imported), 'at' => time()];
+  store_write('xero', $store);
+
+  return ['periods' => $imported, 'accounts' => count($imported), 'balance' => $balSummary];
+}
+
+// Everything below is HTTP request routing. The CLI cron (cron-sync.php) only
+// needs the functions above, so stop here when included from the command line.
+if (PHP_SAPI === 'cli') return;
 
 /* ============================================================
    OAuth callback: Xero redirects here with ?code&state
@@ -182,41 +232,5 @@ if ($action !== 'sync') fail('unknown action');
 if (!$cfg) fail('Xero is not configured on the server.', 400);
 if (empty($store['connected'])) fail('Xero is not connected — connect first.', 400);
 
-$token = xero_valid_token($store, $cfg);
-$tenant = (string) ($store['tenantId'] ?? '');
-
-// Profit & Loss: 12 monthly columns (current + 11 prior).
-$pl = xero_api_get(XERO_API . '/Reports/ProfitAndLoss?' . http_build_query(['periods' => 11, 'timeframe' => 'MONTH']), $token, $tenant);
-if ($pl['status'] !== 200) fail('Xero P&L request failed (HTTP ' . $pl['status'] . ')', 502);
-$report = $pl['data']['Reports'][0] ?? null;
-if (!$report) fail('Xero returned no P&L report', 502);
-
-$fin = finance_store();
-$acc = xero_parse_pl($report);
-$imported = [];
-foreach ($acc as $pk => $buckets) {
-  $period = finance_put_period($fin, $pk, $buckets, 'xero-api');
-  if ($period === null) continue;
-  $t = period_totals($period);
-  $imported[] = ['key' => $pk, 'label' => $period['label'], 'income' => $t['income'], 'netProfit' => $t['netProfit']];
-}
-usort($imported, fn($a, $c) => strcmp($a['key'], $c['key']));
-
-// Balance Sheet (as at today).
-$balSummary = null;
-$bs = xero_api_get(XERO_API . '/Reports/BalanceSheet', $token, $tenant);
-if ($bs['status'] === 200 && !empty($bs['data']['Reports'][0])) {
-  $b2 = xero_parse_bs($bs['data']['Reports'][0]);
-  $fin['balance'] = $b2 + ['source' => 'xero-api', 'importedAt' => time()];
-  $balSummary = $b2;
-}
-
-$fin['updatedAt'] = time();
-store_write('finance', $fin);
-
-$summary = ['periods' => $imported, 'accounts' => array_sum(array_map(fn($x) => 1, $imported)), 'balance' => $balSummary];
-$store['lastSync'] = time();
-$store['lastSyncSummary'] = ['months' => count($imported), 'at' => time()];
-store_write('xero', $store);
-
+$summary = xero_run_sync($store, $cfg);
 respond(['ok' => true, 'tenantName' => $store['tenantName'] ?? 'Xero', 'summary' => $summary]);

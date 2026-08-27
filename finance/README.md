@@ -36,6 +36,26 @@ gitignored, never served); the refresh token rotates on each sync. The CSV
 importer and the API sync share one classifier (`classify.php`), so an upload
 and a pull produce identical months.
 
+### Automatic daily pull + board report
+
+`api/cron-sync.php` is a **command-line job** (it refuses to run over the web)
+that runs the same sync the button does, then auto-writes the board report for
+the most recent **completed** month — once, so daily runs keep the figures fresh
+without stacking up a new AI pack every day. It reuses `xero_run_sync()` and
+`board_generate()`, the exact code the UI calls, so automatic and manual runs
+are identical.
+
+Prerequisites: `xero-config.php` + `claude-config.php` in place, and Xero
+connected once in the browser (that one OAuth consent can't be scripted). After
+that it runs unattended — the refresh token rotates on each run and stays valid
+as long as the job runs within any 60-day window.
+
+Wire it up as a cPanel **Cron Job**, daily:
+
+```
+/usr/local/bin/php /home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance/api/cron-sync.php >> /home/wwwdfootdigi/finance-cron.log 2>&1
+```
+
 ## Board report share links
 
 Same HMAC trick as the client portal's plan links: the signing secret is
