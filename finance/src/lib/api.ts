@@ -83,6 +83,46 @@ export interface BoardListItem {
   id: string; period: string; periodLabel: string; title: string; generatedAt: number; shareUrl: string;
 }
 
+/* ---- Pipeline (pipeline.php) ---- */
+export type Stage = 'lead' | 'qualified' | 'proposal' | 'verbal' | 'won' | 'lost';
+export interface Opp {
+  id: string; client: string; type: 'retainer' | 'project'; value: number;
+  stage: Stage; probability: number; probabilityAuto: boolean;
+  startDate: string; decisionDate: string; nextAction: string;
+  includeInForecast: boolean; weighted: number; createdAt: number;
+}
+export interface PipelineSummary {
+  mrr: number; committedMrr: number; committedProject: number; committedAnnual: number;
+  weightedMrr: number; weightedProject: number; openCount: number; wonCount: number;
+  byStage: Record<Stage, number>; topClient: string | null; topClientShare: number | null;
+}
+export interface PipelineData {
+  ok: boolean; opps: Opp[]; summary: PipelineSummary;
+  stageProb: Record<Stage, number>; stages: Stage[];
+}
+
+/* ---- Cash flow (cashflow.php) ---- */
+export type Cadence = 'once' | 'weekly' | 'fortnightly' | '4weekly' | 'monthly' | 'quarterly';
+export interface CashWeek {
+  index: number; weekStart: string; label: string;
+  openingCommitted: number; receipts: number; payments: number; closingCommitted: number;
+  receiptsScenario: number; closingScenario: number;
+}
+export interface CashItem {
+  id: string; label: string; category: string; client: string; amount: number;
+  cadence: Cadence; date: string; until: string; note: string;
+}
+export interface CashHeadline {
+  totalCash: number; vatSetAside: number; availableCash: number;
+  runwayWeeks: number | null; runwayNote: string; endCommitted: number; endScenario: number;
+}
+export interface CashflowData {
+  ok: boolean; weeks: CashWeek[]; headline: CashHeadline;
+  settings: { totalCash: number; vatSetAside: number; usingBalanceCash: boolean };
+  payments: CashItem[]; receipts: CashItem[];
+  included: { id: string; client: string; value: number; type: string }[];
+}
+
 const BASE = './api/';
 
 async function get<T>(path: string): Promise<T | null> {
@@ -146,6 +186,24 @@ export const api = {
   xeroConnectUrl: () => `${BASE}xero.php?action=connect`,
   xeroSync: () => postAny<XeroSyncResult>('xero.php', { action: 'sync' }),
   xeroDisconnect: () => post<{ ok: boolean }>('xero.php', { action: 'disconnect' }),
+
+  // Pipeline
+  pipeline: () => get<PipelineData>('pipeline.php'),
+  pipelineAdd: (o: Partial<Opp>) => post<{ ok: boolean; opp: Opp }>('pipeline.php', { action: 'add', ...o }),
+  pipelineUpdate: (o: Partial<Opp> & { id: string }) => post<{ ok: boolean; opp: Opp }>('pipeline.php', { action: 'update', ...o }),
+  pipelineDelete: (id: string) => post<{ ok: boolean }>('pipeline.php', { action: 'delete', id }),
+  pipelineSeed: () => post<{ ok: boolean; seeded: number }>('pipeline.php', { action: 'seed' }),
+
+  // Cash flow (mutations return the full recomputed forecast)
+  cashflow: () => get<CashflowData>('cashflow.php'),
+  cashflowSettings: (s: { totalCash?: number | string; vatSetAside?: number | string }) =>
+    post<CashflowData>('cashflow.php', { action: 'settings', ...s }),
+  cashflowAdd: (kind: 'payment' | 'receipt', it: Partial<CashItem>) =>
+    post<CashflowData>('cashflow.php', { action: 'add', kind, ...it }),
+  cashflowUpdate: (kind: 'payment' | 'receipt', it: Partial<CashItem> & { id: string }) =>
+    post<CashflowData>('cashflow.php', { action: 'update', kind, ...it }),
+  cashflowDelete: (kind: 'payment' | 'receipt', id: string) =>
+    post<CashflowData>('cashflow.php', { action: 'delete', kind, id }),
 
   // Board reports
   reports: () => get<{ ok: boolean; reports: BoardListItem[] }>('reports.php'),

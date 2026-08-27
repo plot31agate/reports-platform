@@ -20,7 +20,7 @@ export function Budgets() {
   if (!model) return <Working label="Loading…" />;
   if (model.meta.count === 0) return (
     <div className="card accent" style={{ textAlign: 'center', padding: 40 }}>
-      <div className="eyebrow" style={{ color: 'var(--magenta)' }}>No data yet</div>
+      <div className="eyebrow">No data yet</div>
       <p className="fade" style={{ margin: '10px 0 0' }}>Import a Xero Profit &amp; Loss first — budgets and forecasts run off it.</p>
     </div>
   );
@@ -168,7 +168,7 @@ function Runway({ model }: { model: FinanceModel }) {
 
   return (
     <div className="card accent-cyan" style={{ marginBottom: 16 }}>
-      <div className="eyebrow" style={{ color: 'var(--cyan)' }}>Cash runway</div>
+      <div className="eyebrow">Cash runway</div>
       <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
         <h3>Projected cash, next 12 months</h3>
         <div className="row" style={{ gap: 18 }}>
@@ -227,7 +227,7 @@ function WhatIf({ model }: { model: FinanceModel }) {
 
   return (
     <div className="card accent" style={{ marginBottom: 16 }}>
-      <div className="eyebrow" style={{ color: 'var(--magenta)' }}>What-if</div>
+      <div className="eyebrow">What-if</div>
       <h3 style={{ marginBottom: 4 }}>Model a change, then ask Claude what it means</h3>
       <p className="fade small" style={{ marginTop: 0 }}>Based on {model.latest!.label}: revenue {money(base.income)}, costs {money(baseCost)}, net {money(base.netProfit)}.</p>
 

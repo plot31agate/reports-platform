@@ -1,13 +1,22 @@
 /* Dashboard.tsx — the first look. Headline KPIs with month-on-month deltas, the
    income/cost/profit trend, where the money goes, and a short read of what the
    numbers are saying. Everything here is deterministic; the judgement calls
-   (Ask, scenarios) live one click away. */
+   (Ask, scenarios) live one click away.
+
+   Headline figures are for the latest COMPLETE month — if the newest imported
+   period is the current, still-running month it's shown as "in progress" and the
+   KPIs fall back to the last finished month so nothing reads artificially low. */
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import type { FinanceModel } from '../lib/api';
+import type { FinanceModel, Period, Balance } from '../lib/api';
 import { money, moneyShort, delta, pctLabel, runwayMonths } from '../lib/finance';
 import { Stat, IncomeCostChart, SpendBars, Working, OfflineNote, Empty } from '../components/ui';
 import type { MonthPoint } from '../components/ui';
+
+function currentMonthKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 export function Dashboard({ go }: { go: (v: string) => void }) {
   const [model, setModel] = useState<FinanceModel | null>(null);
@@ -25,17 +34,25 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
   if (offline) return <OfflineNote />;
   if (!model || model.meta.count === 0) return <EmptyState go={go} />;
 
-  const { latest, previous, balance } = model;
+  const periods = model.periods;
+  const lastPeriod = periods[periods.length - 1];
+  // If the newest month is the current (part-way) month, headline the one before.
+  const partial = lastPeriod && lastPeriod.key === currentMonthKey() ? lastPeriod : null;
+  const headIdx = partial && periods.length > 1 ? periods.length - 2 : periods.length - 1;
+  const latest = periods[headIdx];
+  const previous = periods[headIdx - 1] ?? null;
+  const balance = model.balance;
   if (!latest) return <EmptyState go={go} />;
+
   const cur = latest.totals;
   const prv = previous?.totals ?? null;
 
-  // Trailing net average (up to last 3 months) drives the runway read.
-  const recent = model.periods.slice(-3);
+  // Trailing net average (up to last 3 complete months) drives the runway read.
+  const recent = periods.slice(0, headIdx + 1).slice(-3);
   const avgNet = recent.reduce((s, p) => s + p.totals.netProfit, 0) / recent.length;
   const runway = balance ? runwayMonths(balance.cash, avgNet) : null;
 
-  const points: MonthPoint[] = model.periods.slice(-12).map((p) => ({
+  const points: MonthPoint[] = periods.slice(-12).map((p) => ({
     key: p.key, label: p.label,
     income: p.totals.income, cost: p.totals.cogs + p.totals.opex + p.totals.otherExpense,
     profit: p.totals.netProfit,
@@ -45,10 +62,17 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
     .sort((a, b) => b.amount - a.amount).slice(0, 7)
     .map((l) => ({ cap: l.account, amount: l.amount }));
 
-  const alerts = buildAlerts(model, avgNet, runway);
+  const alerts = buildAlerts(latest, previous, balance, avgNet, runway, recent.length);
 
   return (
     <>
+      {partial && (
+        <div className="note-strip" style={{ marginBottom: 16 }}>
+          <b>{partial.label}</b> is still in progress. Headline figures below are for{' '}
+          <b>{latest.label}</b>, the last complete month — the trend chart includes {partial.label} so far.
+        </div>
+      )}
+
       {/* KPI row */}
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Stat n={money(cur.income)} label={`Revenue · ${latest.label}`}
@@ -64,9 +88,9 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
       </div>
 
       <div className="grid g2" style={{ alignItems: 'start', marginBottom: 16 }}>
-        <div className="card accent-cyan">
-          <div className="eyebrow" style={{ color: 'var(--cyan)' }}>Trend</div>
-          <h3 style={{ marginBottom: 14 }}>Income, costs & profit</h3>
+        <div className="card">
+          <div className="eyebrow">Trend</div>
+          <h3 style={{ marginBottom: 14 }}>Income, costs &amp; profit</h3>
           <IncomeCostChart points={points} />
         </div>
         <div className="card">
@@ -77,8 +101,8 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
       </div>
 
       <div className="grid g2" style={{ alignItems: 'start' }}>
-        <div className="card accent">
-          <div className="eyebrow" style={{ color: 'var(--magenta)' }}>What the numbers say</div>
+        <div className="card">
+          <div className="eyebrow">What the numbers say</div>
           <h3 style={{ marginBottom: 12 }}>Read</h3>
           {alerts.length === 0 ? <Empty>Nothing notable this month.</Empty> : (
             <div>
@@ -92,7 +116,7 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
           )}
           <div className="row" style={{ marginTop: 16, gap: 10 }}>
             <button className="btn gold" onClick={() => go('ask')}>Ask the data →</button>
-            <button className="btn ghost" onClick={() => go('budgets')}>Budgets & forecast</button>
+            <button className="btn ghost" onClick={() => go('cashflow')}>Cash flow</button>
           </div>
         </div>
 
@@ -102,7 +126,7 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
           <table className="t">
             <tbody>
               <tr><td style={{ color: 'var(--muted)' }}>Months imported</td><td style={{ textAlign: 'right' }} className="money">{model.meta.count}</td></tr>
-              <tr><td style={{ color: 'var(--muted)' }}>Range</td><td style={{ textAlign: 'right' }} className="small">{model.periods[0].label} → {latest.label}</td></tr>
+              <tr><td style={{ color: 'var(--muted)' }}>Range</td><td style={{ textAlign: 'right' }} className="small">{periods[0].label} → {lastPeriod.label}</td></tr>
               <tr><td style={{ color: 'var(--muted)' }}>Balance sheet</td><td style={{ textAlign: 'right' }} className="small">{balance ? balance.asAt : 'not imported'}</td></tr>
               <tr><td style={{ color: 'var(--muted)' }}>Money owed to us</td><td style={{ textAlign: 'right' }} className="money">{balance ? moneyShort(balance.debtors) : '—'}</td></tr>
               <tr><td style={{ color: 'var(--muted)' }}>Money we owe</td><td style={{ textAlign: 'right' }} className="money">{balance ? moneyShort(balance.creditors) : '—'}</td></tr>
@@ -117,17 +141,15 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
 
 interface Alert { text: string; tone: 'good' | 'bad' | 'flat'; }
 
-function buildAlerts(model: FinanceModel, avgNet: number, runway: number | null): Alert[] {
+function buildAlerts(latest: Period, previous: Period | null, balance: Balance | null, avgNet: number, runway: number | null, monthsInAvg: number): Alert[] {
   const out: Alert[] = [];
-  const { latest, previous, balance } = model;
-  if (!latest) return out;
   const cur = latest.totals, prv = previous?.totals;
 
-  if (prv) {
+  if (prv && previous) {
     const dNet = delta(cur.netProfit, prv.netProfit);
     if (dNet.dir !== 'flat') {
       out.push({
-        text: `Net profit ${dNet.dir === 'up' ? 'rose' : 'fell'} ${money(Math.abs(dNet.abs))} (${pctLabel(dNet)}) vs ${previous!.label}.`,
+        text: `Net profit ${dNet.dir === 'up' ? 'rose' : 'fell'} ${money(Math.abs(dNet.abs))} (${pctLabel(dNet)}) vs ${previous.label}.`,
         tone: dNet.dir === 'up' ? 'good' : 'bad',
       });
     }
@@ -135,7 +157,7 @@ function buildAlerts(model: FinanceModel, avgNet: number, runway: number | null)
     const dCost = delta(curCost, prvCost);
     if (dCost.pct !== null && Math.abs(dCost.pct) >= 8) {
       out.push({
-        text: `Total costs ${dCost.dir === 'up' ? 'up' : 'down'} ${money(Math.abs(dCost.abs))} on ${previous!.label}.`,
+        text: `Total costs ${dCost.dir === 'up' ? 'up' : 'down'} ${money(Math.abs(dCost.abs))} on ${previous.label}.`,
         tone: dCost.dir === 'up' ? 'bad' : 'good',
       });
     }
@@ -154,7 +176,7 @@ function buildAlerts(model: FinanceModel, avgNet: number, runway: number | null)
     if (runway !== null) {
       out.push({ text: `At the recent average, cash of ${money(balance.cash)} lasts about ${runway.toFixed(1)} months — plan ahead.`, tone: runway < 3 ? 'bad' : 'flat' });
     } else if (avgNet >= 0) {
-      out.push({ text: `Cash-positive: averaging ${money(avgNet)}/month across the last ${Math.min(3, model.meta.count)} months.`, tone: 'good' });
+      out.push({ text: `Cash-positive: averaging ${money(avgNet)}/month across the last ${monthsInAvg} month${monthsInAvg === 1 ? '' : 's'}.`, tone: 'good' });
     }
   }
   return out;
@@ -162,8 +184,8 @@ function buildAlerts(model: FinanceModel, avgNet: number, runway: number | null)
 
 function EmptyState({ go }: { go: (v: string) => void }) {
   return (
-    <div className="card accent" style={{ textAlign: 'center', padding: '48px 28px' }}>
-      <div className="eyebrow" style={{ color: 'var(--magenta)' }}>Nothing loaded yet</div>
+    <div className="card" style={{ textAlign: 'center', padding: '48px 28px' }}>
+      <div className="eyebrow">Nothing loaded yet</div>
       <h2 style={{ fontSize: 26, margin: '10px 0 8px' }}>Bring your first Xero report in</h2>
       <p className="fade" style={{ maxWidth: 460, margin: '0 auto 20px' }}>
         Export a Profit &amp; Loss (and optionally a Balance Sheet) from Xero as CSV,

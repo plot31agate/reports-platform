@@ -50,7 +50,7 @@ export function Reports() {
   if (!model) return <Working label="Loading…" />;
   if (model.meta.count === 0) return (
     <div className="card accent" style={{ textAlign: 'center', padding: 40 }}>
-      <div className="eyebrow" style={{ color: 'var(--magenta)' }}>No data yet</div>
+      <div className="eyebrow">No data yet</div>
       <p className="fade" style={{ margin: '10px 0 0' }}>Import a Xero Profit &amp; Loss first — a board report is written from it.</p>
     </div>
   );
@@ -60,7 +60,7 @@ export function Reports() {
       <div className="card accent" style={{ marginBottom: 16 }}>
         <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div className="eyebrow" style={{ color: 'var(--magenta)' }}>Generate</div>
+            <div className="eyebrow">Generate</div>
             <h3>A board pack, written from your numbers</h3>
             <p className="fade small" style={{ margin: '4px 0 0', maxWidth: 460 }}>
               Executive summary, performance, cash, risks, recommendations, a UK tax note and an outlook — then a link to share.
@@ -119,10 +119,10 @@ function BoardView({ data }: { data: { report: BoardReport; shareUrl: string } }
   }
 
   return (
-    <div className="card" style={{ marginBottom: 16, borderTop: '5px solid var(--magenta)' }}>
+    <div className="card" style={{ marginBottom: 16 }}>
       <div className="spread" style={{ flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
         <div>
-          <div className="eyebrow" style={{ color: 'var(--magenta)' }}>Board Report · {report.periodLabel}</div>
+          <div className="eyebrow">Board Report · {report.periodLabel}</div>
           <h2 style={{ fontSize: 24, marginTop: 4 }}>{report.title}</h2>
         </div>
         <div className="row" style={{ gap: 10 }}>

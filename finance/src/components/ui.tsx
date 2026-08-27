@@ -72,7 +72,7 @@ export function Working({ label }: { label?: string }) {
 export function NeedsKey() {
   return (
     <div className="card accent">
-      <div className="eyebrow" style={{ color: 'var(--magenta)' }}>Claude isn’t connected yet</div>
+      <div className="eyebrow">Claude isn’t connected yet</div>
       <p style={{ margin: '10px 0 0', maxWidth: 560 }}>
         The AI features (Ask the data, scenario planning) need the Anthropic API key
         installed on the server. Copy <code>api/claude-config.example.php</code> to
@@ -86,7 +86,7 @@ export function NeedsKey() {
 export function OfflineNote() {
   return (
     <div className="card accent">
-      <div className="eyebrow" style={{ color: 'var(--magenta)' }}>No connection</div>
+      <div className="eyebrow">No connection</div>
       <p className="small fade" style={{ margin: '8px 0 0' }}>
         The Finance HQ API is not reachable here. Live data (imported figures,
         budgets, Claude answers) connects once deployed to the server, or in dev
@@ -185,6 +185,48 @@ export function CashLine({ series, h = 200 }: { series: { label: string; value: 
           </g>
         ))}
       </svg>
+    </div>
+  );
+}
+
+/** Two projected cash lines over the 13-week window: the committed floor
+    (solid navy) and committed + selected pipeline (dashed cyan). A dashed zero
+    line shows where the balance would cross into overdraft. */
+export interface CashWeekPoint { label: string; committed: number; scenario: number; }
+export function CashFlowChart({ weeks, hasScenario, h = 220 }: { weeks: CashWeekPoint[]; hasScenario: boolean; h?: number }) {
+  if (weeks.length < 2) return <Empty>Not enough weeks to project.</Empty>;
+  const w = 720;
+  const padL = 8, padR = 8, padT = 16, padB = 26;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const vals = weeks.flatMap((p) => hasScenario ? [p.committed, p.scenario] : [p.committed]);
+  const max = Math.max(1, ...vals), min = Math.min(0, ...vals);
+  const range = Math.max(1, max - min);
+  const step = innerW / (weeks.length - 1);
+  const x = (i: number) => padL + step * i;
+  const y = (v: number) => padT + innerH - ((v - min) / range) * innerH;
+  const path = (key: 'committed' | 'scenario') =>
+    weeks.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
+  const zeroY = y(0);
+
+  return (
+    <div className="chart">
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" role="img" aria-label="Projected cash over 13 weeks">
+        {min < 0 && <line x1={padL} y1={zeroY} x2={w - padR} y2={zeroY} stroke="var(--fail)" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />}
+        {hasScenario && <path d={path('scenario')} fill="none" stroke="var(--cyan)" strokeWidth="2.5" strokeDasharray="5 4" />}
+        <path d={path('committed')} fill="none" stroke="var(--navy)" strokeWidth="2.5" />
+        {weeks.map((p, i) => (
+          <g key={i}>
+            <circle cx={x(i)} cy={y(p.committed)} r="2.5" fill="var(--navy)" />
+            {(i === 0 || i === weeks.length - 1 || i % 2 === 0) && (
+              <text className="lbl" x={x(i)} y={h - 8} textAnchor="middle">{p.label}</text>
+            )}
+          </g>
+        ))}
+      </svg>
+      <div className="legend">
+        <span className="k"><span className="sw" style={{ background: 'var(--navy)' }} />Committed (floor)</span>
+        {hasScenario && <span className="k"><span className="sw" style={{ background: 'var(--cyan)' }} />With selected pipeline</span>}
+      </div>
     </div>
   );
 }

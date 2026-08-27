@@ -12,7 +12,7 @@
    The deterministic maths (runway, projected cash) is done in the browser; this
    endpoint adds the judgement: what it means, what to watch, what to do. */
 require __DIR__ . '/claude.php';
-require __DIR__ . '/model.php';
+require __DIR__ . '/planning.php';   // pulls model.php; adds pipeline + cash context
 
 $b = body_json();
 $scenario = trim((string) ($b['scenario'] ?? ''));
@@ -56,7 +56,7 @@ $schema = [
   'additionalProperties' => false,
 ];
 
-$user = "Here is Digital Footprints' financial data:\n\n$brief\n\n"
+$user = "Here is Digital Footprints' financial data:\n\n$brief\n\n" . planning_brief() . "\n\n"
   . "Scenario to assess: $scenario$ctx\n\n"
   . "Assess it against the real figures. Be concrete and quantify where you can, "
   . "in £. Flag the biggest risk to cash. Keep advice practical for a small UK business.";

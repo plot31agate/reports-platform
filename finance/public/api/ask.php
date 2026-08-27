@@ -6,7 +6,7 @@
    The model only ever sees the compact finance brief (model.php), so answers
    are grounded in the imported figures and nothing else. */
 require __DIR__ . '/claude.php';
-require __DIR__ . '/model.php';
+require __DIR__ . '/planning.php';   // pulls model.php; adds pipeline + cash context
 
 $b = body_json();
 $q = trim((string) ($b['question'] ?? ''));
@@ -42,9 +42,10 @@ $schema = [
   'additionalProperties' => false,
 ];
 
-$user = "Here is Digital Footprints' financial data:\n\n$brief\n\n"
+$user = "Here is Digital Footprints' financial data:\n\n$brief\n\n" . planning_brief() . "\n\n"
   . "Question: $q\n\n"
-  . "Answer using only these figures. If the data can't answer it, say what's missing.";
+  . "Answer using only these figures. If the data can't answer it, say what's missing. "
+  . "You can reason about pipeline win/lose scenarios using the opportunities and cash forecast above.";
 
 $out = claude_json(claude_system(), $user, $schema, 1200);
 respond(['ok' => true, 'result' => $out]);

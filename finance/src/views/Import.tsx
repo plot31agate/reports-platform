@@ -52,7 +52,7 @@ export function Import({ go }: { go: (v: string) => void }) {
           <div className="row" style={{ gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             {([['auto', 'Auto-detect'], ['pl', 'Profit & Loss'], ['balance', 'Balance Sheet']] as [Kind, string][]).map(([k, l]) => (
               <button key={k} className={`chip ${kind === k ? '' : ''}`} onClick={() => setKind(k)}
-                style={kind === k ? { borderColor: 'var(--magenta)', color: 'var(--magenta)', fontWeight: 700 } : undefined}>{l}</button>
+                style={kind === k ? { borderColor: 'var(--navy)', color: 'var(--navy)', fontWeight: 700 } : undefined}>{l}</button>
             ))}
           </div>
 
@@ -77,7 +77,7 @@ export function Import({ go }: { go: (v: string) => void }) {
         </div>
 
         <div className="card accent-cyan">
-          <div className="eyebrow" style={{ color: 'var(--cyan)' }}>How to export from Xero</div>
+          <div className="eyebrow">How to export from Xero</div>
           <h3 style={{ marginBottom: 12 }}>Two-minute setup</h3>
           <ol className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, color: 'var(--body)' }}>
             <li>In Xero: <b>Accounting → Reports → Profit and Loss</b>.</li>
@@ -145,7 +145,7 @@ function XeroCard({ onSynced }: { onSynced: () => void }) {
     <div className="card accent-cyan" style={{ marginBottom: 16 }}>
       <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div className="eyebrow" style={{ color: 'var(--cyan)' }}>Live sync</div>
+          <div className="eyebrow">Live sync</div>
           <h3>{connected ? `Connected to ${status?.tenantName ?? 'Xero'}` : 'Connect Xero'}</h3>
           <p className="fade small" style={{ margin: '4px 0 0', maxWidth: 520 }}>
             {connected
@@ -182,7 +182,7 @@ function ResultCard({ result }: { result: ImportResult }) {
   if (!result.ok) {
     return (
       <div className="card accent" style={{ marginBottom: 16 }}>
-        <div className="eyebrow" style={{ color: 'var(--magenta)' }}>Import failed</div>
+        <div className="eyebrow">Import failed</div>
         <p style={{ margin: '8px 0 0' }}>{result.error}</p>
       </div>
     );

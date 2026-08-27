@@ -50,7 +50,7 @@ export function Ask() {
     <>
       {turns.length === 0 && (
         <div className="card accent" style={{ marginBottom: 16 }}>
-          <div className="eyebrow" style={{ color: 'var(--magenta)' }}>Interrogate</div>
+          <div className="eyebrow">Interrogate</div>
           <h3 style={{ marginBottom: 6 }}>Ask anything about your finances</h3>
           <p className="fade small" style={{ margin: '0 0 14px' }}>
             Grounded only in what you’ve imported — Claude won’t invent figures. Try one:

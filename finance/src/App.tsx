@@ -3,6 +3,8 @@
    see the numbers, bring numbers in, question them, then plan against them. */
 import { useEffect, useState } from 'react';
 import { Dashboard } from './views/Dashboard';
+import { CashFlow } from './views/CashFlow';
+import { Pipeline } from './views/Pipeline';
 import { Import } from './views/Import';
 import { Ask } from './views/Ask';
 import { Budgets } from './views/Budgets';
@@ -13,14 +15,18 @@ import dfLogo from './assets/df/logo-white.png';
 
 export const ROOMS = [
   { id: 'dashboard', label: 'Dashboard', glyph: '01' },
-  { id: 'import', label: 'Import', glyph: '02' },
-  { id: 'ask', label: 'Ask the data', glyph: '03' },
-  { id: 'budgets', label: 'Budgets & Forecast', glyph: '04' },
-  { id: 'reports', label: 'Board Reports', glyph: '05' },
+  { id: 'cashflow', label: 'Cash flow', glyph: '02' },
+  { id: 'pipeline', label: 'Pipeline', glyph: '03' },
+  { id: 'import', label: 'Import', glyph: '04' },
+  { id: 'ask', label: 'Ask the data', glyph: '05' },
+  { id: 'budgets', label: 'Budgets & Forecast', glyph: '06' },
+  { id: 'reports', label: 'Board Reports', glyph: '07' },
 ];
 
 const TITLES: Record<string, { h: string; sub: string }> = {
   dashboard: { h: 'Dashboard', sub: `${BUSINESS.name}'s finances, first look` },
+  cashflow: { h: 'Cash flow', sub: '13-week rolling forecast — total & available cash, runway' },
+  pipeline: { h: 'Pipeline', sub: 'Agreed vs potential work, weighted by stage' },
   import: { h: 'Import', sub: 'Upload Xero reports — profit & loss, balance sheet' },
   ask: { h: 'Ask the data', sub: 'Interrogate the numbers in plain English' },
   budgets: { h: 'Budgets & Forecast', sub: 'Spend layers, variance, cash runway and what-ifs' },
@@ -74,6 +80,8 @@ export function App() {
             <div className="sub">{t.sub}</div>
           </div>
           {view === 'dashboard' && <Dashboard go={go} />}
+          {view === 'cashflow' && <CashFlow go={go} />}
+          {view === 'pipeline' && <Pipeline go={go} />}
           {view === 'import' && <Import go={go} />}
           {view === 'ask' && <Ask />}
           {view === 'budgets' && <Budgets />}
