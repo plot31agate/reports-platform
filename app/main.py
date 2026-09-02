@@ -882,6 +882,31 @@ async def admin_review_post(request: Request):
     if stat_overrides:
         notes["stats"] = stat_overrides
 
+    # At-a-glance overrides: status flips and rewritten headline/next lines,
+    # stored only where they deviate from the computed defaults (the same
+    # pattern as stat boxes). Row drops ride the generic keep_/rowkey_
+    # machinery, and area/owner renames the generic cell machinery — so the
+    # overrides here are month-specific by design and never carry forward.
+    glance_overrides = {}
+    for field in form.keys():
+        if not (field.startswith("glance_") and field.endswith("__dstatus")):
+            continue
+        gkey = field[len("glance_"):-len("__dstatus")]
+        ov = {}
+        status = (form.get(f"glance_{gkey}__status") or "").strip()
+        if status and status != (form.get(field) or "").strip():
+            ov["status"] = status
+        headline = (form.get(f"glance_{gkey}__headline") or "").strip()
+        if headline and headline != (form.get(f"glance_{gkey}__dheadline") or "").strip():
+            ov["headline"] = headline
+        nxt = (form.get(f"glance_{gkey}__next") or "").strip()
+        if nxt and nxt != (form.get(f"glance_{gkey}__dnext") or "").strip():
+            ov["next"] = nxt
+        if ov:
+            glance_overrides[gkey] = ov
+    if glance_overrides:
+        notes["glance"] = glance_overrides
+
     # Dropped rows: every rendered row submits a rowkey_ marker, and a ticked
     # keep_ alongside it. A marker with no keep means the operator unticked it.
     dropped = [

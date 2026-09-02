@@ -10,6 +10,7 @@ from app.ingestion.parsers.similarweb import parse_similarweb
 from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_geography
 from app.ingestion.parsers.search_console import parse_search_console
 from app.ingestion.parsers.keywords import parse_core_keywords
+from app.ingestion.parsers.leads import parse_leads
 from app.ingestion.parsers.linkedin import parse_linkedin
 from app.ingestion.parsers.mentions import parse_mentions
 from app.ingestion.parsers.technical_seo import (
@@ -35,6 +36,7 @@ PARSER_MAP = {
     "ga4_geography":           ("GA4 geography",               parse_ga4_geography),
     "search_console":          ("Search Console",              parse_search_console),
     "core_keywords":           ("Core keywords",               parse_core_keywords),
+    "leads":                   ("Leads",                       parse_leads),
     "linkedin_company":        ("LinkedIn (company)",          parse_linkedin),
     "meta_social":             ("Facebook & Instagram",        parse_meta_social),
     "tiktok":                  ("TikTok",                      parse_tiktok),
@@ -52,6 +54,7 @@ SOURCE_DEFS = [
     {"key": "ga4_geography",          "title": "GA4 geography",         "purpose": "Visits by country",                           "cols": "Country, Sessions"},
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
     {"key": "core_keywords",          "title": "Core keywords",         "purpose": "Organic positions vs last month",             "cols": "keyword, location, volume, position, position_prev"},
+    {"key": "leads",                  "title": "Leads",                 "purpose": "Enquiries / form submissions for the at-a-glance strip", "cols": "leads (or source, leads)"},
     {"key": "ahrefs_backlinks",       "title": "Ahrefs backlinks",      "purpose": "Referring domains, backlink growth",          "cols": "referring_domain, domain_rating"},
     {"key": "ahrefs_trends",          "title": "Ahrefs trends",         "purpose": "12-month DR, referring domains, organic traffic", "cols": "month, domain_rating, referring_domains, organic_traffic"},
     {"key": "competitor_benchmark",   "title": "Competitor benchmark",  "purpose": "Share of voice vs competitors",               "cols": "month, brand, domain, organic_traffic"},
@@ -68,7 +71,7 @@ SOURCE_DEFS = [
 # in one accordion. Order inside "sources" is the display order.
 SOURCE_GROUPS = [
     {"key": "media",     "label": "Media & PR",              "sources": ["mentions"]},
-    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "core_keywords", "ga4_geography"]},
+    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "core_keywords", "ga4_geography", "leads"]},
     {"key": "authority", "label": "Authority & competitors", "sources": ["ahrefs_backlinks", "ahrefs_trends", "competitor_benchmark"]},
     {"key": "social",    "label": "Social & influencers",    "sources": ["linkedin_company", "meta_social", "tiktok", "influencer_activity"]},
     {"key": "technical", "label": "Technical SEO",           "sources": ["technical_seo_metrics", "technical_seo_register"]},
@@ -134,6 +137,17 @@ def summarise_parsed(source_key: str, data) -> dict:
         if unranked:
             warnings.append(f"{unranked} keyword{'s' if unranked != 1 else ''} with no position - the site does not rank in the top 100 for {'them' if unranked != 1 else 'it'}")
         return {"status": "ok", "summary": s, "warnings": warnings, "row_count": tracked}
+
+    if source_key == "leads":
+        total = (data or {}).get("total")
+        if total is None:
+            return {"status": "warning", "summary": "No count column found - needs leads / count / enquiries",
+                    "warnings": [], "row_count": 0}
+        s = f"{total:,} lead{'s' if total != 1 else ''}"
+        sources = (data or {}).get("by_source") or []
+        if sources:
+            s += f" across {len(sources)} source{'s' if len(sources) != 1 else ''}"
+        return {"status": "ok", "summary": s, "warnings": [], "row_count": total}
 
     if source_key == "ahrefs_backlinks":
         rd = (data or {}).get("referring_domains") or 0

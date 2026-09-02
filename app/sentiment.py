@@ -270,6 +270,25 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
     section_labels = {d["key"]: d["label"] for d in SECTION_DEFS}
     enabled = [section_labels[k] for k in enabled_sections(client_config) if k in section_labels]
 
+    # At-a-glance rows the rules flagged amber/red: the AI drafts each one's
+    # "next" line - the reassuring what-we're-doing-about-it under the dot.
+    flagged = [r for r in (report_data.get("glance_rows") or []) if r.get("status") in ("amber", "red")]
+    if flagged:
+        flag_lines = "\n".join(
+            f'- "{r["key"]}": {r["area"]} - {r["headline"]} (flagged {r["status"]})'
+            for r in flagged
+        )
+        glance_block = f"""
+
+The report opens with a traffic-light status strip, and these rows are flagged this month:
+{flag_lines}
+
+For each flagged row, also return under "glance" (keyed by the quoted row key) one line of 12 words maximum saying what is being done about it next month. It must be specific and grounded in the recommended actions, never generic reassurance - e.g. "Rebuilding visibility in the three highest-volume markets" not "We are monitoring this closely"."""
+        glance_schema = ',"glance":{"' + flagged[0]["key"] + '":"..."}'
+    else:
+        glance_block = ""
+        glance_schema = ""
+
     focus_brief = (client_config.get("report_focus") or "").strip()
     if focus_brief:
         focus_block = f"""Editorial focus for this client's report:
@@ -309,10 +328,10 @@ Also write the report's editorial framing. This is the part the client's leaders
 - "notes": an object of section commentaries keyed as below. ALWAYS include "intro". Include the other keys only when the summary above has data for them.
   - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month in the report's primary focus area, connect the threads (how the other areas relate to it this month), and close with where the focus goes next. This is the executive summary at the top of the report.
   - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic, including core keyword positions and what moved into or out of the top five), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
-
+{glance_block}
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 
-{{"headline":"...","standfirst":"...","notes":{{"intro":"...","media":"..."}},"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]}}"""
+{{"headline":"...","standfirst":"...","notes":{{"intro":"...","media":"..."}},"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]{glance_schema}}}"""
 
     try:
         resp = client.messages.create(

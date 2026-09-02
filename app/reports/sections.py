@@ -9,6 +9,8 @@ grid and the report template both read it.
 """
 
 SECTION_DEFS = [
+    {"key": "glance",        "label": "At a glance",                "sources": ["leads"],                                           "default": False,
+     "hint": "Traffic-light status strip at the top of the report - one line per area"},
     {"key": "media",         "label": "Media coverage & sentiment", "sources": ["mentions"],                                        "default": True,
      "hint": "Earned coverage, sentiment, executive visibility"},
     {"key": "sov",           "label": "Share of voice",             "sources": ["competitor_benchmark"],                            "default": True,

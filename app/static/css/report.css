@@ -151,6 +151,69 @@ a:hover { text-decoration: underline; }
 .strip > :nth-child(5n+4), .stats > :nth-child(5n+4) { border-top-color: var(--orange); }
 .strip > :nth-child(5n+5), .stats > :nth-child(5n+5) { border-top-color: var(--ink); }
 
+/* -------- At a glance (traffic-light strip) -------- */
+.section--glance { margin: 30px 0 36px; }
+.glance {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  border-top: 4px solid var(--cyan); overflow: hidden;
+  box-shadow: 0 8px 20px rgba(14, 39, 64, 0.07);
+}
+.glance__head { padding: 15px 20px 13px; border-bottom: 1px solid var(--line); }
+.glance__head h2 { display: inline; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+.glance__period {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin-left: 12px;
+}
+/* The tally floats right, so it sits before the heading in the markup. */
+.glance__tally { float: right; }
+.gt {
+  display: inline-block; font-family: var(--font-mono); font-size: 11px;
+  padding: 3px 10px; border-radius: 20px; margin-left: 6px; white-space: nowrap;
+}
+.gt--green { background: var(--green-bg); color: var(--green-ink); }
+.gt--amber { background: var(--amber-bg); color: var(--amber-ink); }
+.gt--red { background: var(--red-bg); color: var(--red-ink); }
+.gt--grey { background: var(--track); color: var(--muted); }
+
+.glance__table { width: 100%; border-collapse: collapse; }
+.glance__table td { padding: 13px 14px; border-top: 1px solid var(--line); vertical-align: middle; }
+.glance__table tr:first-child td { border-top: 0; }
+.glance__dot-cell { width: 44px; text-align: center; padding-left: 20px; }
+.glance__dot {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid #fff; vertical-align: middle;
+}
+.glance__dot--green { background: #1fa06b; box-shadow: 0 0 0 3px var(--green-bg); }
+.glance__dot--amber { background: #e09b2d; box-shadow: 0 0 0 3px var(--amber-bg); }
+.glance__dot--red   { background: #d94a63; box-shadow: 0 0 0 3px var(--red-bg); }
+.glance__dot--grey  { background: var(--bar-muted); box-shadow: 0 0 0 3px var(--track); }
+.glance__area {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); width: 165px;
+}
+.glance__headline { font-size: 14px; font-weight: 500; color: var(--ink); text-wrap: pretty; }
+.glance__next { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin-top: 3px; text-wrap: pretty; }
+.glance__next span {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber-ink); margin-right: 5px;
+}
+.glance__owner {
+  font-family: var(--font-mono); font-size: 10px; color: var(--cover-muted);
+  text-align: right; white-space: nowrap; width: 90px; padding-right: 20px;
+}
+.glance__owner .cell-input { width: 110px; min-width: 0; font-size: 10px; }
+.glance__area .cell-input { width: 130px; min-width: 0; font-size: 10.5px; }
+.glance__main .cell-input--wide { width: 100%; }
+.glance-next-input { margin-top: 6px; }
+.glance-status {
+  font-family: var(--font-mono); font-size: 11px; padding: 4px 6px;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+}
+.glance-status--green { background: var(--green-bg); color: var(--green-ink); }
+.glance-status--amber { background: var(--amber-bg); color: var(--amber-ink); }
+.glance-status--red { background: var(--red-bg); color: var(--red-ink); }
+.glance-status--grey { background: var(--track); color: var(--muted); }
+
 /* -------- Callout (data caveat) -------- */
 .callout {
   margin-top: 16px; background: var(--amber-bg);

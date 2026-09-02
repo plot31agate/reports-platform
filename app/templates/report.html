@@ -219,6 +219,67 @@
 
 <div class="wrap">
 
+{# ================== AT A GLANCE (traffic-light strip) ================== #}
+{% if (editable or 'glance' not in hidden_sections) and ('glance' in enabled_sections and glance and glance.rows) %}
+<div class="section section--glance">
+  {{ sectiontoggle('glance') }}
+  <div class="glance">
+    <div class="glance__head">
+      {% if glance.tally %}
+      <span class="glance__tally">
+        {%- if glance.tally.green %}<span class="gt gt--green">{{ glance.tally.green }} on track</span>{% endif -%}
+        {%- if glance.tally.amber %}<span class="gt gt--amber">{{ glance.tally.amber }} watching</span>{% endif -%}
+        {%- if glance.tally.red %}<span class="gt gt--red">{{ glance.tally.red }} need{% if glance.tally.red == 1 %}s{% endif %} action</span>{% endif -%}
+        {%- if glance.tally.grey %}<span class="gt gt--grey">{{ glance.tally.grey }} setting up</span>{% endif -%}
+      </span>
+      {% endif %}
+      <h2>At a glance</h2>
+      {% if mom and mom.has_prev %}<span class="glance__period">{{ mom.month_name }} vs {{ mom.prev_name }}</span>{% endif %}
+    </div>
+    <table class="glance__table">
+      {% for r in glance.rows %}
+      {% set k = ('glance-' ~ r.key) | rowkey %}
+      {% if editable or k not in hidden %}
+      <tr{% if k in hidden %} class="rk-off"{% endif %}>
+        {{ keepcell('glance-' ~ r.key) }}
+        <td class="glance__dot-cell">
+          {% if editable %}
+          <select class="glance-status glance-status--{{ r.status }}" name="glance_{{ r.key }}__status"
+                  onchange="this.className='glance-status glance-status--'+this.value"
+                  title="Traffic-light status for this row">
+            <option value="green"{% if r.status == 'green' %} selected{% endif %}>&#9679; On track</option>
+            <option value="amber"{% if r.status == 'amber' %} selected{% endif %}>&#9679; Watching</option>
+            <option value="red"{% if r.status == 'red' %} selected{% endif %}>&#9679; Needs action</option>
+            <option value="grey"{% if r.status == 'grey' %} selected{% endif %}>&#9679; Setting up</option>
+          </select>
+          <input type="hidden" name="glance_{{ r.key }}__dstatus" value="{{ r.default_status }}">
+          {% else %}
+          <span class="glance__dot glance__dot--{{ r.status }}" title="{{ r.status_label }}"></span>
+          {% endif %}
+        </td>
+        <td class="glance__area">{{ cell('glance-' ~ r.key ~ '-a', r.area) }}</td>
+        <td class="glance__main">
+          {% if editable %}
+          <input class="cell-input cell-input--wide" name="glance_{{ r.key }}__headline" value="{{ r.headline }}"
+                 title="One line on where this area stands">
+          <input type="hidden" name="glance_{{ r.key }}__dheadline" value="{{ r.default_headline }}">
+          <input class="cell-input cell-input--wide glance-next-input" name="glance_{{ r.key }}__next" value="{{ r.next }}"
+                 placeholder="Optional 'Next' line - what we're doing about it, shown under the headline">
+          <input type="hidden" name="glance_{{ r.key }}__dnext" value="{{ r.default_next }}">
+          {% else %}
+          <div class="glance__headline">{{ r.headline }}</div>
+          {% if r.next %}<div class="glance__next"><span>Next</span> {{ r.next }}</div>{% endif %}
+          {% endif %}
+        </td>
+        <td class="glance__owner">{{ cell('glance-' ~ r.key ~ '-o', r.owner) }}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {# ================== EXECUTIVE SUMMARY (the story of the month) ================== #}
 {% if (editable or 'intro' not in hidden_sections) and (editable or notes.get('intro')) %}
 <div class="section section--intro">

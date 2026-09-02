@@ -15,6 +15,7 @@ from app.db import (
     get_mention_overrides, set_commentary_ai_state, get_report_layout,
 )
 from app.ingestion.parsers import parse_all
+from app.reports.glance import apply_glance_overrides, build_glance, glance_tally
 from app.reports.pdf import render_pdf
 from app.reports.sections import enabled_sections
 from app.sentiment import classify_mentions, synthesise_actions
@@ -69,6 +70,16 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
             key: _trend_svg(pts, key, (trends.get("max") or {}).get(key) or 1)
             for key in ("domain_rating", "referring_domains", "organic_traffic")
         }
+
+    # Prior-month data feeds both the month-on-month strip and the glance
+    # rules, so it is parsed once here.
+    _, _, prev_parsed = _parse_prev_month(client_slug, period)
+    technical_seo = _build_technical_seo(parsed, period)
+
+    # Glance defaults are computed before synthesis so the AI can draft the
+    # "next" lines for whichever rows the rules flagged amber or red.
+    glance_rows = (build_glance(parsed, prev_parsed, technical_seo, client_config)
+                   if "glance" in enabled_sections(client_config) else [])
 
     # 2. Sentiment classification on mentions (cached per mention).
     #    Operator overrides from the review screen are applied first: excluded
@@ -133,7 +144,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         actions = {"configured": True, "content": saved_actions}
     else:
         _progress("synthesis")
-        assembled = {**parsed, "sentiment": sentiment}
+        assembled = {**parsed, "sentiment": sentiment, "glance_rows": glance_rows}
         result = synthesise_actions(assembled, client_config)
         synth_content = result.get("content")
         synthesis_health = {
@@ -180,11 +191,26 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
     logo_path = Path(__file__).parent.parent / "static" / "img" / "clients" / f"{client_slug}.png"
     client_logo = f"/static/img/clients/{client_slug}.png" if logo_path.exists() else None
 
-    technical_seo = _build_technical_seo(parsed, period)
     exec_mentions = _detect_exec_mentions(parsed, client_config)
     layout_notes, layout_state = _resolve_layout(client_slug, period, commentary)
 
+    # At-a-glance strip: operator overrides (this month's notes) win over the
+    # AI's drafted "next" lines, which win over the rule-computed defaults.
+    # The AI drafts come from this build's synthesis when it ran, otherwise
+    # from the seed recorded by the last synthesis that did.
+    glance = None
+    if glance_rows:
+        ai_glance = _dict(synth_content.get("glance") if synth_content else None)
+        if not ai_glance:
+            row = get_commentary(client_slug, period)
+            ai_glance = _dict(_dict(_loads((row or {}).get("ai_seed_json"))).get("glance"))
+        glance = apply_glance_overrides(glance_rows, _dict(layout_notes.get("glance")), ai_glance)
+        hidden_rows = set(layout_notes.get("hidden") or [])
+        visible = [r for r in glance["rows"] if _rowkey(f"glance-{r['key']}") not in hidden_rows]
+        glance["tally"] = glance_tally(visible)
+
     return {
+        "glance": glance,
         "client": client_config,
         "enabled_sections": set(enabled_sections(client_config)),
         "exec_mentions": exec_mentions,
@@ -199,7 +225,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         # Rewritten cell text, keyed the same way as rows.
         "cells": layout_notes.get("cells") or {},
         "layout_state": layout_state,
-        "mom": _build_mom(client_slug, period, parsed, technical_seo),
+        "mom": _build_mom(period, parsed, technical_seo, prev_parsed),
         "client_slug": client_slug,
         "client_logo": client_logo,
         "period": period,
@@ -359,6 +385,10 @@ def _ai_seed(content: dict) -> dict:
         "standfirst": _str(content.get("standfirst")),
         "notes": {k: v.strip() for k, v in _dict(content.get("notes")).items() if isinstance(v, str) and v.strip()},
         "actions": {k: content[k] for k in ACTION_BUCKETS if content.get(k)} or None,
+        # Drafted "next" lines for amber/red glance rows. Never merged into
+        # notes — the builder reads them straight from this seed as defaults,
+        # and operator overrides in notes["glance"] simply win over them.
+        "glance": {k: v.strip() for k, v in _dict(content.get("glance")).items() if isinstance(v, str) and v.strip()},
     }
 
 
@@ -464,7 +494,26 @@ def _trend_svg(points: list, key: str, maxv) -> str:
     return "data:image/svg+xml;base64," + base64.b64encode("".join(parts).encode()).decode()
 
 
-def _build_mom(client_slug: str, period: str, parsed: dict, technical_seo: dict | None) -> dict | None:
+def _parse_prev_month(client_slug: str, period: str) -> tuple:
+    """Parse the prior month's data folder once — shared by the
+    month-on-month strip and the at-a-glance rules.
+    Returns (prev_period, folder_exists, parsed_dict)."""
+    try:
+        dt = datetime.strptime(period, "%Y-%m")
+    except ValueError:
+        return None, False, {}
+    prev_period = (dt.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    prev_dir = settings.data_dir / client_slug / prev_period
+    if not prev_dir.exists():
+        return prev_period, False, {}
+    try:
+        return prev_period, True, parse_all(prev_dir)
+    except Exception:
+        return prev_period, True, {}
+
+
+def _build_mom(period: str, parsed: dict, technical_seo: dict | None,
+               prev_parsed: dict) -> dict | None:
     """Month-on-month strip: this month's headline numbers against the prior
     month's data folder. First tracked month renders as a baseline."""
     try:
@@ -473,15 +522,6 @@ def _build_mom(client_slug: str, period: str, parsed: dict, technical_seo: dict 
         return None
     prev_dt = dt.replace(day=1) - timedelta(days=1)
     prev_period = prev_dt.strftime("%Y-%m")
-
-    prev_dir = settings.data_dir / client_slug / prev_period
-    has_prev = prev_dir.exists()
-    prev_parsed = {}
-    if has_prev:
-        try:
-            prev_parsed = parse_all(prev_dir)
-        except Exception:
-            prev_parsed = {}
 
     def dig(tree, src, key):
         node = ((tree.get(src) or {}).get("data") or {}) if tree else {}
