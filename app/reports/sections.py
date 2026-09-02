@@ -17,6 +17,8 @@ SECTION_DEFS = [
      "hint": "Organic search share vs competitors"},
     {"key": "traffic",       "label": "Search & site traffic",      "sources": ["ga4_export", "search_console", "core_keywords"],    "default": True,
      "hint": "GA4 users, sessions, engagement; Search Console; core keyword rankings"},
+    {"key": "trends",        "label": "Daily trends",               "sources": ["ga4_daily"],                                       "default": False,
+     "hint": "Day-by-day GA4 charts vs the previous month - spikes and patterns"},
     {"key": "geography",     "label": "Geography",                  "sources": ["ga4_geography"],                                   "default": True,
      "hint": "Visits by country"},
     {"key": "links",         "label": "Authority & backlinks",      "sources": ["ahrefs_backlinks", "ahrefs_trends"],               "default": True,

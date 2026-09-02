@@ -100,6 +100,7 @@ REVIEW_NOTE_SECTIONS = [
     ("execs", "Executive mentions"),
     ("sentiment", "Sentiment"),
     ("traffic", "Search & traffic"),
+    ("trends", "Daily trends"),
     ("backlinks", "Authority & social"),
     ("campaigns", "Geography"),
     ("linkedin", "LinkedIn"),

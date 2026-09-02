@@ -673,6 +673,39 @@
 </div>
 {% endif %}
 
+{# ================== DAILY TRENDS (day-by-day charts vs last month) ================== #}
+{% if (editable or 'trends' not in hidden_sections) and ('trends' in enabled_sections and (editable or (trends and trends.charts) or notes.get('trends') or notes.get('callout_trends'))) %}
+<div class="section">
+  <div class="slabel">Daily trends</div>
+  {{ sectiontoggle('trends') }}
+  <h2>The month, day by day</h2>
+  {{ note('trends') }}
+  {{ callout('trends') }}
+  {% if trends and trends.charts %}
+  {% if trends.has_prev %}
+  <p class="trend-legend"><span class="tl tl--cur"></span> This month <span class="tl tl--prev"></span> Previous month <span class="tl tl--peak"></span> Peak day</p>
+  {% endif %}
+  <div class="trend-cards">
+  {% for c in trends.charts %}
+  {% set k = ('trend-' ~ c.key) | rowkey %}
+  {% if editable or k not in hidden %}
+  <div class="trend-card {% if k in hidden %}rk-off{% endif %}">
+    <div class="trend-card__head">
+      <span class="trend-card__title">{{ keepbox('trend-' ~ c.key) }}{{ cell('trend-' ~ c.key ~ '-t', c.title) }}</span>
+      <span class="trend-card__peak">{{ c.peak }}</span>
+    </div>
+    {% if c.summary %}<div class="trend-card__summary">{{ c.summary }}</div>{% endif %}
+    <img class="trend-card__chart" src="{{ c.svg }}" alt="{{ c.title }}">
+  </div>
+  {% endif %}
+  {% endfor %}
+  </div>
+  {% elif editable %}
+  <p class="muted muted--internal">No daily data yet - sync or upload the "GA4 daily series" source for this month (Date, Active users, New users, Sessions, User engagement duration) and the charts appear here.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ================== GEOGRAPHY ================== #}
 {# GA4 country data preferred; Similarweb kept as fallback for old months. #}
 {% set geo = data.ga4_geography.data if data.ga4_geography and data.ga4_geography.data and data.ga4_geography.data.top_countries else data.similarweb_traffic.data %}

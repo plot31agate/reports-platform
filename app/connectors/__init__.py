@@ -67,10 +67,11 @@ CONNECTOR_DEFS = [
     {
         "provider": "google",
         "label": "Google — GA4 & Search Console",
-        "sources": ["ga4_export", "ga4_geography", "search_console"],
+        "sources": ["ga4_export", "ga4_geography", "ga4_daily", "search_console"],
         "requires": {
             "ga4_export": ["ga4_property_id"],
             "ga4_geography": ["ga4_property_id"],
+            "ga4_daily": ["ga4_property_id"],
             "search_console": ["gsc_site_url"],
         },
         "blurb": "One service account covers GA4 traffic, GA4 geography, and Search Console for every client. Search Console pulls straight from Google — no Ahrefs project needed; set the property below and it takes over from the Ahrefs GSC Insights route.",

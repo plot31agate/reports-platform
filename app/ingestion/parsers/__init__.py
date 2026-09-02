@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.ingestion.parsers.ahrefs import parse_ahrefs, parse_ahrefs_trends, parse_competitor_benchmark
 from app.ingestion.parsers.similarweb import parse_similarweb
-from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_geography
+from app.ingestion.parsers.ga4 import parse_ga4, parse_ga4_daily, parse_ga4_geography
 from app.ingestion.parsers.search_console import parse_search_console
 from app.ingestion.parsers.keywords import parse_core_keywords
 from app.ingestion.parsers.leads import parse_leads
@@ -34,6 +34,7 @@ PARSER_MAP = {
     "similarweb_traffic":      ("Similarweb traffic",          parse_similarweb),
     "ga4_export":              ("GA4 export",                  parse_ga4),
     "ga4_geography":           ("GA4 geography",               parse_ga4_geography),
+    "ga4_daily":               ("GA4 daily series",            parse_ga4_daily),
     "search_console":          ("Search Console",              parse_search_console),
     "core_keywords":           ("Core keywords",               parse_core_keywords),
     "leads":                   ("Leads",                       parse_leads),
@@ -52,6 +53,7 @@ SOURCE_DEFS = [
     {"key": "mentions",               "title": "Media mentions",        "purpose": "Coverage, sentiment, exec mentions",          "cols": "title, url, source, date"},
     {"key": "ga4_export",             "title": "GA4",                   "purpose": "Sessions, users, top pages",                  "cols": "sessions, users, pagePath"},
     {"key": "ga4_geography",          "title": "GA4 geography",         "purpose": "Visits by country",                           "cols": "Country, Sessions"},
+    {"key": "ga4_daily",              "title": "GA4 daily series",      "purpose": "Day-by-day trend charts vs previous month",   "cols": "Date, Active users, New users, Sessions, User engagement duration"},
     {"key": "search_console",         "title": "Search Console",        "purpose": "Clicks, impressions, CTR, position",          "cols": "query, clicks, impressions, ctr"},
     {"key": "core_keywords",          "title": "Core keywords",         "purpose": "Organic positions vs last month",             "cols": "keyword, location, volume, position, position_prev"},
     {"key": "leads",                  "title": "Leads",                 "purpose": "Enquiries / form submissions for the at-a-glance strip", "cols": "leads (or source, leads)"},
@@ -71,7 +73,7 @@ SOURCE_DEFS = [
 # in one accordion. Order inside "sources" is the display order.
 SOURCE_GROUPS = [
     {"key": "media",     "label": "Media & PR",              "sources": ["mentions"]},
-    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "core_keywords", "ga4_geography", "leads"]},
+    {"key": "traffic",   "label": "Search & site traffic",   "sources": ["ga4_export", "search_console", "core_keywords", "ga4_geography", "ga4_daily", "leads"]},
     {"key": "authority", "label": "Authority & competitors", "sources": ["ahrefs_backlinks", "ahrefs_trends", "competitor_benchmark"]},
     {"key": "social",    "label": "Social & influencers",    "sources": ["linkedin_company", "meta_social", "tiktok", "influencer_activity"]},
     {"key": "technical", "label": "Technical SEO",           "sources": ["technical_seo_metrics", "technical_seo_register"]},
@@ -137,6 +139,17 @@ def summarise_parsed(source_key: str, data) -> dict:
         if unranked:
             warnings.append(f"{unranked} keyword{'s' if unranked != 1 else ''} with no position - the site does not rank in the top 100 for {'them' if unranked != 1 else 'it'}")
         return {"status": "ok", "summary": s, "warnings": warnings, "row_count": tracked}
+
+    if source_key == "ga4_daily":
+        days = (data or {}).get("days") or []
+        if not days:
+            return {"status": "warning", "summary": "No daily rows found - needs a Date column plus Active users/Sessions",
+                    "warnings": [], "row_count": 0}
+        with_eng = sum(1 for d in days if d.get("engagement_secs") is not None)
+        s = f"{len(days)} days, {days[0]['date']} to {days[-1]['date']}"
+        if with_eng:
+            s += ", engagement included"
+        return {"status": "ok", "summary": s, "warnings": [], "row_count": len(days)}
 
     if source_key == "leads":
         total = (data or {}).get("total")

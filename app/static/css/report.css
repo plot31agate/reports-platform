@@ -214,6 +214,29 @@ a:hover { text-decoration: underline; }
 .glance-status--red { background: var(--red-bg); color: var(--red-ink); }
 .glance-status--grey { background: var(--track); color: var(--muted); }
 
+/* -------- Daily trend charts -------- */
+.trend-legend { font-size: 12px; color: var(--muted); margin-top: 16px; }
+.tl { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin: 0 6px 0 14px; border-top: 3px solid #fb0ba8; border-radius: 2px; }
+.tl:first-child { margin-left: 0; }
+.tl--prev { border-top-style: dashed; border-top-color: #8aa2b6; }
+.tl--peak { width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.trend-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  border-top: 4px solid var(--cyan); padding: 16px 18px 10px; margin-top: 14px;
+  box-shadow: 0 8px 20px rgba(14, 39, 64, 0.07);
+}
+.trend-cards > .trend-card:nth-child(3n+2) { border-top-color: var(--magenta); }
+.trend-cards > .trend-card:nth-child(3n) { border-top-color: var(--orange); }
+.trend-card__head { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }
+.trend-card__title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.trend-card__peak {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap;
+}
+.trend-card__summary { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.trend-card__chart { width: 100%; height: auto; margin-top: 8px; display: block; }
+.trend-card .cell-input--wide { width: 100%; }
+
 /* -------- Callout (data caveat) -------- */
 .callout {
   margin-top: 16px; background: var(--amber-bg);
@@ -546,6 +569,7 @@ th.rk, td.rk { width: 46px; text-align: center; }
   .section { margin: 34px 0; }
   .slabel, .section h2, .meta { page-break-after: avoid; }
   .mom, .stat, .panel, .ecard, .fitem, .callout, .bar, .trend { page-break-inside: avoid; }
+  .trend-card, .glance { page-break-inside: avoid; }
   tr { page-break-inside: avoid; }
   .grid2 { page-break-inside: avoid; }
   .navyband { page-break-before: always; page-break-inside: avoid; margin: 0; }

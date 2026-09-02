@@ -253,6 +253,7 @@ def synthesise_actions(report_data: dict, client_config: dict) -> dict:
         "core_keywords": _d("core_keywords"),
         "competitor_benchmark": _d("competitor_benchmark"),
         "traffic": _d("ga4_export"),
+        "daily_traffic": _d("ga4_daily"),
         "geography": _d("ga4_geography"),
         "search_console": _d("search_console"),
         "linkedin": _d("linkedin_company"),
@@ -327,7 +328,7 @@ Also write the report's editorial framing. This is the part the client's leaders
 - "standfirst": one or two sentences under the headline framing the month's story - the defining development and its strongest number.
 - "notes": an object of section commentaries keyed as below. ALWAYS include "intro". Include the other keys only when the summary above has data for them.
   - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month in the report's primary focus area, connect the threads (how the other areas relate to it this month), and close with where the focus goes next. This is the executive summary at the top of the report.
-  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic, including core keyword positions and what moved into or out of the top five), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
+  - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic, including core keyword positions and what moved into or out of the top five), "trends" (the day-by-day pattern from daily_traffic - name the spike days, what likely drove them, and how the shape compares to last month), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
 {glance_block}
 Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 

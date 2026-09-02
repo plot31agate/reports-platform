@@ -18,6 +18,7 @@ from app.ingestion.parsers import parse_all
 from app.reports.glance import apply_glance_overrides, build_glance, glance_tally
 from app.reports.pdf import render_pdf
 from app.reports.sections import enabled_sections
+from app.reports.trends import build_trends
 from app.sentiment import classify_mentions, synthesise_actions
 
 
@@ -211,6 +212,8 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
 
     return {
         "glance": glance,
+        "trends": (build_trends(parsed, prev_parsed, period)
+                   if "trends" in enabled_sections(client_config) else None),
         "client": client_config,
         "enabled_sections": set(enabled_sections(client_config)),
         "exec_mentions": exec_mentions,

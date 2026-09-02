@@ -88,6 +88,68 @@ def _channel_detail(df, channel_col, sessions_col, engaged_col, new_users_col, d
     return out
 
 
+def parse_ga4_daily(path: Path) -> dict:
+    """Daily GA4 series — feeds the trend charts (current vs previous month).
+
+    From the API sync (Date, Active users, New users, Sessions, User
+    engagement duration) or a GA4 UI graph export. Dates arrive as YYYYMMDD
+    from both; ISO dates from a hand-made sheet are accepted too.
+    Engagement duration is the day's TOTAL seconds; the per-day average is
+    computed here (per active user, matching the GA4 UI chart)."""
+    df = _read_ga4_csv(path, extra_cols=["Date"])
+    if df is None or df.empty:
+        return {"days": []}
+    df.columns = [c.strip() for c in df.columns]
+
+    date_col = _find_col(df, ["Date", "Nth day"])
+    users_col = _find_col(df, ["Active users", "Users", "Total users"])
+    new_col = _find_col(df, ["New users"])
+    sessions_col = _find_col(df, ["Sessions"])
+    duration_col = _find_col(df, ["User engagement duration", "Engagement duration"])
+    if not date_col or not (users_col or sessions_col):
+        return {"days": []}
+
+    days = []
+    for _, r in df.iterrows():
+        raw = str(r[date_col]).strip()
+        day = _parse_day(raw)
+        if day is None:
+            continue
+        users = _num(r.get(users_col)) if users_col else None
+        duration = _num(r.get(duration_col)) if duration_col else None
+        entry = {
+            "date": day,
+            "users": users,
+            "new_users": _num(r.get(new_col)) if new_col else None,
+            "sessions": _num(r.get(sessions_col)) if sessions_col else None,
+            "engagement_secs": round(duration / users) if (duration and users) else None,
+        }
+        days.append(entry)
+    days.sort(key=lambda d: d["date"])
+    return {"days": days}
+
+
+def _parse_day(raw: str):
+    """'20260418' / '2026-04-18' / '18/04/2026' -> ISO date string."""
+    from datetime import datetime
+    raw = raw.split(" ")[0]
+    for fmt in ("%Y%m%d", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _num(v):
+    try:
+        if v is None or str(v).strip() in ("", "nan"):
+            return None
+        return float(str(v).replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_ga4_geography(path: Path) -> dict:
     """Sessions by country — from the API sync or a GA4 UI countries export.
 
@@ -120,7 +182,7 @@ def parse_ga4_geography(path: Path) -> dict:
     }
 
 
-def _read_ga4_csv(path: Path):
+def _read_ga4_csv(path: Path, extra_cols: list = None):
     """Try reading GA4 CSV with various skip-row counts."""
     for skip in [0, 6, 7, 8, 9, 10]:
         try:
@@ -132,7 +194,7 @@ def _read_ga4_csv(path: Path):
                 "First user primary channel group (Default Channel Group)",
                 "Page title and screen class",
                 "Country",
-            ]):
+            ] + (extra_cols or [])):
                 return df
         except Exception:
             continue

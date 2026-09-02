@@ -161,6 +161,20 @@ def sync(config, source_key, dest, period):
         write_ga4_csv(rows, dest)
         return len(rows)
 
+    if source_key == "ga4_daily":
+        prop = (config.get("ga4_property_id") or "").strip()
+        if not prop:
+            raise ConnectorError("No GA4 property ID saved")
+        data = _ga4_report(
+            session, prop, start, end,
+            ["date"],
+            ["activeUsers", "newUsers", "sessions", "userEngagementDuration"],
+            limit=400,
+        )
+        rows = data.get("rows") or []
+        write_daily_csv(rows, dest)
+        return len(rows)
+
     if source_key == "ga4_geography":
         prop = (config.get("ga4_property_id") or "").strip()
         if not prop:
@@ -226,6 +240,22 @@ def write_ga4_csv(rows, dest):
         channel = dims[0].get("value", "") if dims else ""
         vals = [m.get("value", "0") for m in mets] + ["0"] * 5
         out.append([channel, vals[0], vals[1], vals[2], vals[3], vals[4]])
+    write_csv(dest, header, out)
+
+
+def write_daily_csv(rows, dest):
+    """GA4 date rows -> CSV for parse_ga4_daily. Dates come back YYYYMMDD;
+    the parser accepts that as-is. Rows are sorted by date because the API
+    returns them by metric volume."""
+    header = ["Date", "Active users", "New users", "Sessions", "User engagement duration"]
+    out = []
+    for r in rows:
+        dims = r.get("dimensionValues") or []
+        mets = r.get("metricValues") or []
+        day = dims[0].get("value", "") if dims else ""
+        vals = [m.get("value", "0") for m in mets] + ["0"] * 4
+        out.append([day, vals[0], vals[1], vals[2], vals[3]])
+    out.sort(key=lambda row: row[0])
     write_csv(dest, header, out)
 
 
