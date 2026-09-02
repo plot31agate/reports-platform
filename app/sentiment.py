@@ -305,6 +305,16 @@ This holds even when another area has the month's most dramatic numbers. A big c
 
 {focus_block}
 
+Voice and tone - this report is written by the client's agency, in the agency's voice, to the client's leadership. It presents OUR work on THEIR brand, so it reads like a trusted partner walking them through the month, never like a critic reviewing someone else's numbers:
+
+- Warm, confident and constructive throughout. The default register is "here's where we are and here's what we're doing", not "here's what went wrong".
+- Honest about declines, never gloomy or wry about them: state the number plainly, name the likely driver, and point at what happens next. A drop is a finding with a plan attached, not a verdict.
+- Never sarcastic, ironic or deadpan. No faint praise ("a rare bright spot", "at least engagement held"), no melodrama ("collapsed", "plummeted", "dismal", "worrying decline"), no rhetorical shrugs. Use plain movement words: rose, fell, eased, held, dropped 12%.
+- Give wins their full weight. When the month has genuine wins, let them sound like wins - understating them reads as sourness.
+- Blame nothing and no one. Never imply the client, their site, their content or past work is at fault; frame gaps as the next opportunity to work on together.
+
+This tone holds everywhere - headline, standfirst, every note, every action, every watch item - and it holds even in a flat or difficult month. A hard month written well sounds steady and in-hand, not bleak.
+
 The month's data summary:
 
 {summary}
@@ -320,7 +330,7 @@ Each item has two parts:
 
 Also give a read on the month:
 - "worked": three to five bullets on what worked, each a single string of one or two sentences naming the specific result and the numbers behind it
-- "watch": two to four bullets on what to watch, each a single string of one or two sentences flagging a soft spot, risk or caveat in the data
+- "watch": two to four bullets on what to watch, each a single string of one or two sentences naming a soft spot, risk or caveat in the data - phrased as something we are keeping an eye on and how, not as a warning
 
 Also write the report's editorial framing. This is the part the client's leadership actually reads: it must tell the story of the month, not recite numbers. Every piece should say what happened, what drove it, and what it means for the client - the numbers support the sentence, they never lead it.
 
@@ -330,7 +340,7 @@ Also write the report's editorial framing. This is the part the client's leaders
   - "intro": the overriding commentary, three to four sentences. Open with the single defining development of the month in the report's primary focus area, connect the threads (how the other areas relate to it this month), and close with where the focus goes next. This is the executive summary at the top of the report.
   - "media" (coverage), "sentiment", "sov" (competitor share of voice), "execs" (executives in coverage), "traffic" (search and site traffic, including core keyword positions and what moved into or out of the top five), "trends" (the day-by-day pattern from daily_traffic - name the spike days, what likely drove them, and how the shape compares to last month), "campaigns" (visitor geography), "backlinks" (domain authority and links), "linkedin", "social" (Facebook and Instagram), "tiktok", "influencers" (creator partnerships), "technical_seo": one or two sentences each that continue the month's story through that lens - what happened in this area, what drove it, and what it means. Name the specific outlets, queries, countries or numbers that matter.
 {glance_block}
-Punchy, no fluff, no generic advice. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
+Specific, concise, no fluff, no generic advice - and always in the voice described above. Use plain hyphens and commas for punctuation, never em dashes. Return as JSON:
 
 {{"headline":"...","standfirst":"...","notes":{{"intro":"...","media":"..."}},"lean_into":[{{"action":"...","why":"..."}}],"investigate":[{{"action":"...","why":"..."}}],"fix_urgently":{{"action":"...","why":"..."}},"worked":["..."],"watch":["..."]{glance_schema}}}"""
 
