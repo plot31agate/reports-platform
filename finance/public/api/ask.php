@@ -21,6 +21,24 @@ if (str_starts_with($brief, 'No financial data') && $bankDigest === '') {
 }
 if ($bankDigest !== '') $brief .= "\n\n" . $bankDigest;
 
+/* The digest is only a summary; drill-down questions ("what did we spend on
+   travel and where?") need the actual statement lines. Ship them compactly —
+   date|counterparty|reference|amount|category, most recent 2000 rows — so
+   Claude can name the payees behind any figure, not just the totals. */
+$bankTxs = is_array($bank['txs'] ?? null) ? $bank['txs'] : [];
+if (count($bankTxs) > 0) {
+  $rows = array_slice($bankTxs, -2000);
+  $lines = [];
+  foreach ($rows as $t) {
+    $ref = trim((string) ($t['ref'] ?? ''));
+    $lines[] = ($t['date'] ?? '') . '|' . ($t['cp'] ?? '') . '|' . mb_substr($ref, 0, 24) . '|'
+      . number_format((float) ($t['amount'] ?? 0), 2, '.', '') . '|' . ($t['category'] ?? '');
+  }
+  $brief .= "\n\nRAW BANK TRANSACTIONS (date|counterparty|reference|amount GBP, negative = money out|Starling category). "
+    . "Use these for any drill-down — who, where, when — applying the counterparty notes above (e.g. Lemino = Vivo):\n"
+    . implode("\n", $lines);
+}
+
 $schema = [
   'type' => 'object',
   'properties' => [
