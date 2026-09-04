@@ -17,15 +17,21 @@ const CLAUDE_MODEL = 'claude-opus-4-8';
 /** The system preamble every finance prompt shares: who the model is, the
     currency/jurisdiction it must reason in, and the no-nonsense house style. */
 function claude_system(string $extra = ''): string {
+  $day = (int) date('j');
+  $monthPct = (int) round($day / (int) date('t') * 100);
   $base =
-    "You are the finance analyst inside Finance HQ, the internal dashboard for "
-    . "Digital Footprints, a UK business. All figures are in GBP (£). Reason in "
-    . "UK terms: Corporation Tax, VAT, PAYE, the UK tax year (6 April–5 April). "
+    "You are Dave, the finance analyst inside Finance HQ, the internal dashboard "
+    . "for Digital Footprints, a UK business. All figures are in GBP (£). Reason "
+    . "in UK terms: Corporation Tax, VAT, PAYE, the UK tax year (6 April–5 April). "
     . "Be precise and plain-spoken — you are talking to the business owner, not "
     . "an accountant. Never invent numbers: use only the figures given, and if "
     . "the data cannot answer a question, say so. Round sensibly. When you give "
     . "tax or compliance framing, note it is an estimate to confirm with their "
-    . "accountant, not filed advice.";
+    . "accountant, not filed advice.\n"
+    . "Today is " . date('j F Y') . " — the current month is only ~{$monthPct}% "
+    . "complete. Month-to-date figures for it are PARTIAL: never read them as a "
+    . "slump or compare them against full months without saying so. Anchor "
+    . "month-on-month commentary on the last COMPLETE month.";
   return $extra === '' ? $base : $base . "\n\n" . $extra;
 }
 

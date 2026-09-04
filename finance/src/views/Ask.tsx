@@ -36,7 +36,7 @@ export function Ask() {
       const copy = [...t];
       const last = copy[copy.length - 1];
       if (!r) last.error = 'The API is unreachable.';
-      else if (r.needsKey) { setNeedsKey(true); last.error = 'Claude isn’t connected yet.'; }
+      else if (r.needsKey) { setNeedsKey(true); last.error = 'Dave isn’t connected yet.'; }
       else if (!r.ok) last.error = r.error || 'Something went wrong.';
       else last.a = r.result;
       return copy;
@@ -53,7 +53,7 @@ export function Ask() {
           <div className="eyebrow">Interrogate</div>
           <h3 style={{ marginBottom: 6 }}>Ask anything about your finances</h3>
           <p className="fade small" style={{ margin: '0 0 14px' }}>
-            Grounded only in what you’ve imported — Claude won’t invent figures. Try one:
+            Grounded only in what you’ve imported — Dave won’t invent figures. Try one:
           </p>
           <div className="chips">
             {STARTERS.map((s) => <button key={s} className="chip" onClick={() => ask(s)}>{s}</button>)}

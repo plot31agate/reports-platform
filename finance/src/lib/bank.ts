@@ -221,7 +221,7 @@ export interface ClientRow {
   status: 'ontrack' | 'late' | 'quiet' | 'oneoff';
 }
 
-function median(ns: number[]): number {
+export function median(ns: number[]): number {
   if (ns.length === 0) return 0;
   const s = [...ns].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
@@ -633,6 +633,9 @@ export function buildDigest(txs: Enriched[], extras?: BankExtras): string {
   const subs = subscriptions(txs);
   const lines: string[] = [];
   lines.push(`BANK ACCOUNT (Starling), ${txs[0].date} to ${asOf}. Balance now ${fm(txs[txs.length - 1].balance)}.`);
+  const asOfDay = Number(asOf.slice(8, 10));
+  const daysInMonth = new Date(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)), 0).getDate();
+  lines.push(`NOTE: the statement ends on day ${asOfDay} of ${daysInMonth} — the current month (${asOf.slice(0, 7)}) is only ~${Math.round((asOfDay / daysInMonth) * 100)}% complete, so its figures are partial, not a slump. Compare complete months only.`);
   lines.push('Monthly client revenue in / total out / net: ' + flows.map((f) => `${f.key}: ${fm(f.in)}/${fm(f.out)}/${f.net < 0 ? '-' : ''}${fm(f.net)}`).join('; '));
   lines.push('Top clients (paid this year, typical month, last paid, status): ' + rows.slice(0, 10)
     .map((r) => `${r.entity} ${fm(r.total)} (${fm(r.medianMonthly)}/mo, last ${r.lastPaid}, ${r.status})`).join('; '));

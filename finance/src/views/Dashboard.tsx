@@ -7,13 +7,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { FinanceModel, Space, SpaceKind } from '../lib/api';
-import { money, moneyShort, delta, pctLabel } from '../lib/finance';
+import { money, delta, pctLabel } from '../lib/finance';
 import { useBank } from '../lib/useBank';
 import {
-  monthlyFlows, clientRows, spendGroups, loans, computeQuestions, buildDigest,
+  monthlyFlows, clientRows, spendGroups, loans, computeQuestions, buildDigest, median,
 } from '../lib/bank';
 import type { Enriched, BankExtras } from '../lib/bank';
-import { Stat, IncomeCostChart, SpendBars, Working, OfflineNote, Empty, toast } from '../components/ui';
+import { DeltaChip, IncomeCostChart, SpendBars, Working, OfflineNote, Empty, toast } from '../components/ui';
 import type { MonthPoint } from '../components/ui';
 
 function monthLabel(key: string): string {
@@ -34,55 +34,84 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
 
   return (
     <>
-      <BankHeadlines txs={txs} spaces={bank.spaces} />
-      <div className="grid g2" style={{ alignItems: 'start', marginBottom: 16 }}>
+      <Hero txs={txs} spaces={bank.spaces} />
+      <QuestionsCard txs={txs} extras={extras} onSaved={bank.refresh} go={go} />
+      <div className="grid g2" style={{ alignItems: 'start', margin: '16px 0' }}>
         <div className="card">
           <div className="eyebrow">Cash flow · actuals</div>
           <h3 style={{ marginBottom: 14 }}>Money in vs out, by month</h3>
           <FlowChart txs={txs} />
         </div>
-        <QuestionsCard txs={txs} extras={extras} onSaved={bank.refresh} go={go} />
-      </div>
-      <div className="grid g2" style={{ alignItems: 'start', marginBottom: 16 }}>
         <WatchlistCard txs={txs} go={go} />
-        <SpendGroupsCard txs={txs} go={go} />
       </div>
       <div className="grid g2" style={{ alignItems: 'start', marginBottom: 16 }}>
+        <SpendGroupsCard txs={txs} go={go} />
         <SpacesCard txs={txs} spaces={bank.spaces} events={bank.events} onSaved={bank.refresh} />
-        {model && model.meta.count > 0 ? <XeroStrip model={model} go={go} /> : <div />}
       </div>
+      {model && model.meta.count > 0 && <XeroStrip model={model} go={go} />}
     </>
   );
 }
 
-/* ---- KPI row from the bank data ---- */
-function BankHeadlines({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
+/* ---- The hero: one number that matters, everything else subordinate ----
+   Position today (cash + ring-fenced), a start-of-month-aware pace line so a
+   young month never reads as a slump, and the three numbers that explain the
+   position — last complete month's revenue (vs the 3-month norm, not vs one
+   spiky month), net per month, and debt service. */
+function Hero({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
   const flows = monthlyFlows(txs);
   const asOf = txs[txs.length - 1].date;
   const asOfMonth = asOf.slice(0, 7);
   const complete = flows.filter((f) => f.key !== asOfMonth);
   const latest = complete[complete.length - 1];
-  const prev = complete[complete.length - 2];
   const recent = complete.slice(-3);
+  const normIn = median(complete.map((f) => f.in));
   const avgNet = recent.length ? recent.reduce((s, f) => s + f.net, 0) / recent.length : 0;
   const ls = loans(txs);
   const debtMonthly = ls.reduce((s, l) => s + l.recentMonthly, 0);
   const cash = txs[txs.length - 1].balance;
-
   const ringFenced = spaces.reduce((s, x) => s + x.balance, 0);
 
+  // Month pace: day N of M plus month-to-date money in, framed as partial.
+  const day = Number(asOf.slice(8, 10));
+  const daysInMonth = new Date(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)), 0).getDate();
+  const pct = Math.round((day / daysInMonth) * 100);
+  const mtd = flows.find((f) => f.key === asOfMonth);
+  const monthName = new Date(asOf).toLocaleDateString('en-GB', { month: 'long' });
+
+  const dRev = latest ? delta(latest.in, normIn) : null;
+
   return (
-    <div className="grid g4" style={{ marginBottom: 16 }}>
-      <Stat n={money(cash)} label={`Cash in bank · ${asOf}`}
-        note={ringFenced > 0
-          ? `+ ${moneyShort(ringFenced)} ring-fenced in Spaces`
-          : (avgNet < 0 ? `~${(cash / -avgNet).toFixed(1)} mo at current burn` : 'cash-positive on average')} />
-      <Stat n={latest ? money(latest.in) : '—'} label={`Client revenue · ${latest ? monthLabel(latest.key) : ''}`}
-        delta={latest && prev ? { d: delta(latest.in, prev.in), label: pctLabel(delta(latest.in, prev.in)), good: latest.in >= prev.in } : undefined} />
-      <Stat n={money(avgNet)} neg={avgNet < 0} label="Net cash / month · 3-mo avg"
-        note={recent.length ? recent.map((f) => moneyShort(f.net)).join(' · ') : undefined} />
-      <Stat n={money(debtMonthly)} label="Debt service / month"
-        note={latest && latest.out > 0 ? `${Math.round((debtMonthly / (recent.reduce((s, f) => s + f.out, 0) / Math.max(1, recent.length))) * 100)}% of spending` : undefined} />
+    <div className="card hero" style={{ marginBottom: 16 }}>
+      <div className="hero-main">
+        <div>
+          <div className="eyebrow">Position · {asOf}</div>
+          <div className="hero-n">{money(cash + ringFenced)}</div>
+          <div className="small fade" style={{ marginTop: 4 }}>
+            {money(cash)} in the bank{ringFenced > 0 ? <> + {money(ringFenced)} ring-fenced in Spaces</> : null}
+          </div>
+        </div>
+        <div className="hero-kpis">
+          <div className="hk">
+            <div className="hk-n money">{latest ? money(latest.in) : '—'}</div>
+            <div className="hk-l">revenue · {latest ? monthLabel(latest.key) : ''}</div>
+            {dRev && <DeltaChip d={dRev} label={`${pctLabel(dRev)} vs monthly norm`} good={dRev.abs >= 0} />}
+          </div>
+          <div className="hk">
+            <div className={`hk-n money${avgNet < 0 ? ' neg' : ''}`}>{money(avgNet)}</div>
+            <div className="hk-l">net / month · 3-mo avg</div>
+          </div>
+          <div className="hk">
+            <div className="hk-n money">{money(debtMonthly)}</div>
+            <div className="hk-l">debt service / month</div>
+          </div>
+        </div>
+      </div>
+      <div className="pace">
+        Day {day} of {daysInMonth} — {monthName} is only {pct}% done. {money(mtd?.in ?? 0)} in so far
+        against a normal {money(normIn)} full month; too early to read, so the figures above anchor
+        on {latest ? monthLabel(latest.key) : 'the last complete month'}.
+      </div>
     </div>
   );
 }
@@ -97,7 +126,7 @@ function FlowChart({ txs }: { txs: Enriched[] }) {
 
 /* ---- The questions the data raises — end to end ----
    A question isn't the deliverable; the decision is. Each one can be
-   interrogated right here (Claude, grounded in the imported figures) and then
+   interrogated right here (Dave, grounded in the imported figures) and then
    answered — the answer files into a decisions log that persists, silences
    the question, and feeds the Ask digest as ground truth. */
 function QuestionsCard({ txs, extras, onSaved, go }: {
@@ -119,11 +148,11 @@ function QuestionsCard({ txs, extras, onSaved, go }: {
     setWriting(false); setDraft(''); setAiAnswer(null);
   }
 
-  async function askClaude(q: { key: string; q: string; why: string }) {
+  async function askDave(q: { key: string; q: string; why: string }) {
     setAskBusy(true); setAiAnswer(null);
     const r = await api.ask(`${q.q}\nContext behind the question: ${q.why}\nGive a concrete recommended next action.`);
     setAskBusy(false);
-    if (!r?.ok || !r.result) { toast(r?.error || 'Claude isn’t reachable — is the API key on the server?'); return; }
+    if (!r?.ok || !r.result) { toast(r?.error || 'Dave isn’t reachable — is the API key on the server?'); return; }
     setAiAnswer({ key: q.key, text: r.result.answer, figures: r.result.figures ?? [] });
   }
 
@@ -133,7 +162,7 @@ function QuestionsCard({ txs, extras, onSaved, go }: {
     const r = await api.bankAnswer(q.key, q.q, t);
     if (!r?.ok) { toast('Could not save'); return; }
     await api.bankDigest(buildDigest(txs, { ...extras, answers: r.answers }));
-    toast('Filed — Claude will treat this as ground truth');
+    toast('Filed — Dave will treat this as ground truth');
     setWriting(false); setDraft(''); setAiAnswer(null);
     onSaved();
   }
@@ -161,7 +190,7 @@ function QuestionsCard({ txs, extras, onSaved, go }: {
                   {q.why}
                   {aiAnswer?.key === q.key && (
                     <div className="qai">
-                      <div className="eyebrow" style={{ marginBottom: 6 }}>Claude · from your figures</div>
+                      <div className="eyebrow" style={{ marginBottom: 6 }}>Dave · from your figures</div>
                       {aiAnswer.text}
                       {aiAnswer.figures.length > 0 && (
                         <div className="row" style={{ gap: 14, flexWrap: 'wrap', marginTop: 8 }}>
@@ -184,8 +213,8 @@ function QuestionsCard({ txs, extras, onSaved, go }: {
                     </div>
                   ) : (
                     <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                      <button className="btn ghost sm" disabled={askBusy} onClick={() => askClaude(q)}>
-                        {askBusy ? 'Asking…' : 'Ask Claude'}
+                      <button className="btn ghost sm" disabled={askBusy} onClick={() => askDave(q)}>
+                        {askBusy ? 'Asking…' : 'Ask Dave'}
                       </button>
                       <button className="btn ghost sm" onClick={() => { setWriting(true); setDraft(aiAnswer?.key === q.key ? aiAnswer.text : ''); }}>
                         {aiAnswer?.key === q.key ? 'File this as the decision' : 'Answer & file'}

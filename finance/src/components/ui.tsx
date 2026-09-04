@@ -72,9 +72,9 @@ export function Working({ label }: { label?: string }) {
 export function NeedsKey() {
   return (
     <div className="card accent">
-      <div className="eyebrow">Claude isn’t connected yet</div>
+      <div className="eyebrow">Dave isn’t connected yet</div>
       <p style={{ margin: '10px 0 0', maxWidth: 560 }}>
-        The AI features (Ask the data, scenario planning) need the Anthropic API key
+        Dave — the AI analyst behind Ask the data and scenario planning — needs the Anthropic API key
         installed on the server. Copy <code>api/claude-config.example.php</code> to
         <code>api/claude-config.php</code> and add the key from platform.claude.com.
         Everything else in Finance HQ works without it.
@@ -89,7 +89,7 @@ export function OfflineNote() {
       <div className="eyebrow">No connection</div>
       <p className="small fade" style={{ margin: '8px 0 0' }}>
         The Finance HQ API is not reachable here. Live data (imported figures,
-        budgets, Claude answers) connects once deployed to the server, or in dev
+        budgets, Dave’s answers) connects once deployed to the server, or in dev
         with the PHP server running behind the Vite proxy.
       </p>
     </div>
