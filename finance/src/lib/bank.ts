@@ -267,6 +267,60 @@ export function clientRows(txs: Enriched[]): { rows: ClientRow[]; asOf: string }
   return { rows, asOf };
 }
 
+/* ---- Expected this month ----
+   Nothing "moves" from Pipeline into revenue automatically — money is only
+   revenue when it lands. But regular payers have known rhythms, so the current
+   month CAN be projected: each monthly-cadence client is expected at their
+   typical month, netted against what they've already paid this month. The
+   Money in view layers won pipeline work on top of these rows. */
+
+export interface ExpectedRow {
+  entity: string;
+  expected: number;       // typical month for this client
+  received: number;       // paid so far this month
+  due: number;            // max(0, expected - received)
+  status: 'paid' | 'partial' | 'due';
+  source: 'regular' | 'pipeline';
+}
+
+export interface ExpectedMonth {
+  monthKey: string;
+  rows: ExpectedRow[];
+  expected: number; received: number; due: number;
+  /** money in this month from NON-regular clients (one-offs, irregulars) */
+  otherReceived: number;
+}
+
+export function expectedThisMonth(txs: Enriched[]): ExpectedMonth {
+  const monthKey = txs.length ? txs[txs.length - 1].date.slice(0, 7) : '';
+  const { rows: clients } = clientRows(txs);
+  const rows: ExpectedRow[] = [];
+  let otherReceived = 0;
+  for (const c of clients) {
+    const received = c.months[monthKey] ?? 0;
+    if (c.cadence !== 'monthly' || c.status === 'quiet') {
+      // Gone-quiet retainers aren't "expected" — they're a question, not a plan.
+      otherReceived += received;
+      continue;
+    }
+    const expected = c.medianMonthly;
+    const due = Math.max(0, expected - received);
+    rows.push({
+      entity: c.entity, expected, received, due,
+      status: received >= expected * 0.8 ? 'paid' : received > 0 ? 'partial' : 'due',
+      source: 'regular',
+    });
+  }
+  rows.sort((a, b) => b.expected - a.expected);
+  return {
+    monthKey, rows,
+    expected: rows.reduce((s, r) => s + r.expected, 0),
+    received: rows.reduce((s, r) => s + r.received, 0),
+    due: rows.reduce((s, r) => s + r.due, 0),
+    otherReceived,
+  };
+}
+
 export interface GroupRow { group: string; total: number; monthly: Record<string, number>; }
 
 export function spendGroups(txs: Enriched[]): GroupRow[] {
@@ -639,6 +693,11 @@ export function buildDigest(txs: Enriched[], extras?: BankExtras): string {
   lines.push('Monthly client revenue in / total out / net: ' + flows.map((f) => `${f.key}: ${fm(f.in)}/${fm(f.out)}/${f.net < 0 ? '-' : ''}${fm(f.net)}`).join('; '));
   lines.push('Top clients (paid this year, typical month, last paid, status): ' + rows.slice(0, 10)
     .map((r) => `${r.entity} ${fm(r.total)} (${fm(r.medianMonthly)}/mo, last ${r.lastPaid}, ${r.status})`).join('; '));
+  const exp = expectedThisMonth(txs);
+  if (exp.rows.length > 0) {
+    lines.push(`Expected from regular payers in ${exp.monthKey}: ${fm(exp.expected)} total — ${fm(exp.received)} already in, ${fm(exp.due)} still to come (` +
+      exp.rows.filter((r) => r.due > 0).slice(0, 8).map((r) => `${r.entity} ${fm(r.due)}`).join(', ') + ').');
+  }
   lines.push('Spending by group: ' + groups.map((g) => `${g.group} ${fm(g.total)}`).join('; '));
   lines.push('Loans: ' + (ls.length ? ls.map((l) => `${l.entity} paid ${fm(l.paidTotal)}${l.drawnTotal ? `, drawn ${fm(l.drawnTotal)}` : ''}, ~${fm(l.recentMonthly)}/mo`).join('; ') : 'none identified'));
   lines.push(`Subscriptions: ~${fm(subs.monthlyTotal)}/month across ${subs.rows.length} services.`);

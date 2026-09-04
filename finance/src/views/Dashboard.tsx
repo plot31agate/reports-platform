@@ -10,7 +10,7 @@ import type { FinanceModel, Space, SpaceKind } from '../lib/api';
 import { money, delta, pctLabel } from '../lib/finance';
 import { useBank } from '../lib/useBank';
 import {
-  monthlyFlows, clientRows, spendGroups, loans, computeQuestions, buildDigest, median,
+  monthlyFlows, clientRows, spendGroups, loans, computeQuestions, buildDigest, median, expectedThisMonth,
 } from '../lib/bank';
 import type { Enriched, BankExtras } from '../lib/bank';
 import { DeltaChip, IncomeCostChart, SpendBars, Working, OfflineNote, Empty, toast } from '../components/ui';
@@ -109,7 +109,8 @@ function Hero({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
       </div>
       <div className="pace">
         Day {day} of {daysInMonth} — {monthName} is only {pct}% done. {money(mtd?.in ?? 0)} in so far
-        against a normal {money(normIn)} full month; too early to read, so the figures above anchor
+        against a normal {money(normIn)} full month, with {money(expectedThisMonth(txs).due)} still
+        expected from regular payers — so the figures above anchor
         on {latest ? monthLabel(latest.key) : 'the last complete month'}.
       </div>
     </div>
