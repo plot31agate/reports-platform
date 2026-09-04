@@ -124,11 +124,16 @@ export interface CashflowData {
 }
 
 /* ---- Bank statement (bank.php) ---- */
-import type { BankTx } from './bank';
+import type { BankTx, BizEvent, QAnswer } from './bank';
 export interface LoanMeta { balance: number; apr: number; note: string; }
+export type SpaceKind = 'vat' | 'tax' | 'savings' | 'other';
+export interface Space { name: string; kind: SpaceKind; balance: number; }
 export interface BankData {
   ok: boolean; txs: BankTx[]; importedAt: number; digest: string;
   loanMeta: Record<string, LoanMeta>;
+  spaces: Space[];
+  events: BizEvent[];
+  answers: Record<string, QAnswer>;
 }
 export interface BankImportResult {
   ok: boolean; error?: string;
@@ -223,6 +228,12 @@ export const api = {
   bankDigest: (digest: string) => post<{ ok: boolean }>('bank.php', { action: 'digest', digest }),
   bankLoans: (loanMeta: Record<string, LoanMeta>) =>
     post<{ ok: boolean; loanMeta: Record<string, LoanMeta> }>('bank.php', { action: 'loans', loanMeta }),
+  bankSpaces: (spaces: Space[]) =>
+    post<{ ok: boolean; spaces: Space[] }>('bank.php', { action: 'spaces', spaces }),
+  bankEvents: (events: BizEvent[]) =>
+    post<{ ok: boolean; events: BizEvent[] }>('bank.php', { action: 'events', events }),
+  bankAnswer: (key: string, question: string, answer: string) =>
+    post<{ ok: boolean; answers: Record<string, QAnswer> }>('bank.php', { action: 'answer', key, question, answer }),
   bankReset: () => post<{ ok: boolean }>('bank.php', { action: 'reset' }),
 
   // Board reports

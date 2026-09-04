@@ -19,13 +19,17 @@ function bank_store(): array {
   if (!isset($s['txs']) || !is_array($s['txs'])) $s['txs'] = [];
   if (!isset($s['digest'])) $s['digest'] = '';
   if (!isset($s['loanMeta']) || !is_array($s['loanMeta'])) $s['loanMeta'] = [];
+  if (!isset($s['spaces']) || !is_array($s['spaces'])) $s['spaces'] = [];
+  if (!isset($s['events']) || !is_array($s['events'])) $s['events'] = [];
+  if (!isset($s['answers']) || !is_array($s['answers'])) $s['answers'] = [];
   return $s;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $s = bank_store();
   respond(['ok' => true, 'txs' => $s['txs'], 'importedAt' => $s['importedAt'] ?? 0,
-    'digest' => $s['digest'], 'loanMeta' => (object) $s['loanMeta']]);
+    'digest' => $s['digest'], 'loanMeta' => (object) $s['loanMeta'],
+    'spaces' => $s['spaces'], 'events' => $s['events'], 'answers' => (object) $s['answers']]);
 }
 
 $b = body_json();
@@ -104,6 +108,84 @@ switch ($b['action'] ?? '') {
     $s['loanMeta'] = $clean;
     store_write('bank', $s);
     respond(['ok' => true, 'loanMeta' => $clean]);
+  }
+
+  case 'spaces': {
+    // Starling Spaces don't export statements, so ring-fenced money (the VAT
+    // pot) is invisible to the imported statement. These are owner-entered:
+    // name, what the money is for, and the balance today.
+    $spaces = $b['spaces'] ?? null;
+    if (!is_array($spaces)) fail('spaces must be a list');
+    $clean = [];
+    foreach (array_slice($spaces, 0, 30) as $sp) {
+      if (!is_array($sp)) continue;
+      $name = mb_substr(trim((string) ($sp['name'] ?? '')), 0, 80);
+      if ($name === '') continue;
+      $kind = (string) ($sp['kind'] ?? 'other');
+      $clean[] = [
+        'name' => $name,
+        'kind' => in_array($kind, ['vat', 'tax', 'savings', 'other'], true) ? $kind : 'other',
+        'balance' => max(0, (float) ($sp['balance'] ?? 0)),
+      ];
+    }
+    $s['spaces'] = $clean;
+    $s['spacesUpdatedAt'] = time();
+    store_write('bank', $s);
+    respond(['ok' => true, 'spaces' => $clean]);
+  }
+
+  case 'events': {
+    // Conference / event activity: planned spend with line items and an
+    // optional client contribution. Replaces the whole list on each save.
+    $events = $b['events'] ?? null;
+    if (!is_array($events)) fail('events must be a list');
+    $clean = [];
+    foreach (array_slice($events, 0, 50) as $e) {
+      if (!is_array($e)) continue;
+      $name = mb_substr(trim((string) ($e['name'] ?? '')), 0, 120);
+      if ($name === '') continue;
+      $items = [];
+      foreach (array_slice(is_array($e['items'] ?? null) ? $e['items'] : [], 0, 30) as $it) {
+        if (!is_array($it)) continue;
+        $lbl = mb_substr(trim((string) ($it['label'] ?? '')), 0, 80);
+        if ($lbl === '') continue;
+        $items[] = ['label' => $lbl, 'amount' => max(0, (float) ($it['amount'] ?? 0))];
+      }
+      $dateOk = fn($v) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $v) ? (string) $v : '';
+      $clean[] = [
+        'id' => preg_match('/^[a-f0-9]{6,}$/', (string) ($e['id'] ?? '')) ? (string) $e['id'] : bin2hex(random_bytes(6)),
+        'name' => $name,
+        'location' => mb_substr(trim((string) ($e['location'] ?? '')), 0, 80),
+        'start' => $dateOk($e['start'] ?? ''),
+        'end' => $dateOk($e['end'] ?? ''),
+        'client' => mb_substr(trim((string) ($e['client'] ?? '')), 0, 80),
+        'clientContribution' => max(0, (float) ($e['clientContribution'] ?? 0)),
+        'items' => $items,
+      ];
+    }
+    $s['events'] = $clean;
+    store_write('bank', $s);
+    respond(['ok' => true, 'events' => $clean]);
+  }
+
+  case 'answer': {
+    // File (or clear) the owner's answer to a raised question. The key is the
+    // question's stable id from lib/bank.ts, so the decision survives
+    // recomputes and feeds the Ask digest as ground truth.
+    $key = mb_substr(trim((string) ($b['key'] ?? '')), 0, 160);
+    if ($key === '') fail('key required');
+    $answer = mb_substr(trim((string) ($b['answer'] ?? '')), 0, 2000);
+    if ($answer === '') {
+      unset($s['answers'][$key]);
+    } else {
+      $s['answers'][$key] = [
+        'question' => mb_substr(trim((string) ($b['question'] ?? '')), 0, 400),
+        'answer' => $answer,
+        'savedAt' => time(),
+      ];
+    }
+    store_write('bank', $s);
+    respond(['ok' => true, 'answers' => (object) $s['answers']]);
   }
 
   case 'reset': {

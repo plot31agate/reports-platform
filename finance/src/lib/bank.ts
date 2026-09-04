@@ -295,11 +295,23 @@ export function topSuppliers(txs: Enriched[], limit = 20): SupplierRow[] {
   return [...map.values()].sort((a, b) => b.total - a.total).slice(0, limit);
 }
 
-export interface SubRow { entity: string; charges: number; total: number; avgMonthly: number; lastSeen: string; }
+export interface SubRow {
+  entity: string; charges: number; total: number; avgMonthly: number; lastSeen: string;
+  /** Estimated ex-VAT monthly cost: UK-billing suppliers assumed to include
+      20% VAT (reclaimable if VAT-registered); overseas reverse-charge
+      suppliers already bill without UK VAT. An estimate, not an invoice. */
+  exVatMonthly: number;
+  ukVat: boolean;
+  action: string;
+}
+
+/** Overseas SaaS that bills under reverse charge — no UK VAT in the price. */
+const NO_UK_VAT = /anthropic|ahrefs|cloud linux|zapier|riversidefm|tubebuddy|fastspring|freemius|trustindex|twilio|amazon web services|google|soho66|speedydot/i;
+export function billsUkVat(entity: string): boolean { return !NO_UK_VAT.test(entity); }
 
 /** Recurring subscriptions: card-subscription charges plus any supplier hit in
     3+ distinct months with a steady small ticket. */
-export function subscriptions(txs: Enriched[]): { rows: SubRow[]; monthlyTotal: number } {
+export function subscriptions(txs: Enriched[]): { rows: SubRow[]; monthlyTotal: number; exVatMonthlyTotal: number } {
   const cand = new Map<string, Enriched[]>();
   for (const t of txs) {
     if (t.amount >= 0) continue;
@@ -314,14 +326,56 @@ export function subscriptions(txs: Enriched[]): { rows: SubRow[]; monthlyTotal: 
     const isCardSub = list.some((t) => t.type.toUpperCase() === 'CARD SUBSCRIPTION');
     if (!isCardSub && monthsHit < 3) continue;
     const total = list.reduce((s, t) => s + -t.amount, 0);
+    const charges = list.length;
+    const avgMonthly = total / monthSpan;
+    const ukVat = billsUkVat(entity);
+    const usageBased = /anthropic|amazon web services|twilio|google|apple app store/i.test(entity);
+    const action =
+      usageBased
+        ? 'Usage-based billing — set a monthly budget cap with the provider'
+        : charges >= monthSpan * 1.5 && charges >= 10
+        ? `Consolidate — ${charges} separate charges this year; audit for duplicate renewals`
+        : charges <= 2 && total >= 100
+          ? 'Annual renewal — cancel auto-renew now unless it earned its keep'
+          : avgMonthly < 15
+            ? 'Small & steady — kill it if nobody used it this month'
+            : 'Assign an owner; confirm it earns its keep';
     rows.push({
-      entity, charges: list.length, total,
-      avgMonthly: total / monthSpan,
+      entity, charges, total, avgMonthly,
+      exVatMonthly: ukVat ? avgMonthly / 1.2 : avgMonthly,
+      ukVat, action,
       lastSeen: list[list.length - 1].date,
     });
   }
   rows.sort((a, b) => b.total - a.total);
-  return { rows, monthlyTotal: rows.reduce((s, r) => s + r.avgMonthly, 0) };
+  return {
+    rows,
+    monthlyTotal: rows.reduce((s, r) => s + r.avgMonthly, 0),
+    exVatMonthlyTotal: rows.reduce((s, r) => s + r.exVatMonthly, 0),
+  };
+}
+
+/** Concrete next steps from the subscription audit — the point of the list. */
+export function subscriptionNextSteps(rows: SubRow[]): string[] {
+  const fm = (n: number) => '£' + Math.round(Math.abs(n)).toLocaleString('en-GB');
+  const steps: string[] = [];
+  const heavy = rows.filter((r) => r.charges >= 15 && !/usage-based/i.test(r.action));
+  for (const h of heavy.slice(0, 2)) {
+    steps.push(`Audit ${h.entity}: ${h.charges} separate charges, ${fm(h.total)} this year. List every renewal it covers and cancel the dead ones — trimming a third of it is ~${fm(h.total / 3)} back.`);
+  }
+  const annuals = rows.filter((r) => r.charges <= 2 && r.total >= 100);
+  if (annuals.length > 0) {
+    steps.push(`Cancel auto-renew today on the annuals you're not actively using: ${annuals.map((a) => `${a.entity} (${fm(a.total)})`).join(', ')}. Deciding at renewal time never happens.`);
+  }
+  const design = rows.filter((r) => /adobe|canva|istock/i.test(r.entity));
+  if (design.length >= 2) {
+    steps.push(`Design overlap: ${design.map((d) => d.entity).join(' + ')}. Standardise on one — ~${fm(design.slice(1).reduce((s, d) => s + d.total, 0))} /year back.`);
+  }
+  const small = rows.filter((r) => r.avgMonthly < 15);
+  if (small.length >= 4) {
+    steps.push(`15-minute kill list: ${small.length} services under £15/month (${fm(small.reduce((s, r) => s + r.avgMonthly, 0))}/month combined). Cancel anything without a named user.`);
+  }
+  return steps.slice(0, 4);
 }
 
 export interface LoanRow {
@@ -354,14 +408,63 @@ export function loans(txs: Enriched[]): LoanRow[] {
   return [...map.values()].sort((a, b) => b.paidTotal - a.paidTotal);
 }
 
+/* ---------- Spaces & events (owner-entered context) ----------
+   Starling Spaces don't export statements, so ring-fenced money is entered by
+   hand; events (conferences etc.) are planned spend the statement can't see
+   until after the trip. Both feed the questions and the Ask digest. */
+
+export interface SpaceLite { name: string; kind: string; balance: number; }
+
+export interface EventItem { label: string; amount: number; }
+export interface BizEvent {
+  id: string;
+  name: string;
+  location: string;
+  start: string;             // YYYY-MM-DD
+  end: string;
+  client: string;            // who part-funds it, if anyone
+  clientContribution: number;
+  items: EventItem[];
+}
+
+export function eventGross(e: BizEvent): number {
+  return e.items.reduce((s, i) => s + (i.amount || 0), 0);
+}
+export function eventNet(e: BizEvent): number {
+  return eventGross(e) - (e.clientContribution || 0);
+}
+
+/** Actual spend matched from the statement: travel/entertaining + marketing
+    debits from a week before the event through a week after. */
+export function eventActuals(txs: Enriched[], e: BizEvent): number {
+  if (!e.start || !e.end) return 0;
+  const from = new Date(e.start); from.setDate(from.getDate() - 7);
+  const to = new Date(e.end); to.setDate(to.getDate() + 7);
+  const f = from.toISOString().slice(0, 10), t = to.toISOString().slice(0, 10);
+  return txs
+    .filter((x) => x.amount < 0 && x.date >= f && x.date <= t
+      && (x.group === 'Travel & entertaining' || x.group === 'Marketing'))
+    .reduce((s, x) => s + -x.amount, 0);
+}
+
+/** An owner's filed answer to a raised question — the decision log. */
+export interface QAnswer { question: string; answer: string; savedAt: number; }
+
+export interface BankExtras {
+  spaces?: SpaceLite[];
+  events?: BizEvent[];
+  answers?: Record<string, QAnswer>;
+}
+
 /* ---------- The question engine ----------
    Deterministic prompts for the owner: each one is a real question the data
    raises this week, with the figures that raise it. These also feed the Ask
    digest so Claude starts from the same place. */
 
-export interface Question { q: string; why: string; tone: 'bad' | 'warn' | 'flat'; }
+/** `key` is stable across recomputes so a filed answer sticks to its question. */
+export interface Question { key: string; q: string; why: string; tone: 'bad' | 'warn' | 'flat'; }
 
-export function computeQuestions(txs: Enriched[]): Question[] {
+export function computeQuestions(txs: Enriched[], extras?: BankExtras): Question[] {
   if (txs.length === 0) return [];
   const out: Question[] = [];
   const flows = monthlyFlows(txs);
@@ -378,6 +481,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
   const { rows } = clientRows(txs);
   for (const r of rows.filter((r) => (r.status === 'quiet' || r.status === 'late') && r.medianMonthly >= 300).slice(0, 3)) {
     out.push({
+      key: `quiet:${r.entity}`,
       q: `Is ${r.entity} still active — and what's outstanding?`,
       why: `They've paid ${fm(r.total)} this year (typically ${fm(r.medianMonthly)}/month) but nothing for ${r.daysSince} days. If invoices are out, chase them; if the work stopped, the run-rate needs reforecasting.`,
       tone: r.status === 'quiet' ? 'bad' : 'warn',
@@ -390,6 +494,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
   if (debtMonthly > 500) {
     const share = avgOut > 0 ? Math.round((debtMonthly / avgOut) * 100) : 0;
     out.push({
+      key: 'debt-service',
       q: `Debt service is ${fm(debtMonthly)}/month (${share}% of spending) — what's the payoff date on each facility?`,
       why: ls.map((l) => `${l.entity}: ${fm(l.paidTotal)} paid this year${l.drawnTotal > 0 ? `, ${fm(l.drawnTotal)} drawn` : ''}`).join(' · ')
         + '. Add each balance in Debt & loans to see clearance dates and what an overpayment buys.',
@@ -411,6 +516,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
     const last = months[months.length - 1];
     if (months.length >= 3 && last < prevMonth) {
       out.push({
+        key: `payroll:${who}`,
         q: `${who}'s salary stopped after ${last} — is the role being replaced, and at what cost?`,
         why: `A like-for-like hire lands around the same net monthly plus employer NI and pension. Your recent average surplus is ${fm(avgNet)}/month${avgNet < 0 ? ' NEGATIVE' : ''} — decide whether the hire is funded by growth, or by paying down less debt.`,
         tone: 'warn',
@@ -425,6 +531,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
     const topShare = Math.round((top.total / Math.max(1, totalRev)) * 100);
     if (topShare >= 15) {
       out.push({
+        key: `concentration:${top.entity}`,
         q: `${top.entity} is ${topShare}% of this year's revenue — what happens to the month if they pause?`,
         why: `${fm(top.total)} of ${fm(totalRev)} client income. Anything above ~20% from one client deserves a named backup plan in Pipeline.`,
         tone: topShare >= 25 ? 'warn' : 'flat',
@@ -437,6 +544,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
   if (subs.monthlyTotal > 300) {
     const top = subs.rows[0];
     out.push({
+      key: 'subscriptions',
       q: `Subscriptions are running at ${fm(subs.monthlyTotal)}/month across ${subs.rows.length} services — which three can go?`,
       why: `Biggest is ${top.entity} at ${fm(top.total)} this year over ${top.charges} charges. The Spending room lists them all with last-charged dates.`,
       tone: 'flat',
@@ -448,10 +556,51 @@ export function computeQuestions(txs: Enriched[]): Question[] {
   if (hmrcDd.length >= 4) {
     const total = hmrcDd.reduce((s, t) => s + -t.amount, 0);
     out.push({
+      key: 'hmrc-dd',
       q: `A standing HMRC direct debit has taken ${fm(total)} this year — exactly which liability is it clearing, and when does it end?`,
       why: 'Worth confirming with the accountant what it covers (VAT, PAYE or an arrangement) and the remaining balance — it changes the true monthly cost base.',
       tone: 'flat',
     });
+  }
+
+  // 6b. Upcoming events: planned spend the statement can't see yet
+  for (const e of extras?.events ?? []) {
+    if (!e.start) continue;
+    const days = Math.round((new Date(e.start).getTime() - new Date(asOf).getTime()) / 86400000);
+    if (days < -7 || days > 60) continue;
+    const gross = eventGross(e), net = eventNet(e);
+    if (days >= 0) {
+      out.push({
+        key: `event:${e.id}`,
+        q: `${e.name}${e.location ? ` (${e.location})` : ''} starts in ${days} day${days === 1 ? '' : 's'} — is everything booked, and is the ${fm(net)} net cost in the cash plan?`,
+        why: `Budgeted ${fm(gross)}${e.clientContribution > 0 ? `, ${e.client || 'the client'} covers ${fm(e.clientContribution)}, net ${fm(net)}` : ''}. Flights and hotels only get dearer — book what's unbooked, and push the items into the 13-week cash flow from the Spending room.`,
+        tone: days <= 21 ? 'warn' : 'flat',
+      });
+    } else {
+      const actual = eventActuals(txs, e);
+      out.push({
+        key: `event-past:${e.id}`,
+        q: `${e.name} has happened — did it come in on budget, and has ${e.client || 'the client'} been invoiced for their share?`,
+        why: `Budgeted ${fm(gross)}; travel & marketing spend around the dates shows ${fm(actual)} so far.${e.clientContribution > 0 ? ` The ${fm(e.clientContribution)} contribution should be on an invoice now.` : ''}`,
+        tone: 'flat',
+      });
+    }
+  }
+
+  // 6c. VAT set-aside vs the last VAT bill
+  const vatSpaces = (extras?.spaces ?? []).filter((s) => s.kind === 'vat');
+  if (vatSpaces.length > 0) {
+    const held = vatSpaces.reduce((s, x) => s + x.balance, 0);
+    const vatPaid = txs.filter((t) => t.kind === 'tax' && t.amount < 0 && /vat/i.test(t.cp + ' ' + t.category));
+    const lastVat = vatPaid.length ? Math.max(...vatPaid.map((t) => -t.amount)) : 0;
+    if (lastVat > 0 && held < lastVat * 0.9) {
+      out.push({
+        key: 'vat-space',
+        q: `The VAT space holds ${fm(held)} but the last VAT bill was ${fm(lastVat)} — is this quarter accruing into it?`,
+        why: 'Ring-fencing a slice of every invoice as it lands is the habit that makes quarter-end a non-event. Update the space balance here whenever you top it up.',
+        tone: 'warn',
+      });
+    }
   }
 
   // 7. Cash cushion
@@ -459,6 +608,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
     const cover = cash / avgOut;
     if (cover < 1.5) {
       out.push({
+        key: 'cash-cover',
         q: `Cash covers ${cover.toFixed(1)} months of spending — what's the floor you're comfortable with?`,
         why: `${fm(cash)} in the bank against ${fm(avgOut)}/month going out. A common working floor for an agency is 2–3 months of costs.`,
         tone: cover < 1 ? 'bad' : 'warn',
@@ -473,7 +623,7 @@ export function computeQuestions(txs: Enriched[]): Question[] {
    A compact plain-text brief of the bank picture, stored server-side so
    ask.php can ground Claude in it alongside the Xero figures. */
 
-export function buildDigest(txs: Enriched[]): string {
+export function buildDigest(txs: Enriched[], extras?: BankExtras): string {
   if (txs.length === 0) return '';
   const fm = (n: number) => '£' + Math.round(Math.abs(n)).toLocaleString('en-GB');
   const flows = monthlyFlows(txs);
@@ -489,7 +639,25 @@ export function buildDigest(txs: Enriched[]): string {
   lines.push('Spending by group: ' + groups.map((g) => `${g.group} ${fm(g.total)}`).join('; '));
   lines.push('Loans: ' + (ls.length ? ls.map((l) => `${l.entity} paid ${fm(l.paidTotal)}${l.drawnTotal ? `, drawn ${fm(l.drawnTotal)}` : ''}, ~${fm(l.recentMonthly)}/mo`).join('; ') : 'none identified'));
   lines.push(`Subscriptions: ~${fm(subs.monthlyTotal)}/month across ${subs.rows.length} services.`);
-  const qs = computeQuestions(txs);
+  const spaces = extras?.spaces ?? [];
+  if (spaces.length > 0) {
+    lines.push('Ring-fenced in Starling Spaces (NOT in the main balance above): '
+      + spaces.map((s) => `${s.name} (${s.kind}) ${fm(s.balance)}`).join('; ')
+      + `. Total set aside ${fm(spaces.reduce((s, x) => s + x.balance, 0))}.`);
+  }
+  const events = extras?.events ?? [];
+  if (events.length > 0) {
+    lines.push('Planned events: ' + events.map((e) =>
+      `${e.name}${e.location ? ` in ${e.location}` : ''} ${e.start}→${e.end}, budget ${fm(eventGross(e))}`
+      + (e.clientContribution > 0 ? `, ${e.client || 'client'} covers ${fm(e.clientContribution)} (net ${fm(eventNet(e))})` : '')).join('; '));
+  }
+  const answers = extras?.answers ?? {};
+  const answered = Object.values(answers).slice(-12);
+  if (answered.length > 0) {
+    lines.push('Decisions the owner has filed (treat as ground truth): ' + answered
+      .map((a) => `"${a.question}" -> ${a.answer}`).join(' | '));
+  }
+  const qs = computeQuestions(txs, extras).filter((q) => !answers[q.key]);
   if (qs.length) lines.push('Open questions the data raises: ' + qs.map((q) => q.q).join(' | '));
   lines.push('Notes: Lemino Payments is the client Vivo. Capital On Tap is a revolving credit facility (credits are drawdowns, not revenue). NCFF2-AFL and Funding Circle are loan repayments. HMRC NDDS is a standing direct debit.');
   return lines.join('\n');

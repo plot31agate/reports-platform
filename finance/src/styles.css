@@ -490,6 +490,28 @@ select.inp.cell { padding: 4px 6px; min-width: 92px; }
   border-radius: var(--r-md); font-size: 12.5px; line-height: 1.55; color: var(--body);
 }
 
+/* Inline Claude answer + filed decisions inside the questions card */
+.qai {
+  margin-top: 10px; padding: 10px 13px; background: var(--white);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  font-size: 12.5px; line-height: 1.55; color: var(--body);
+}
+.qdone {
+  padding: 9px 12px; background: var(--line-soft); border-radius: var(--r-md);
+  margin-bottom: 8px; line-height: 1.45;
+}
+
+/* Event blocks (Spending room) + numbered next steps */
+.eventblock {
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 14px; margin-bottom: 12px; background: var(--line-soft);
+}
+.eventblock .inp { background: #fff; }
+.num-step {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--navy); color: #fff;
+  font: 600 11px "Inter", sans-serif; display: inline-flex; align-items: center; justify-content: center;
+}
+
 /* Client month-by-month grid (Money in expandable row) */
 .monthgrid { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 2px; }
 .mg { min-width: 52px; text-align: center; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; }

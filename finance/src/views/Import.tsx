@@ -131,8 +131,11 @@ function BankCard({ go }: { go: (v: string) => void }) {
       const r = await api.bankImport(txs);
       if (!r || !r.ok) { setErr(r?.error ?? 'API unreachable'); setBusy(false); return; }
       setSummary({ added: r.added, skipped: r.skipped, total: r.total });
-      // Refresh the Ask digest from the full merged set.
-      await api.bankDigest(buildDigest(enrich(r.txs)));
+      // Refresh the Ask digest from the full merged set (spaces, events and
+      // filed decisions ride along so Claude keeps the whole picture).
+      await api.bankDigest(buildDigest(enrich(r.txs), {
+        spaces: data?.spaces ?? [], events: data?.events ?? [], answers: data?.answers ?? {},
+      }));
       toast(`${r.added} transactions imported`);
       load();
     } catch (e) {
