@@ -123,6 +123,18 @@ export interface CashflowData {
   included: { id: string; client: string; value: number; type: string }[];
 }
 
+/* ---- Bank statement (bank.php) ---- */
+import type { BankTx } from './bank';
+export interface LoanMeta { balance: number; apr: number; note: string; }
+export interface BankData {
+  ok: boolean; txs: BankTx[]; importedAt: number; digest: string;
+  loanMeta: Record<string, LoanMeta>;
+}
+export interface BankImportResult {
+  ok: boolean; error?: string;
+  added: number; skipped: number; total: number; hadBefore: number; txs: BankTx[];
+}
+
 const BASE = './api/';
 
 async function get<T>(path: string): Promise<T | null> {
@@ -204,6 +216,14 @@ export const api = {
     post<CashflowData>('cashflow.php', { action: 'update', kind, ...it }),
   cashflowDelete: (kind: 'payment' | 'receipt', id: string) =>
     post<CashflowData>('cashflow.php', { action: 'delete', kind, id }),
+
+  // Bank statement
+  bank: () => get<BankData>('bank.php'),
+  bankImport: (txs: BankTx[]) => postAny<BankImportResult>('bank.php', { action: 'import', txs }),
+  bankDigest: (digest: string) => post<{ ok: boolean }>('bank.php', { action: 'digest', digest }),
+  bankLoans: (loanMeta: Record<string, LoanMeta>) =>
+    post<{ ok: boolean; loanMeta: Record<string, LoanMeta> }>('bank.php', { action: 'loans', loanMeta }),
+  bankReset: () => post<{ ok: boolean }>('bank.php', { action: 'reset' }),
 
   // Board reports
   reports: () => get<{ ok: boolean; reports: BoardListItem[] }>('reports.php'),

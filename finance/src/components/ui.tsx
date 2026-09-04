@@ -103,7 +103,8 @@ export function OfflineNote() {
 export interface MonthPoint { key: string; label: string; income: number; cost: number; profit: number; }
 
 /** Income vs cost columns with the net-profit line over the top. */
-export function IncomeCostChart({ points, h = 240 }: { points: MonthPoint[]; h?: number }) {
+export function IncomeCostChart({ points, h = 240, labels }: { points: MonthPoint[]; h?: number; labels?: [string, string, string] }) {
+  const [inLbl, costLbl, netLbl] = labels ?? ['Income', 'Costs', 'Net profit'];
   if (points.length === 0) return <Empty>No periods imported yet.</Empty>;
   const w = 720;
   const padL = 8, padR = 8, padT = 16, padB = 26;
@@ -149,9 +150,9 @@ export function IncomeCostChart({ points, h = 240 }: { points: MonthPoint[]; h?:
         ))}
       </svg>
       <div className="legend">
-        <span className="k"><span className="sw" style={{ background: 'var(--cyan)' }} />Income</span>
-        <span className="k"><span className="sw" style={{ background: 'var(--pink)' }} />Costs</span>
-        <span className="k"><span className="sw" style={{ background: 'var(--magenta)' }} />Net profit</span>
+        <span className="k"><span className="sw" style={{ background: 'var(--chart-in)' }} />{inLbl}</span>
+        <span className="k"><span className="sw" style={{ background: 'var(--chart-out)' }} />{costLbl}</span>
+        <span className="k"><span className="sw" style={{ background: 'var(--chart-net)' }} />{netLbl}</span>
       </div>
     </div>
   );

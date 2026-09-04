@@ -14,9 +14,12 @@ is one business here (DF itself), configured in `src/lib/client.ts`.
 
 | Room | What it does |
 | --- | --- |
-| **Dashboard** | First-look KPIs (revenue, gross/net profit, cash) with month-on-month deltas, the income/cost/profit trend, top spend, cash runway, and a plain-English read of what changed. |
-| **Import** | **Connect Xero for live sync** (OAuth 2.0, read-only — one click pulls the last 12 months of P&L and the balance sheet), or drop/paste a Xero **Profit & Loss** / **Balance Sheet** CSV export. Either way the parser reports exactly what it found. Manual balance entry too. |
-| **Ask the data** | Interrogate the numbers in plain English. Answers are grounded only in what you've imported — Claude won't invent figures. |
+| **Overview** | The bank is the cash truth, Xero the accounting truth — this screen ties them together: cash today, client revenue, 3-month net, debt service, the money-in/out trend, a watchlist of clients gone quiet, **the questions the data raises this week**, and a Xero P&L reconciliation strip. |
+| **Money in** | Every client from the bank statement: paid this year, typical month, cadence, last paid — and a status (on track / late / **gone quiet**) measured against each client's own payment rhythm. This is where the retainers feed in. |
+| **Spending** | Money out in owner language: analytic groups (people, debt service, premises…), biggest payees, and a **recurring-subscription audit** with per-service monthly cost. |
+| **Debt & loans** | Every facility (loans and revolving credit) with its monthly service from the statement; add balance + APR and it shows payoff dates, what an overpayment buys, and frames the live decision: **replace the leaver or pay debt down faster**. |
+| **Import** | Drop a **Starling statement CSV** (re-imports dedupe cleanly; the counterparty registry in `src/lib/bank.ts` knows which counterparties are clients, loans, HMRC and payroll). Or **connect Xero for live sync** (OAuth 2.0, read-only), or drop/paste a Xero **Profit & Loss** / **Balance Sheet** CSV export. Manual balance entry too. |
+| **Ask the data** | Interrogate the numbers in plain English. Answers are grounded only in what you've imported — the Xero brief plus a digest of the bank statement (client patterns, loans, subscriptions) — Claude won't invent figures. |
 | **Budgets & Forecast** | Spend layers ("what we should spend on X") vs actuals with variance bars; a 12-month cash runway projection; and what-if sliders + a free-text scenario Claude assesses against the real figures. |
 | **Board Reports** | Generate a Claude-written board pack over a month's figures (executive summary, performance, cash, risks, recommendations, a UK tax note, outlook), then hand it to a director via a **read-only share link** — no login, HMAC-guarded (`board.php`). |
 

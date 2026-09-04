@@ -4,8 +4,9 @@
    when you just want to type today's bank figure. */
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import type { FinanceModel, ImportResult, ImportPLSummary, ImportBSSummary, XeroStatus } from '../lib/api';
+import type { FinanceModel, ImportResult, ImportPLSummary, ImportBSSummary, XeroStatus, BankData } from '../lib/api';
 import { money } from '../lib/finance';
+import { parseStarlingCsv, looksLikeStarling, enrich, buildDigest } from '../lib/bank';
 import { toast, Empty, Working } from '../components/ui';
 
 type Kind = 'auto' | 'pl' | 'balance';
@@ -24,6 +25,11 @@ export function Import({ go }: { go: (v: string) => void }) {
 
   async function submit(csv: string) {
     if (!csv.trim()) { toast('Nothing to import'); return; }
+    if (looksLikeStarling(csv)) {
+      toast('That’s a bank statement — use the bank card above, it went there');
+      window.dispatchEvent(new CustomEvent('df-bank-csv', { detail: csv }));
+      return;
+    }
     setBusy(true); setResult(null);
     const r = await api.import(csv, kind);
     setBusy(false);
@@ -41,6 +47,8 @@ export function Import({ go }: { go: (v: string) => void }) {
 
   return (
     <>
+      <BankCard go={go} />
+
       <XeroCard onSynced={refresh} />
 
       <div className="grid g2" style={{ alignItems: 'start', marginBottom: 16 }}>
@@ -98,6 +106,101 @@ export function Import({ go }: { go: (v: string) => void }) {
 
       <LoadedPeriods model={model} onChange={refresh} go={go} />
     </>
+  );
+}
+
+/* ---- Bank statement importer ----
+   The CSV is parsed in the browser (lib/bank.ts), the rows are stored via
+   bank.php (re-imports of an overlapping statement dedupe cleanly), and the
+   compact digest that grounds "Ask the data" is refreshed from the merged set. */
+function BankCard({ go }: { go: (v: string) => void }) {
+  const [data, setData] = useState<BankData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<{ added: number; skipped: number; total: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [over, setOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = () => api.bank().then(setData);
+  useEffect(() => { load(); }, []);
+
+  async function importCsv(text: string) {
+    setErr(null); setSummary(null); setBusy(true);
+    try {
+      const txs = parseStarlingCsv(text);
+      const r = await api.bankImport(txs);
+      if (!r || !r.ok) { setErr(r?.error ?? 'API unreachable'); setBusy(false); return; }
+      setSummary({ added: r.added, skipped: r.skipped, total: r.total });
+      // Refresh the Ask digest from the full merged set.
+      await api.bankDigest(buildDigest(enrich(r.txs)));
+      toast(`${r.added} transactions imported`);
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not parse the file.');
+    }
+    setBusy(false);
+  }
+
+  // The Xero dropzone forwards statements it recognises.
+  useEffect(() => {
+    const on = (e: Event) => importCsv((e as CustomEvent<string>).detail);
+    window.addEventListener('df-bank-csv', on);
+    return () => window.removeEventListener('df-bank-csv', on);
+  }, []);
+
+  function onFiles(files: FileList | null) {
+    if (!files || !files[0]) return;
+    const reader = new FileReader();
+    reader.onload = () => importCsv(String(reader.result || ''));
+    reader.readAsText(files[0]);
+  }
+
+  async function reset() {
+    if (!confirm('Remove all bank transactions? Re-import the statement to bring them back.')) return;
+    const r = await api.bankReset();
+    if (r?.ok) { toast('Bank data cleared'); setSummary(null); load(); }
+  }
+
+  const has = (data?.txs.length ?? 0) > 0;
+  const first = has ? data!.txs[0].date : null;
+  const last = has ? data!.txs[data!.txs.length - 1].date : null;
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div className="eyebrow">Bank statement</div>
+          <h3>Starling statement CSV</h3>
+          <p className="fade small" style={{ margin: '4px 0 0', maxWidth: 560 }}>
+            {has
+              ? <>Loaded: <b>{data!.txs.length} transactions</b>, {first} → {last}. Re-importing a newer
+                export just adds the new rows — overlaps dedupe automatically.</>
+              : 'In Starling: Home → Statements → CSV. This powers the Overview, Money in, Spending and Debt rooms — client payment patterns, spend groups, loan service.'}
+          </p>
+        </div>
+        {has && <button className="btn ghost sm" onClick={reset}>Clear bank data</button>}
+      </div>
+
+      <div className={`drop slim ${over ? 'over' : ''}`} style={{ marginTop: 14 }}
+        onClick={() => fileRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files); }}>
+        <div className="big">{busy ? 'Importing…' : has ? 'Drop a newer statement here' : 'Drop the statement CSV here'}</div>
+        <div className="fade small" style={{ marginTop: 4 }}>or click to choose the file</div>
+      </div>
+      <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }}
+        onChange={(e) => { onFiles(e.target.files); e.target.value = ''; }} />
+
+      {err && <div className="pc-note" style={{ marginTop: 12 }}>{err}</div>}
+      {summary && (
+        <div className="note-strip" style={{ marginTop: 12 }}>
+          Imported <b>{summary.added}</b> new transaction{summary.added === 1 ? '' : 's'}
+          {summary.skipped > 0 ? <> (skipped {summary.skipped} already loaded)</> : null} — {summary.total} in total.{' '}
+          <button className="linky" onClick={() => go('dashboard')}>See the overview →</button>
+        </div>
+      )}
+    </div>
   );
 }
 

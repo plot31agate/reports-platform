@@ -4,3 +4,5 @@ dist
 public/api/claude-config.php
 public/api/xero-config.php
 public/data/*.json
+# Bank statement exports are live data too — keep them out of git wherever they land:
+*.csv

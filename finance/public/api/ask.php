@@ -14,9 +14,12 @@ if ($q === '') fail('ask a question');
 if (mb_strlen($q) > 500) $q = mb_substr($q, 0, 500);
 
 $brief = finance_brief();
-if (str_starts_with($brief, 'No financial data')) {
-  respond(['ok' => false, 'error' => 'Import a Xero report first — there is nothing to interrogate yet.']);
+$bank = store_read('bank', []);
+$bankDigest = trim((string) ($bank['digest'] ?? ''));
+if (str_starts_with($brief, 'No financial data') && $bankDigest === '') {
+  respond(['ok' => false, 'error' => 'Import a Xero report or a bank statement first — there is nothing to interrogate yet.']);
 }
+if ($bankDigest !== '') $brief .= "\n\n" . $bankDigest;
 
 $schema = [
   'type' => 'object',
