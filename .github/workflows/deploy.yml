@@ -3,8 +3,11 @@ name: Deploy to VPS
 on:
   push:
     branches: [main]
-    # Finance HQ has its own deploy (deploy-finance.yml); a finance-only push
-    # must not redeploy/restart the reporting service.
+    # Finance HQ has its own build+deploy (deploy-finance.yml) into the
+    # subdomain's /finance folder; a finance-only push must not redeploy/restart
+    # the reporting service. Agency HQ, by contrast, is SERVED BY this app (a
+    # /agency route + live snapshot from reporting.db), so agency changes DO
+    # belong to this deploy — its built dist is uploaded alongside the app.
     paths-ignore:
       - 'finance/**'
   workflow_dispatch:
@@ -15,6 +18,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Agency HQ is a Vite app served by the reporting app at /agency, so it
+      # must be BUILT before upload. Only agency/dist ships (see excludes).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: agency/package-lock.json
+
+      - name: Build Agency HQ
+        working-directory: agency
+        run: |
+          npm ci
+          npm run build
 
       - name: Upload changed files over FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -45,6 +63,18 @@ jobs:
             # Finance HQ has its own build+deploy (deploy-finance.yml) into the
             # subdomain's /finance folder — keep its source out of the Python app dir.
             finance/**
+            # Agency HQ: ship ONLY the built dist (served at /agency). Its source,
+            # deps and dev files stay out of the Python app dir.
+            agency/node_modules/**
+            agency/src/**
+            agency/public/**
+            agency/index.html
+            agency/package.json
+            agency/package-lock.json
+            agency/tsconfig.json
+            agency/vite.config.ts
+            agency/vite-env.d.ts
+            agency/.gitignore
 
       - name: Restart service via webhook
         run: |

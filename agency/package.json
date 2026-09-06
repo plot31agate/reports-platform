@@ -1,0 +1,24 @@
+{
+  "name": "df-agency-hq",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agency HQ: Digital Footprints' master client portal. One snapshot across every client — status, what's due this week, strategy-plan tracking and reminders. Sits above the per-client Client HQ portals and reads the reporting core. Same DF portal style as Finance HQ.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "snapshot": "python3 ../scripts/agency_snapshot.py"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

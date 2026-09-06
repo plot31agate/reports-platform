@@ -120,6 +120,86 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# ------------------- AGENCY HQ (master client portal) -------------------
+# Agency HQ is a built Vite app served here as a new folder under the reports
+# app: the same domain and login as the reporting dashboards, no separate
+# hosting. Its data comes from a live snapshot route (below) that reads the
+# same reporting.db, so the roster is always current — not baked at build time.
+AGENCY_DIST = Path(__file__).parent.parent / "agency" / "dist"
+
+
+def _build_agency_snapshot() -> dict:
+    """The state Agency HQ's roster needs, straight from the core DB. Mirrors
+    scripts/agency_snapshot.py, but live per-request instead of a static file."""
+    from app.db import get_conn
+
+    clients = []
+    with get_conn() as conn:
+        for c in conn.execute(
+            "SELECT slug, display_name, config_json, created_at FROM clients ORDER BY display_name"
+        ).fetchall():
+            slug = c["slug"]
+            try:
+                cfg = json.loads(c["config_json"] or "{}")
+            except (ValueError, TypeError):
+                cfg = {}
+            reports = [
+                {"period": r["period"], "status": r["status"], "updated_at": r["updated_at"]}
+                for r in conn.execute(
+                    "SELECT period, status, updated_at FROM reports WHERE client_slug=? ORDER BY period DESC",
+                    (slug,),
+                ).fetchall()
+            ]
+            connections = [
+                {
+                    "provider": r["provider"],
+                    "status": r["status"],
+                    "detail": r["status_detail"],
+                    "last_synced_at": r["last_synced_at"],
+                }
+                for r in conn.execute(
+                    "SELECT provider, status, status_detail, last_synced_at FROM client_connections WHERE client_slug=?",
+                    (slug,),
+                ).fetchall()
+            ]
+            clients.append({
+                "slug": slug,
+                "display_name": c["display_name"],
+                "source": "db",
+                "created_at": c["created_at"],
+                "tagline": cfg.get("tagline") or cfg.get("brandline") or "",
+                "reports": reports,
+                "latest_report": reports[0] if reports else None,
+                "connections": connections,
+            })
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "source": "reporting.db",
+        "clients": clients,
+    }
+
+
+# Registered BEFORE the /agency static mount so it wins over any baked
+# snapshot.json inside the built app. Admin-only: the shell is harmless static
+# JS, but the client data stays behind the same login as the reporting admin.
+@app.get("/agency/snapshot.json")
+def agency_snapshot(request: Request):
+    user = get_current_user(request)
+    if not user or user != settings.admin_username:
+        return JSONResponse({"error": "auth", "clients": []}, status_code=401)
+    return JSONResponse(_build_agency_snapshot())
+
+
+@app.get("/agency")
+def agency_root():
+    # Normalise to the trailing slash so the SPA's absolute /agency/ asset URLs
+    # resolve (StaticFiles serves the shell at /agency/).
+    return RedirectResponse("/agency/")
+
+
+if AGENCY_DIST.is_dir():
+    app.mount("/agency", StaticFiles(directory=str(AGENCY_DIST), html=True), name="agency")
+
 env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),

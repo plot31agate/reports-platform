@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-09-06T21:17:01.351887+00:00",
+  "source": "reporting.db",
+  "clients": [
+    {
+      "slug": "northwind-gaming",
+      "display_name": "Northwind Gaming",
+      "source": "db",
+      "created_at": "2026-07-01T21:12:44.861842",
+      "tagline": "Bet Bigger. Win Smarter.",
+      "reports": [
+        {
+          "period": "2026-06",
+          "status": "published",
+          "updated_at": "2026-09-02T12:20:42.140345"
+        }
+      ],
+      "latest_report": {
+        "period": "2026-06",
+        "status": "published",
+        "updated_at": "2026-09-02T12:20:42.140345"
+      },
+      "connections": [
+        {
+          "provider": "serper",
+          "status": "untested",
+          "detail": null,
+          "last_synced_at": null
+        }
+      ]
+    },
+    {
+      "slug": "sportingtech",
+      "display_name": "Sportingtech",
+      "source": "db",
+      "created_at": "2026-07-01T11:26:11.295134",
+      "tagline": "Build. Expand. Grow.",
+      "reports": [
+        {
+          "period": "2026-07",
+          "status": "published",
+          "updated_at": "2026-07-05T15:09:25.346192"
+        },
+        {
+          "period": "2026-06",
+          "status": "published",
+          "updated_at": "2026-07-09T14:43:19.529054"
+        }
+      ],
+      "latest_report": {
+        "period": "2026-07",
+        "status": "published",
+        "updated_at": "2026-07-05T15:09:25.346192"
+      },
+      "connections": []
+    },
+    {
+      "slug": "ym-predictions",
+      "display_name": "YM Predictions",
+      "source": "db",
+      "created_at": "2026-07-06T11:40:10.280068",
+      "tagline": "",
+      "reports": [],
+      "latest_report": null,
+      "connections": []
+    }
+  ]
+}
