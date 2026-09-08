@@ -82,9 +82,13 @@ export function ClientSheet({ state, onClose }: { state: ClientState; onClose: (
                 </div>
               )}
 
-              {client.portalUrl && (
-                <a className="btn" href={client.portalUrl} target="_blank" rel="noreferrer">Open {client.name} Client HQ →</a>
-              )}
+              {client.portalUrl ? (
+                <a className="btn" href={client.portalUrl} target="_blank" rel="noreferrer">Open {client.name} Client HQ ↗</a>
+              ) : client.kind === 'client-hq' ? (
+                <div className="small" style={{ color: 'var(--faint)', textAlign: 'center', padding: '4px 0' }}>
+                  Client HQ portal not set up yet — add its URL under Clients.
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

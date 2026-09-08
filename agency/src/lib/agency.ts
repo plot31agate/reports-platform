@@ -192,9 +192,9 @@ export function deriveClient(client: RosterClient, snap: SnapClient | null, toda
   return { client, snap, tasks, status, health, latestReport: latest, nextReportPeriod: owed, strategyLabel };
 }
 
-export function deriveAll(snapshot: Snapshot | null, today = new Date()): ClientState[] {
+export function deriveAll(snapshot: Snapshot | null, roster: RosterClient[] = ROSTER, today = new Date()): ClientState[] {
   const bySlug = new Map((snapshot?.clients ?? []).map((c) => [c.slug, c]));
-  return ROSTER.map((c) => deriveClient(c, bySlug.get(c.slug) ?? null, today));
+  return roster.map((c) => deriveClient(c, bySlug.get(c.slug) ?? null, today));
 }
 
 /* ---------- portfolio-level tallies for the header ---------- */

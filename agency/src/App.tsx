@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { loadSnapshot } from './lib/api';
 import { deriveAll, totals as computeTotals } from './lib/agency';
 import type { Snapshot, ClientState } from './lib/agency';
+import { effectiveRoster } from './lib/rosterStore';
 import { demoStates } from './lib/demo';
 import { Overview } from './views/Overview';
 import { ThisWeek } from './views/ThisWeek';
 import { Strategy } from './views/Strategy';
 import { Reminders } from './views/Reminders';
+import { Clients } from './views/Clients';
 import { ClientSheet } from './views/ClientSheet';
 import { Toaster, OfflineNote } from './components/ui';
 import dfLogo from './assets/df/logo-white.png';
@@ -23,6 +25,9 @@ const GROUPS: Group[] = [
     { id: 'week', label: 'This week' },
     { id: 'strategy', label: 'Strategy plans' },
   ] },
+  { name: 'Roster', rooms: [
+    { id: 'clients', label: 'Clients' },
+  ] },
   { name: 'Automation', rooms: [
     { id: 'reminders', label: 'Reminders' },
   ] },
@@ -31,8 +36,9 @@ const ROOMS = GROUPS.flatMap((g) => g.rooms);
 
 const TITLES: Record<string, { h: string; sub: string }> = {
   overview: { h: 'Overview', sub: 'Every client, one snapshot — status, what’s due, and how the story reads today' },
-  week: { h: 'This week', sub: 'Everything due across the whole roster, worst first' },
+  week: { h: 'This week', sub: 'Everything due across the whole roster — as a list or a calendar' },
   strategy: { h: 'Strategy plans', sub: 'Every client’s plan and how fresh it is — stale plans surface themselves' },
+  clients: { h: 'Clients', sub: 'The roster itself — add clients and set their strategy plans' },
   reminders: { h: 'Reminders', sub: 'The morning digest and the rules that generate the nudges' },
 };
 
@@ -46,6 +52,8 @@ export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [openSlug, setOpenSlug] = useState<string | null>(null);
+  // Bumped whenever the Clients room mutates the roster overlay, to re-derive.
+  const [rosterVersion, setRosterVersion] = useState(0);
 
   useEffect(() => {
     const onHash = () => setView(readHash());
@@ -58,11 +66,13 @@ export function App() {
   // judged at scale. Real roster only when the param is absent.
   const demoN = Number(new URLSearchParams(window.location.search).get('demo') || 0);
   const states: ClientState[] = useMemo(() => {
-    const real = deriveAll(snapshot);
+    const real = deriveAll(snapshot, effectiveRoster());
     if (!demoN) return real;
     const extra = demoStates(demoN - real.length, new Date());
     return [...real, ...extra];
-  }, [snapshot, demoN]);
+    // rosterVersion re-derives after Clients-room edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot, demoN, rosterVersion]);
   const totals = useMemo(() => computeTotals(states), [states]);
   const openState = openSlug ? states.find((s) => s.client.slug === openSlug) ?? null : null;
 
@@ -118,6 +128,7 @@ export function App() {
           {view === 'overview' && <Overview states={states} totals={totals} onOpen={setOpenSlug} go={go} />}
           {view === 'week' && <ThisWeek states={states} onOpen={setOpenSlug} />}
           {view === 'strategy' && <Strategy states={states} onOpen={setOpenSlug} />}
+          {view === 'clients' && <Clients states={states} onOpen={setOpenSlug} onChange={() => setRosterVersion((v) => v + 1)} />}
           {view === 'reminders' && <Reminders states={states} />}
         </div>
       </main>
