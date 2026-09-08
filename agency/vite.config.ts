@@ -9,7 +9,18 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: '/agency/',
   plugins: [react()],
-  server: { port: 5176 },
+  server: {
+    port: 5176,
+    // In dev the SPA is served by Vite but its data + write API live on the
+    // FastAPI app (reporting core). Proxy just those paths through so the app
+    // talks to the real reporting.db; everything else is served by Vite.
+    // When the backend isn't running the proxy simply fails and the app falls
+    // back to public/snapshot.json + the localStorage overlay.
+    proxy: {
+      '/agency/api': { target: 'http://127.0.0.1:8001', changeOrigin: true },
+      '/agency/snapshot.json': { target: 'http://127.0.0.1:8001', changeOrigin: true },
+    },
+  },
   build: {
     outDir: 'dist',
     assetsInlineLimit: 0,

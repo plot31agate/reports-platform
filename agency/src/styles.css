@@ -237,6 +237,27 @@ table.t tr.expand td { background: var(--line-soft); border-radius: var(--r-md);
 .overlay .sheet-head .eyebrow { color: rgba(255, 255, 255, 0.5); }
 .overlay .sheet-body { flex: 1; overflow-y: auto; padding: 22px 24px; }
 
+/* Sheet tabs — sit under the navy head, over the cream body */
+.sheet-tabs { display: flex; gap: 4px; padding: 0 24px; background: var(--navy); flex: none; }
+.sheet-tabs button {
+  border: none; background: none; cursor: pointer; padding: 9px 14px 11px; font-size: 13px; font-weight: 600;
+  color: rgba(255, 255, 255, 0.55); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.sheet-tabs button:hover { color: rgba(255, 255, 255, 0.85); }
+.sheet-tabs button.on { color: #fff; border-bottom-color: var(--cyan); }
+
+/* Setup + vault rows */
+.setup-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
+.setup-row:first-of-type { padding-top: 2px; }
+.vault-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.vault-row:first-of-type { border-top: none; }
+.vault-pw { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.vault-pw code { font-size: 13px; background: var(--line-soft); padding: 3px 8px; border-radius: 6px; user-select: all; }
+.vault-form {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px; margin: 4px 0 12px;
+  background: var(--line-soft); border: 1px solid var(--line); border-radius: var(--r-md);
+}
+
 /* Working state pulse */
 .working {
   display: flex; flex-direction: column; align-items: center; justify-content: center;

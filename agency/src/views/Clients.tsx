@@ -1,42 +1,50 @@
 /* Clients — the roster management room. Agency HQ is the hub, so this is where
-   clients are added and their strategy plans are set, without leaving for the
-   config file. Everything writes to the localStorage overlay (rosterStore) and
-   calls onChange so every other view re-derives immediately. Lightweight by
-   design: config clients can be edited but not deleted here; only clients added
-   in the UI can be removed. */
+   clients are added and their plans set without leaving for a config file.
+   Writes go through the store: online they hit the reporting core (reporting.db)
+   and re-derive from the DB; offline they fall back to the localStorage overlay
+   so a bare preview still works. Deep client setup (website, connections, the
+   credential vault, the create-portal / create-reporting actions) lives in the
+   client sheet — this room stays the fast add-and-triage list. */
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ClientState } from '../lib/agency';
 import type { RosterClient, ClientKind } from '../lib/roster';
-import {
-  patchClient, addClient, removeAdded, isAdded,
-  uniqueSlug, overlayStats, resetOverlay,
-} from '../lib/rosterStore';
+import type { Store } from '../lib/store';
+import { overlayStats, resetOverlay } from '../lib/rosterStore';
 import { toast, Empty } from '../components/ui';
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
-export function Clients({ states, onOpen, onChange }: {
-  states: ClientState[]; onOpen: (slug: string) => void; onChange: () => void;
+export function Clients({ states, store, onOpen }: {
+  states: ClientState[]; store: Store; onOpen: (slug: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [editSlug, setEditSlug] = useState<string | null>(null);
-  const stats = overlayStats();
-  const hasOverlay = stats.edited > 0 || stats.added > 0;
+  const [busy, setBusy] = useState(false);
+  // The reset-to-config affordance only makes sense for the offline overlay.
+  const stats = store.online ? { edited: 0, added: 0 } : overlayStats();
+  const hasOverlay = !store.online && (stats.edited > 0 || stats.added > 0);
 
-  const save = (msg: string) => { onChange(); toast(msg); };
+  const run = async (fn: () => Promise<void>, msg: string) => {
+    setBusy(true);
+    try { await fn(); toast(msg); }
+    catch (e) { toast((e as Error).message || 'Something went wrong'); }
+    finally { setBusy(false); }
+  };
 
   return (
     <>
       <div className="controls" style={{ marginBottom: 14 }}>
         <div className="small" style={{ color: 'var(--muted)' }}>
-          {states.length} client{states.length === 1 ? '' : 's'} in the roster
+          {states.length} client{states.length === 1 ? '' : 's'} · {store.online
+            ? <span style={{ color: 'var(--pass)' }}>saving to the reporting core</span>
+            : <span style={{ color: 'var(--warn)' }}>this browser only (core offline)</span>}
         </div>
         <div style={{ flex: 1 }} />
         {hasOverlay && (
           <button
             className="chiptoggle"
-            onClick={() => { if (confirm('Discard all local roster changes and reset to config?')) { resetOverlay(); setEditSlug(null); setAdding(false); save('Roster reset to config'); } }}
+            onClick={() => { if (confirm('Discard all local roster changes and reset to config?')) { resetOverlay(); setEditSlug(null); setAdding(false); run(async () => {}, 'Roster reset to config'); } }}
             title={`${stats.edited} edited · ${stats.added} added locally`}
           >
             Reset changes
@@ -47,12 +55,12 @@ export function Clients({ states, onOpen, onChange }: {
         </button>
       </div>
 
-      {adding && <AddForm onCancel={() => setAdding(false)} onAdded={() => { setAdding(false); save('Client added'); }} />}
-
-      {hasOverlay && (
-        <div className="small" style={{ color: 'var(--faint)', margin: '0 0 12px 2px' }}>
-          Local changes are stored in this browser only — {stats.added} added, {stats.edited} edited. In production this writes to the roster / reporting core.
-        </div>
+      {adding && (
+        <AddForm
+          busy={busy}
+          onCancel={() => setAdding(false)}
+          onAdd={(c) => run(async () => { await store.createClient(c); setAdding(false); }, `${c.name} added`)}
+        />
       )}
 
       <div className="card" style={{ padding: '6px 8px' }}>
@@ -65,7 +73,7 @@ export function Clients({ states, onOpen, onChange }: {
                 <th style={{ width: 140 }}>Cadence</th>
                 <th>Strategic focus</th>
                 <th style={{ width: 110 }}>Plan</th>
-                <th style={{ width: 150 }} />
+                <th style={{ width: 170 }} />
               </tr>
             </thead>
             <tbody>
@@ -77,7 +85,6 @@ export function Clients({ states, onOpen, onChange }: {
                     <tr>
                       <td style={{ fontWeight: 600, color: 'var(--ink)' }}>
                         <button className="linky" onClick={() => onOpen(c.slug)} style={{ fontWeight: 600 }}>{c.name}</button>
-                        {isAdded(c.slug) && <span className="pill" style={{ marginLeft: 8, fontSize: 10 }}>added</span>}
                       </td>
                       <td className="small">{c.kind === 'client-hq' ? 'Client HQ' : 'Reporting'}</td>
                       <td className="small" style={{ color: 'var(--muted)' }}>{cadenceLabel(c)}</td>
@@ -89,19 +96,11 @@ export function Clients({ states, onOpen, onChange }: {
                         {s.strategyLabel === 'Review due' && <span className="pill warn">Review due</span>}
                         {s.strategyLabel === 'Missing' && <span className="pill fail">Missing</span>}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button className="btn ghost sm" onClick={() => setEditSlug(editing ? null : c.slug)}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button className="btn ghost sm" onClick={() => onOpen(c.slug)} title="Full setup: website, connections, credentials, portal">Setup</button>
+                        <button className="btn ghost sm" style={{ marginLeft: 6 }} onClick={() => setEditSlug(editing ? null : c.slug)}>
                           {editing ? 'Close' : 'Set plan'}
                         </button>
-                        {isAdded(c.slug) && (
-                          <button
-                            className="btn ghost sm"
-                            style={{ marginLeft: 6, color: 'var(--fail)' }}
-                            onClick={() => { if (confirm(`Remove ${c.name}?`)) { removeAdded(c.slug); setEditSlug(null); save('Client removed'); } }}
-                          >
-                            Remove
-                          </button>
-                        )}
                       </td>
                     </tr>
                     {editing && (
@@ -109,7 +108,11 @@ export function Clients({ states, onOpen, onChange }: {
                         <td colSpan={6}>
                           <PlanEditor
                             client={c}
-                            onSave={(focus, updated) => { patchClient(c.slug, { strategy: { focus, updated } }); setEditSlug(null); save('Plan updated'); }}
+                            busy={busy}
+                            onSave={(focus, updated) => run(async () => {
+                              await store.patch(c.slug, { strategy: { focus, updated } });
+                              setEditSlug(null);
+                            }, 'Plan updated')}
                           />
                         </td>
                       </tr>
@@ -133,7 +136,7 @@ function cadenceLabel(c: RosterClient): string {
 }
 
 /* ---- inline strategy-plan editor ---- */
-function PlanEditor({ client, onSave }: { client: RosterClient; onSave: (focus: string, updated: string) => void }) {
+function PlanEditor({ client, busy, onSave }: { client: RosterClient; busy: boolean; onSave: (focus: string, updated: string) => void }) {
   const [focus, setFocus] = useState(client.strategy.focus ?? '');
   const [date, setDate] = useState(client.strategy.updated ?? isoToday());
   return (
@@ -152,17 +155,20 @@ function PlanEditor({ client, onSave }: { client: RosterClient; onSave: (focus: 
         <input className="inp" type="date" style={{ width: 'auto' }} value={date} onChange={(e) => setDate(e.target.value)} />
         <button className="linky" onClick={() => setDate(isoToday())}>Reviewed today</button>
         <div style={{ flex: 1 }} />
-        <button className="btn" disabled={!focus.trim()} onClick={() => onSave(focus.trim(), date)}>Save plan</button>
+        <button className="btn" disabled={!focus.trim() || busy} onClick={() => onSave(focus.trim(), date)}>Save plan</button>
       </div>
     </div>
   );
 }
 
 /* ---- add-client form ---- */
-function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: () => void }) {
+import type { NewClient } from '../lib/store';
+
+function AddForm({ busy, onCancel, onAdd }: { busy: boolean; onCancel: () => void; onAdd: (c: NewClient) => void }) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<ClientKind>('reporting');
   const [owner, setOwner] = useState('Steve');
+  const [website, setWebsite] = useState('');
   const [report, setReport] = useState<'monthly' | 'quarterly' | 'none'>('monthly');
   const [articles, setArticles] = useState(0);
   const [reviewMonths, setReviewMonths] = useState(6);
@@ -171,17 +177,13 @@ function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: () => v
 
   const submit = () => {
     if (!name.trim()) return;
-    const client: RosterClient = {
-      slug: uniqueSlug(name),
-      name: name.trim(),
-      kind,
-      owner: owner.trim() || 'Unassigned',
+    onAdd({
+      name: name.trim(), kind, owner: owner.trim() || 'Unassigned',
+      website: website.trim() || undefined,
       cadence: { report, articlesPerWeek: Math.max(0, articles), reviewMonths: Math.max(1, reviewMonths) },
-      strategy: { updated: focus.trim() ? isoToday() : null, focus: focus.trim() || undefined },
-      ...(kind === 'client-hq' && portalUrl.trim() ? { portalUrl: portalUrl.trim() } : {}),
-    };
-    addClient(client);
-    onAdded();
+      portalUrl: kind === 'client-hq' && portalUrl.trim() ? portalUrl.trim() : undefined,
+      focus: focus.trim() || undefined,
+    });
   };
 
   return (
@@ -193,6 +195,9 @@ function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: () => v
         </Field>
         <Field label="Account lead">
           <input className="inp" value={owner} onChange={(e) => setOwner(e.target.value)} />
+        </Field>
+        <Field label="Website">
+          <input className="inp" placeholder="https://…" value={website} onChange={(e) => setWebsite(e.target.value)} />
         </Field>
         <Field label="Type">
           <div className="seg" style={{ width: 'fit-content' }}>
@@ -223,7 +228,7 @@ function AddForm({ onCancel, onAdded }: { onCancel: () => void; onAdded: () => v
         </Field>
       </div>
       <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-        <button className="btn" disabled={!name.trim()} onClick={submit}>Add to roster</button>
+        <button className="btn" disabled={!name.trim() || busy} onClick={submit}>Add to roster</button>
         <button className="btn ghost" onClick={onCancel}>Cancel</button>
       </div>
     </div>

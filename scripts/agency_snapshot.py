@@ -49,6 +49,20 @@ def build():
             )
         ]
 
+        # Vault metadata only — never a ciphertext or a plaintext password.
+        secrets = [
+            {
+                "id": r["id"], "label": r["label"], "login_url": r["login_url"],
+                "username": r["username"], "has_password": bool(r["secret_cipher"]),
+                "notes": r["notes"], "updated_by": r["updated_by"], "updated_at": r["updated_at"],
+                "last_revealed_at": r["last_revealed_at"], "last_revealed_by": r["last_revealed_by"],
+            }
+            for r in con.execute(
+                "SELECT * FROM client_secrets WHERE client_slug=? ORDER BY label", (slug,)
+            )
+        ]
+        agency = cfg.get("agency") if isinstance(cfg.get("agency"), dict) else {}
+
         clients.append(
             {
                 "slug": slug,
@@ -56,16 +70,21 @@ def build():
                 "source": "db",
                 "created_at": c["created_at"],
                 "tagline": cfg.get("tagline") or cfg.get("brandline") or "",
+                "agency": agency,
                 "reports": reports,
                 "latest_report": reports[0] if reports else None,
                 "connections": connections,
+                "secrets": secrets,
             }
         )
 
     con.close()
+    # The static generator can't reach the server's VAULT_KEY, and reveals go
+    # through the live API anyway, so a generated file marks the vault not-ready.
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "reporting.db",
+        "vault_ready": False,
         "clients": clients,
     }
 

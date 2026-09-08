@@ -38,18 +38,25 @@ export interface LiveState {
   note?: string;
 }
 
+/** Where a client's Client HQ portal is in its lifecycle. */
+export type PortalStatus = 'none' | 'planned' | 'building' | 'live';
+
 export interface RosterClient {
   slug: string;
   name: string;
   kind: ClientKind;
   /** Who at DF leads the account. */
   owner: string;
+  /** The client's own website (canonical URL). */
+  website?: string;
   cadence: Cadence;
   strategy: StrategyState;
   /** Field state for brands the core can't see yet. */
   live?: LiveState;
   /** Link down into this client's own Client HQ portal, when it has one. */
   portalUrl?: string;
+  /** Portal lifecycle — drives the Create-portal button's state. */
+  portalStatus?: PortalStatus;
 }
 
 /* Today's roster. Reporting-core slugs (sportingtech, northwind-gaming,

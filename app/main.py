@@ -84,7 +84,15 @@ from app.db import (
     get_agency_credential,
     set_agency_credential_status,
     delete_agency_credential,
+    get_client_agency,
+    patch_client_agency,
+    get_client_secret,
+    create_client_secret,
+    update_client_secret,
+    delete_client_secret,
+    touch_secret_reveal,
 )
+from app import vault
 from app.reports import jobs
 from app import connectors
 from app.connectors._util import ConnectorError
@@ -162,19 +170,42 @@ def _build_agency_snapshot() -> dict:
                     (slug,),
                 ).fetchall()
             ]
+            secrets = [
+                {
+                    "id": r["id"],
+                    "label": r["label"],
+                    "login_url": r["login_url"],
+                    "username": r["username"],
+                    "has_password": bool(r["secret_cipher"]),
+                    "notes": r["notes"],
+                    "updated_by": r["updated_by"],
+                    "updated_at": r["updated_at"],
+                    "last_revealed_at": r["last_revealed_at"],
+                    "last_revealed_by": r["last_revealed_by"],
+                }
+                for r in conn.execute(
+                    "SELECT * FROM client_secrets WHERE client_slug=? ORDER BY label",
+                    (slug,),
+                ).fetchall()
+            ]
+            agency = cfg.get("agency") if isinstance(cfg.get("agency"), dict) else {}
             clients.append({
                 "slug": slug,
                 "display_name": c["display_name"],
                 "source": "db",
                 "created_at": c["created_at"],
                 "tagline": cfg.get("tagline") or cfg.get("brandline") or "",
+                "agency": agency,
                 "reports": reports,
                 "latest_report": reports[0] if reports else None,
                 "connections": connections,
+                "secrets": secrets,
             })
+    from app.vault import vault_ready
     return {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "source": "reporting.db",
+        "vault_ready": vault_ready(),
         "clients": clients,
     }
 
@@ -188,6 +219,203 @@ def agency_snapshot(request: Request):
     if not user or user != settings.admin_username:
         return JSONResponse({"error": "auth", "clients": []}, status_code=401)
     return JSONResponse(_build_agency_snapshot())
+
+
+# ------------------- AGENCY HQ WRITE API -------------------
+# JSON endpoints the Agency HQ SPA calls to make the roster and vault real —
+# one source of truth in reporting.db instead of a per-browser overlay. All
+# admin-gated by the same session as the reporting dashboards.
+
+def _agency_admin(request: Request):
+    user = get_current_user(request)
+    if not user or user != settings.admin_username:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    return user
+
+
+def _agency_client_payload(slug: str) -> dict:
+    """One client's live agency view for optimistic UI after a write."""
+    row = get_client_row(slug)
+    if not row:
+        raise HTTPException(status_code=404, detail="Unknown client")
+    return {"slug": slug, "display_name": row["display_name"], "agency": get_client_agency(slug)}
+
+
+@app.post("/agency/api/clients")
+async def agency_create_client(request: Request):
+    _agency_admin(request)
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="A client name is required")
+    slug = _slugify(body.get("slug") or name)
+    # Uniqueness: bump -2, -3… like the front end used to.
+    base, n = slug, 2
+    while get_client_row(slug):
+        slug = f"{base}-{n}"
+        n += 1
+
+    from app.agency_roster import default_agency_block
+    kind = body.get("kind") if body.get("kind") in ("client-hq", "reporting") else "reporting"
+    block = default_agency_block(kind, (body.get("owner") or "Unassigned").strip() or "Unassigned")
+    for key in ("website", "portalUrl", "portalStatus"):
+        if body.get(key) is not None:
+            block[key] = body[key]
+    if isinstance(body.get("cadence"), dict):
+        block["cadence"] = {**block["cadence"], **body["cadence"]}
+    if isinstance(body.get("strategy"), dict):
+        block["strategy"] = body["strategy"]
+
+    create_client(slug, name, json.dumps({"agency": block}))
+    return JSONResponse(_agency_client_payload(slug))
+
+
+@app.patch("/agency/api/clients/{slug}")
+async def agency_patch_client(slug: str, request: Request):
+    _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    body = await request.json()
+    # A rename touches the display_name column, not the agency block.
+    if body.get("name"):
+        from app.db import get_conn
+        with get_conn() as conn:
+            conn.execute("UPDATE clients SET display_name = ? WHERE slug = ?", (body["name"].strip(), slug))
+    patch = {k: v for k, v in body.items() if k in
+             ("kind", "owner", "website", "cadence", "strategy", "live", "portalUrl", "portalStatus")}
+    if patch:
+        patch_client_agency(slug, patch)
+    return JSONResponse(_agency_client_payload(slug))
+
+
+@app.delete("/agency/api/clients/{slug}")
+def agency_delete_client(slug: str, request: Request):
+    _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    stored_paths = delete_client(slug)
+    for p in stored_paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+    for folder in (settings.data_dir / slug, settings.reports_out_dir / slug):
+        try:
+            shutil.rmtree(folder, ignore_errors=True)
+        except OSError:
+            pass
+    return JSONResponse({"ok": True, "slug": slug})
+
+
+@app.post("/agency/api/clients/{slug}/reporting")
+async def agency_create_reporting(slug: str, request: Request):
+    """Turn a client into a reporting client: flag the kind and ensure a report
+    cadence, then hand the operator the reporting workspace where uploads,
+    connections and the first build live. The client already exists as a DB row,
+    so this is the honest, fully-real half of 'make everything work together'."""
+    _agency_admin(request)
+    block = get_client_agency(slug)
+    if not block:
+        raise HTTPException(status_code=404, detail="Unknown client")
+    cadence = block.get("cadence") if isinstance(block.get("cadence"), dict) else {}
+    if cadence.get("report", "none") == "none":
+        cadence = {**cadence, "report": "monthly"}
+    patch_client_agency(slug, {"kind": "reporting", "cadence": {**{"articlesPerWeek": 0, "reviewMonths": 6}, **cadence}})
+    payload = _agency_client_payload(slug)
+    payload["workspaceUrl"] = f"/admin/workspace?client={slug}"
+    return JSONResponse(payload)
+
+
+@app.post("/agency/api/clients/{slug}/portal")
+async def agency_create_portal(slug: str, request: Request):
+    """Move a client's Client HQ portal along its lifecycle. Standing up the
+    actual portal site is a separate build (the client-hq skill); this tracks
+    the state and captures the URL once it's live, so the button never lies
+    about work a web request can't do."""
+    _agency_admin(request)
+    block = get_client_agency(slug)
+    if not block:
+        raise HTTPException(status_code=404, detail="Unknown client")
+    body = await request.json()
+    status = body.get("status") if body.get("status") in ("none", "planned", "building", "live") else "planned"
+    patch = {"kind": "client-hq", "portalStatus": status}
+    if body.get("portalUrl") is not None:
+        patch["portalUrl"] = (body["portalUrl"] or "").strip()
+    patch_client_agency(slug, patch)
+    return JSONResponse(_agency_client_payload(slug))
+
+
+# ---- credential vault ----
+
+@app.post("/agency/api/clients/{slug}/secrets")
+async def agency_create_secret(slug: str, request: Request):
+    user = _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    body = await request.json()
+    label = (body.get("label") or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="A label is required (e.g. 'WordPress admin')")
+    password = body.get("password") or ""
+    try:
+        cipher = vault.encrypt(password) if password else None
+    except vault.VaultError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    sid = create_client_secret(
+        slug, label, (body.get("login_url") or "").strip() or None,
+        (body.get("username") or "").strip() or None, cipher,
+        (body.get("notes") or "").strip() or None, user,
+    )
+    return JSONResponse({"ok": True, "id": sid})
+
+
+@app.patch("/agency/api/secrets/{secret_id}")
+async def agency_update_secret(secret_id: int, request: Request):
+    user = _agency_admin(request)
+    existing = get_client_secret(secret_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Unknown secret")
+    body = await request.json()
+    label = (body.get("label") or existing["label"]).strip()
+    # password: key absent → keep; empty string → clear; value → re-encrypt.
+    cipher = None
+    if "password" in body:
+        pw = body.get("password") or ""
+        try:
+            cipher = vault.encrypt(pw) if pw else ""
+        except vault.VaultError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+    update_client_secret(
+        secret_id, label, (body.get("login_url") or "").strip() or None,
+        (body.get("username") or "").strip() or None, cipher,
+        (body.get("notes") or "").strip() or None, user,
+    )
+    return JSONResponse({"ok": True})
+
+
+@app.post("/agency/api/secrets/{secret_id}/reveal")
+def agency_reveal_secret(secret_id: int, request: Request):
+    user = _agency_admin(request)
+    row = get_client_secret(secret_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Unknown secret")
+    if not row["secret_cipher"]:
+        return JSONResponse({"password": ""})
+    try:
+        plain = vault.decrypt(row["secret_cipher"])
+    except vault.VaultError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    touch_secret_reveal(secret_id, user)
+    return JSONResponse({"password": plain})
+
+
+@app.delete("/agency/api/secrets/{secret_id}")
+def agency_delete_secret(secret_id: int, request: Request):
+    _agency_admin(request)
+    if not get_client_secret(secret_id):
+        raise HTTPException(status_code=404, detail="Unknown secret")
+    delete_client_secret(secret_id)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/agency")

@@ -6,17 +6,52 @@
    nothing here is a hand-kept to-do: tasks fall out of state you already track.
    Swap the snapshot source for a live endpoint and the same logic runs. */
 import { ROSTER } from './roster';
-import type { RosterClient } from './roster';
+import type { RosterClient, Cadence, StrategyState, LiveState, ClientKind, PortalStatus } from './roster';
 
-/* ---------- snapshot shape (matches scripts/agency_snapshot.py) ---------- */
+/* ---------- snapshot shape (matches app/main.py _build_agency_snapshot) ---------- */
 export interface SnapReport { period: string; status: string; updated_at: string; }
 export interface SnapConnection { provider: string; status: string; detail: string | null; last_synced_at: string | null; }
+/** Vault metadata only — never a plaintext password (that's a separate reveal). */
+export interface SecretMeta {
+  id: number; label: string; login_url: string | null; username: string | null;
+  has_password: boolean; notes: string | null;
+  updated_by: string | null; updated_at: string;
+  last_revealed_at: string | null; last_revealed_by: string | null;
+}
+/** The agency block stored in the client's config_json (the roster metadata). */
+export interface SnapAgency {
+  kind?: ClientKind; owner?: string; website?: string;
+  cadence?: Cadence; strategy?: StrategyState; live?: LiveState;
+  portalUrl?: string; portalStatus?: PortalStatus;
+}
 export interface SnapClient {
   slug: string; display_name: string; source: string; created_at: string;
-  tagline: string; reports: SnapReport[]; latest_report: SnapReport | null;
-  connections: SnapConnection[];
+  tagline: string; agency?: SnapAgency; reports: SnapReport[]; latest_report: SnapReport | null;
+  connections: SnapConnection[]; secrets?: SecretMeta[];
 }
-export interface Snapshot { generated_at: string; source: string; clients: SnapClient[]; }
+export interface Snapshot { generated_at: string; source: string; vault_ready?: boolean; clients: SnapClient[]; }
+
+/* ---------- roster straight from the DB snapshot ----------
+   The reporting core owns the roster now: each client carries its agency block
+   in the snapshot, so the whole app derives from the DB, not baked config.
+   roster.ts stays as the offline fallback (see App: used when no snapshot). */
+export function rosterFromSnapshot(snap: Snapshot): RosterClient[] {
+  return snap.clients.map((c) => {
+    const a = c.agency ?? {};
+    return {
+      slug: c.slug,
+      name: c.display_name,
+      kind: (a.kind ?? 'reporting') as ClientKind,
+      owner: a.owner ?? 'Unassigned',
+      website: a.website || undefined,
+      cadence: a.cadence ?? { report: 'monthly', articlesPerWeek: 0, reviewMonths: 6 },
+      strategy: a.strategy ?? { updated: null },
+      live: a.live,
+      portalUrl: a.portalUrl || undefined,
+      portalStatus: a.portalStatus ?? undefined,
+    };
+  });
+}
 
 /* ---------- derived model ---------- */
 export type Severity = 'ok' | 'attention' | 'blocked' | 'idle';

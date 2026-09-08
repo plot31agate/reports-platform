@@ -1,8 +1,13 @@
-/* api.ts — load the reporting-core snapshot. Degrades gracefully: if
-   snapshot.json isn't there (static preview with no generator run), we return
-   null and every view still renders from roster config alone. Same spirit as
-   Finance HQ's offline-tolerant fetchers. */
-import type { Snapshot } from './agency';
+/* api.ts — the reporting-core bridge. Reads the snapshot and issues the write
+   calls that make the roster + vault real in reporting.db. Every write is a
+   JSON request to the admin-gated /agency/api/* endpoints on the FastAPI app
+   (proxied in dev, same-origin in prod). Degrades gracefully: if the snapshot
+   isn't reachable (static preview, backend down) loadSnapshot returns null and
+   the app falls back to roster config + the localStorage overlay. */
+import type { Snapshot, SnapAgency } from './agency';
+import type { ClientKind, PortalStatus } from './roster';
+
+const API = `${import.meta.env.BASE_URL}api`;
 
 export async function loadSnapshot(): Promise<Snapshot | null> {
   try {
@@ -15,3 +20,49 @@ export async function loadSnapshot(): Promise<Snapshot | null> {
     return null;
   }
 }
+
+/* ---- write layer ---- */
+
+/** A failed API call surfaces its server message so the UI can show it. */
+export class ApiError extends Error {}
+
+async function req<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try { detail = (await res.json()).detail || detail; } catch { /* ignore */ }
+    throw new ApiError(detail);
+  }
+  return (res.status === 204 ? undefined : await res.json()) as T;
+}
+
+export interface ClientPayload { slug: string; display_name: string; agency: SnapAgency; workspaceUrl?: string }
+
+export interface NewClientInput {
+  name: string; kind: ClientKind; owner?: string; website?: string;
+  cadence?: Partial<{ report: string; articlesPerWeek: number; reviewMonths: number }>;
+  strategy?: { updated: string | null; focus?: string | null };
+  portalUrl?: string;
+}
+
+export const createClient = (input: NewClientInput) => req<ClientPayload>('/clients', 'POST', input);
+export const patchClient = (slug: string, patch: Record<string, unknown>) =>
+  req<ClientPayload>(`/clients/${slug}`, 'PATCH', patch);
+export const deleteClient = (slug: string) => req<{ ok: boolean }>(`/clients/${slug}`, 'DELETE');
+export const createReporting = (slug: string) => req<ClientPayload>(`/clients/${slug}/reporting`, 'POST', {});
+export const createPortal = (slug: string, status: PortalStatus, portalUrl?: string) =>
+  req<ClientPayload>(`/clients/${slug}/portal`, 'POST', { status, ...(portalUrl !== undefined ? { portalUrl } : {}) });
+
+/* ---- vault ---- */
+export interface SecretInput { label: string; login_url?: string; username?: string; password?: string; notes?: string }
+export const addSecret = (slug: string, input: SecretInput) =>
+  req<{ ok: boolean; id: number }>(`/clients/${slug}/secrets`, 'POST', input);
+export const updateSecret = (id: number, input: SecretInput) =>
+  req<{ ok: boolean }>(`/secrets/${id}`, 'PATCH', input);
+export const deleteSecret = (id: number) => req<{ ok: boolean }>(`/secrets/${id}`, 'DELETE');
+export const revealSecret = (id: number) => req<{ password: string }>(`/secrets/${id}/reveal`, 'POST', {});

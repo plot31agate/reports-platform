@@ -1,11 +1,12 @@
 /* App.tsx — the Agency HQ shell. Same bones as Finance HQ: a navy sidebar of
    rooms, a snapshot-first overview, and everything derived from the reporting
    core + roster. One system for running every client, not a folder per client. */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadSnapshot } from './lib/api';
-import { deriveAll, totals as computeTotals } from './lib/agency';
+import { deriveAll, totals as computeTotals, rosterFromSnapshot } from './lib/agency';
 import type { Snapshot, ClientState } from './lib/agency';
 import { effectiveRoster } from './lib/rosterStore';
+import { makeStore } from './lib/store';
 import { demoStates } from './lib/demo';
 import { Overview } from './views/Overview';
 import { ThisWeek } from './views/ThisWeek';
@@ -60,17 +61,32 @@ export function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  useEffect(() => { loadSnapshot().then((s) => { setSnapshot(s); setLoaded(true); }); }, []);
+  const reload = useCallback(() => loadSnapshot().then((s) => { setSnapshot(s); setLoaded(true); }), []);
+  useEffect(() => { reload(); }, [reload]);
+
+  // Online = the reporting core answered with a live snapshot; then the DB owns
+  // the roster and writes go to the API. Offline (static preview / backend down)
+  // the roster falls back to config + the localStorage overlay.
+  const online = snapshot !== null;
+  const store = useMemo(
+    () => makeStore({
+      online,
+      vaultReady: !!snapshot?.vault_ready,
+      refresh: online ? reload : () => setRosterVersion((v) => v + 1),
+    }),
+    [online, snapshot?.vault_ready, reload],
+  );
 
   // ?demo=N pads the roster with synthetic clients so the triage UX can be
   // judged at scale. Real roster only when the param is absent.
   const demoN = Number(new URLSearchParams(window.location.search).get('demo') || 0);
   const states: ClientState[] = useMemo(() => {
-    const real = deriveAll(snapshot, effectiveRoster());
+    const roster = snapshot ? rosterFromSnapshot(snapshot) : effectiveRoster();
+    const real = deriveAll(snapshot, roster);
     if (!demoN) return real;
     const extra = demoStates(demoN - real.length, new Date());
     return [...real, ...extra];
-    // rosterVersion re-derives after Clients-room edits.
+    // rosterVersion re-derives after offline Clients-room edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, demoN, rosterVersion]);
   const totals = useMemo(() => computeTotals(states), [states]);
@@ -128,12 +144,12 @@ export function App() {
           {view === 'overview' && <Overview states={states} totals={totals} onOpen={setOpenSlug} go={go} />}
           {view === 'week' && <ThisWeek states={states} onOpen={setOpenSlug} />}
           {view === 'strategy' && <Strategy states={states} onOpen={setOpenSlug} />}
-          {view === 'clients' && <Clients states={states} onOpen={setOpenSlug} onChange={() => setRosterVersion((v) => v + 1)} />}
+          {view === 'clients' && <Clients states={states} store={store} onOpen={setOpenSlug} />}
           {view === 'reminders' && <Reminders states={states} />}
         </div>
       </main>
 
-      {openState && <ClientSheet state={openState} onClose={() => setOpenSlug(null)} />}
+      {openState && <ClientSheet key={openState.client.slug} state={openState} store={store} onClose={() => setOpenSlug(null)} />}
     </div>
   );
 }

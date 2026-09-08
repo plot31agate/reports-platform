@@ -132,6 +132,21 @@ CREATE TABLE IF NOT EXISTS deleted_seeds (
     slug        TEXT PRIMARY KEY,   -- a seed-registry client the operator deleted
     deleted_at  TEXT NOT NULL       -- so init_db doesn't re-seed it on next boot
 );
+
+CREATE TABLE IF NOT EXISTS client_secrets (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_slug      TEXT NOT NULL,
+    label            TEXT NOT NULL,   -- 'WordPress admin', 'cPanel', 'Instagram'
+    login_url        TEXT,
+    username         TEXT,
+    secret_cipher    TEXT,            -- Fernet ciphertext of the password (never plaintext)
+    notes            TEXT,
+    updated_by       TEXT,
+    updated_at       TEXT NOT NULL,
+    last_revealed_at TEXT,            -- audit: when the password was last decrypted
+    last_revealed_by TEXT,           -- audit: who last revealed it
+    FOREIGN KEY(client_slug) REFERENCES clients(slug)
+);
 """
 
 
@@ -226,6 +241,37 @@ def init_db():
                     (json.dumps(seed), slug),
                 )
 
+        # Seed the agency roster: every client Agency HQ manages gets an `agency`
+        # block in config_json (owner, cadence, strategy, portal). The Client HQ
+        # brands aren't reporting-core clients, so this also CREATES their rows,
+        # giving Agency HQ one unified roster in the DB. Never overwrites an
+        # agency block that's already there — operator edits win.
+        from app.agency_roster import AGENCY_ROSTER
+
+        for slug, spec in AGENCY_ROSTER.items():
+            if slug in deleted_seed_slugs:
+                continue
+            row = conn.execute(
+                "SELECT slug, config_json FROM clients WHERE slug = ?", (slug,)
+            ).fetchone()
+            if not row:
+                conn.execute(
+                    "INSERT INTO clients (slug, display_name, created_at, config_json) VALUES (?, ?, ?, ?)",
+                    (slug, spec["display_name"], datetime.utcnow().isoformat(),
+                     json.dumps({"agency": spec["agency"]})),
+                )
+                continue
+            try:
+                cfg = json.loads(row["config_json"]) if row["config_json"] else {}
+            except (ValueError, TypeError):
+                cfg = {}
+            if "agency" not in cfg:
+                cfg["agency"] = spec["agency"]
+                conn.execute(
+                    "UPDATE clients SET config_json = ? WHERE slug = ?",
+                    (json.dumps(cfg), slug),
+                )
+
 
 def list_clients():
     with get_conn() as conn:
@@ -262,6 +308,105 @@ def create_client(slug: str, display_name: str, config_json: str):
         conn.execute(
             "INSERT INTO clients (slug, display_name, created_at, config_json) VALUES (?, ?, ?, ?)",
             (slug, display_name, datetime.utcnow().isoformat(), config_json),
+        )
+
+
+def get_client_agency(slug: str) -> dict:
+    """The `agency` block from a client's config_json (owner, cadence, strategy,
+    portal). Empty dict when the client is unknown or has no block yet."""
+    row = get_client_row(slug)
+    if not row:
+        return {}
+    try:
+        cfg = json.loads(row.get("config_json") or "{}")
+    except (ValueError, TypeError):
+        return {}
+    block = cfg.get("agency")
+    return block if isinstance(block, dict) else {}
+
+
+def patch_client_agency(slug: str, patch: dict) -> dict:
+    """Shallow-merge a patch into the client's `agency` block and return the
+    merged block. Sub-objects passed in the patch (strategy, cadence, live)
+    replace their counterpart wholesale — the caller sends them complete."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT config_json FROM clients WHERE slug = ?", (slug,)).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown client: {slug}")
+        try:
+            cfg = json.loads(row["config_json"]) if row["config_json"] else {}
+        except (ValueError, TypeError):
+            cfg = {}
+        block = cfg.get("agency") if isinstance(cfg.get("agency"), dict) else {}
+        block = {**block, **patch}
+        cfg["agency"] = block
+        conn.execute("UPDATE clients SET config_json = ? WHERE slug = ?", (json.dumps(cfg), slug))
+        return block
+
+
+# ------------------- credential vault -------------------
+
+def list_client_secrets(client_slug: str) -> list:
+    """Every stored secret for a client, newest edit first. Rows include the
+    ciphertext — callers that return these to the browser MUST strip it and use
+    reveal_client_secret() for the plaintext instead."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM client_secrets WHERE client_slug = ? ORDER BY label",
+            (client_slug,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_client_secret(secret_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM client_secrets WHERE id = ?", (secret_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def create_client_secret(client_slug, label, login_url, username, secret_cipher, notes, updated_by):
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO client_secrets
+               (client_slug, label, login_url, username, secret_cipher, notes, updated_by, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (client_slug, label, login_url, username, secret_cipher, notes, updated_by, now),
+        )
+        return cur.lastrowid
+
+
+def update_client_secret(secret_id, label, login_url, username, secret_cipher, notes, updated_by):
+    """Update a secret's fields. secret_cipher=None leaves the stored password
+    untouched (so editing the username doesn't require re-entering the password);
+    an empty string clears it."""
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        if secret_cipher is None:
+            conn.execute(
+                """UPDATE client_secrets SET label=?, login_url=?, username=?, notes=?,
+                   updated_by=?, updated_at=? WHERE id=?""",
+                (label, login_url, username, notes, updated_by, now, secret_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE client_secrets SET label=?, login_url=?, username=?, secret_cipher=?,
+                   notes=?, updated_by=?, updated_at=? WHERE id=?""",
+                (label, login_url, username, secret_cipher or None, notes, updated_by, now, secret_id),
+            )
+
+
+def delete_client_secret(secret_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM client_secrets WHERE id = ?", (secret_id,))
+
+
+def touch_secret_reveal(secret_id: int, by: str):
+    """Stamp a reveal for the audit trail."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE client_secrets SET last_revealed_at=?, last_revealed_by=? WHERE id=?",
+            (datetime.utcnow().isoformat(), by, secret_id),
         )
 
 
@@ -306,6 +451,7 @@ def delete_client(slug: str) -> list:
             "sentiment_cache",
             "mention_overrides",
             "client_connections",
+            "client_secrets",
         ):
             conn.execute(f"DELETE FROM {table} WHERE client_slug = ?", (slug,))
 

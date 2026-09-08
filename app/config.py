@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password_hash: str = ""
 
+    # Credential vault: Fernet key used to encrypt client passwords at rest.
+    # Lives only in the environment, never in the DB or git — a stolen DB file
+    # is useless without it. Empty = the vault is locked (reads/writes refused).
+    vault_key: str = ""
+
     anthropic_api_key: str = ""
     claude_model_sentiment: str = "claude-haiku-4-5"
     claude_model_synthesis: str = "claude-sonnet-4-6"
