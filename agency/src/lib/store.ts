@@ -40,6 +40,8 @@ export interface Store {
   saveConnection(slug: string, provider: string, fields: Record<string, string>): Promise<void>;
   testConnection(slug: string, provider: string): Promise<{ ok: boolean; message: string }>;
   draftSetup(input: { name: string; website?: string; description?: string; kind?: ClientKind }): Promise<api.SetupDraft>;
+  checkHealth(slug: string): Promise<api.LiveBlock>;
+  checkAllHealth(): Promise<{ checked: number; down: number }>;
   // vault (online only)
   addSecret(slug: string, input: api.SecretInput): Promise<void>;
   updateSecret(id: number, input: api.SecretInput): Promise<void>;
@@ -76,6 +78,8 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
       async saveConnection(slug, provider, fields) { await api.putConnection(slug, provider, fields); await done(); },
       async testConnection(slug, provider) { const r = await api.testConnection(slug, provider); await done(); return r; },
       async draftSetup(input) { return (await api.draftClientSetup(input)).draft; },
+      async checkHealth(slug) { const r = await api.checkHealth(slug); await done(); return r.live; },
+      async checkAllHealth() { const r = await api.checkAllHealth(); await done(); return r; },
       async addSecret(slug, input) { await api.addSecret(slug, input); await done(); },
       async updateSecret(id, input) { await api.updateSecret(id, input); await done(); },
       async deleteSecret(id) { await api.deleteSecret(id); await done(); },
@@ -105,6 +109,8 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
     async saveConnection() { offlineCore(); },
     async testConnection() { return offlineCore() as never; },
     async draftSetup() { return offlineCore() as never; },
+    async checkHealth() { return offlineCore() as never; },
+    async checkAllHealth() { return offlineCore() as never; },
     async addSecret() { offlineVault(); },
     async updateSecret() { offlineVault(); },
     async deleteSecret() { offlineVault(); },

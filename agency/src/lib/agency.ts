@@ -212,11 +212,16 @@ export function deriveClient(client: RosterClient, snap: SnapClient | null, toda
     }
   }
 
-  // --- Site health ---
+  // --- Site + portal health (measured by the health sweep) ---
   if (client.live?.siteHealth === 'down') {
     push({ id: `${client.slug}-health`, kind: 'health', label: `Site down${client.live.note ? ` — ${client.live.note}` : ''}`, due: todayIso, severity: 'blocked', source: 'live' });
   } else if (client.live?.siteHealth === 'warn') {
     push({ id: `${client.slug}-health`, kind: 'health', label: `Site health warning${client.live.note ? ` — ${client.live.note}` : ''}`, due: todayIso, severity: 'attention', source: 'live' });
+  }
+  if (client.live?.portalHealth === 'down') {
+    push({ id: `${client.slug}-portal-health`, kind: 'health', label: 'Client HQ portal unreachable', due: todayIso, severity: 'blocked', source: 'live' });
+  } else if (client.live?.portalHealth === 'warn') {
+    push({ id: `${client.slug}-portal-health`, kind: 'health', label: 'Client HQ portal health warning', due: todayIso, severity: 'attention', source: 'live' });
   }
 
   // --- Strategy plan on file & fresh ---

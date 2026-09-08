@@ -102,6 +102,9 @@ export function ClientPage({ state, store, snapshot, onBack }: {
 
         {/* ---- right rail: checklist + live state ---- */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          {store.online && (client.website || client.portalUrl) && (
+            <LiveHealthCard state={state} store={store} />
+          )}
           <ChecklistCard state={state} reportingOn={reportingOn} portalStatus={portalStatus} onJump={jump} />
           <div id="sec-strategy"><StrategyCard client={client} state={state} store={store} /></div>
           <OutstandingCard state={state} />
@@ -335,6 +338,74 @@ function ChecklistCard({ state, reportingOn, portalStatus, onJump }: {
 }
 
 /* ============================ RIGHT-RAIL CARDS ============================ */
+
+/* ---- live estate health: what the last check actually measured ---- */
+function timeAgo(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+const HEALTH_LABEL: Record<string, string> = { ok: 'up', warn: 'warning', down: 'down' };
+
+function LiveHealthCard({ state, store }: { state: ClientState; store: Store }) {
+  const { client } = state;
+  const live = client.live ?? {};
+  const [busy, setBusy] = useState(false);
+
+  const check = async () => {
+    setBusy(true);
+    try {
+      const r = await store.checkHealth(client.slug);
+      const worst = [r.siteHealth, r.portalHealth].includes('down') ? 'something is down'
+        : [r.siteHealth, r.portalHealth].includes('warn') ? 'warnings found' : 'all up';
+      toast(`Checked — ${worst}`);
+    } catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const row = (label: string, health?: string) => health && (
+    <div className="checkrow" style={{ padding: '7px 0' }}>
+      <span className={`dot ${health === 'ok' ? 'up' : health === 'warn' ? 'warn' : 'down'}`} />
+      <span className="name">{label}</span>
+      <span className={`pill ${health === 'ok' ? 'pass' : health === 'warn' ? 'warn' : 'fail'}`}>{HEALTH_LABEL[health] ?? health}</span>
+    </div>
+  );
+
+  return (
+    <div className="card">
+      <div className="controls" style={{ marginBottom: 6 }}>
+        <div className="eyebrow">Live status</div>
+        <div style={{ flex: 1 }} />
+        <button className="btn ghost sm" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check now'}</button>
+      </div>
+      {!live.checkedAt ? (
+        <p className="small" style={{ margin: 0, color: 'var(--faint)' }}>
+          Never checked — Check now pings the site{client.portalUrl ? ' and portal' : ''} for real.
+        </p>
+      ) : (
+        <>
+          {row('Website', client.website ? (live.siteHealth ?? undefined) : undefined)}
+          {row('Client HQ portal', client.portalUrl ? (live.portalHealth ?? undefined) : undefined)}
+          {(live.pendingApprovals !== undefined || live.contentDueThisWeek !== undefined) && (
+            <div className="small" style={{ color: 'var(--muted)', marginTop: 6 }}>
+              Portal reports: {[
+                live.pendingApprovals !== undefined ? `${live.pendingApprovals} approval${live.pendingApprovals === 1 ? '' : 's'} pending` : null,
+                live.contentDueThisWeek !== undefined ? `${live.contentDueThisWeek} article${live.contentDueThisWeek === 1 ? '' : 's'} due this week` : null,
+              ].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          {live.note && <div className="small" style={{ color: 'var(--warn)', marginTop: 6 }}>{live.note}</div>}
+          <div className="small" style={{ color: 'var(--faint)', marginTop: 8 }}>Checked {timeAgo(live.checkedAt)}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function StrategyCard({ client, state, store }: { client: RosterClient; state: ClientState; store: Store }) {
   const [editing, setEditing] = useState(false);
   const [focus, setFocus] = useState(client.strategy.focus ?? '');

@@ -427,6 +427,113 @@ def agency_test_connection(slug: str, provider: str, request: Request):
     return JSONResponse({"ok": ok, "message": msg[:300]})
 
 
+# ---- live estate health: read the real sites and portals ----
+# Agency HQ shouldn't be told whether a client's site or Client HQ portal is
+# up — it should look. A check GETs the URL (auth-gated 401/403 still counts
+# as up), and a portal that publishes <portalUrl>/agency-status.json feeds its
+# real field state (pending approvals, content due) into the same task engine.
+# The whole `live` block is replaced by what was measured, so nothing in it is
+# ever hand-kept or stale seed data.
+
+_HEALTH_HEADERS = {"User-Agent": "DF-AgencyHQ health check"}
+_PORTAL_STATUS_KEYS = {"pendingApprovals": int, "contentDueThisWeek": int, "note": str, "updated": str}
+
+
+def _check_site(url: str) -> tuple:
+    """('ok'|'warn'|'down', note or None) for one URL."""
+    import requests as _rq
+    try:
+        r = _rq.get(url, headers=_HEALTH_HEADERS, timeout=8, allow_redirects=True)
+    except Exception as e:
+        return "down", f"unreachable ({type(e).__name__})"
+    if r.status_code < 400 or r.status_code in (401, 403):
+        return "ok", None
+    if r.status_code < 500:
+        return "warn", f"HTTP {r.status_code}"
+    return "down", f"HTTP {r.status_code}"
+
+
+def _read_portal_status(portal_url: str) -> dict:
+    """Fetch the portal's published agency-status.json, if it offers one.
+    Unknown keys are dropped; a missing or malformed file is just {}."""
+    import requests as _rq
+    url = portal_url.rstrip("/") + "/agency-status.json"
+    try:
+        r = _rq.get(url, headers=_HEALTH_HEADERS, timeout=8)
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for key, typ in _PORTAL_STATUS_KEYS.items():
+        if key in data:
+            try:
+                out[key] = typ(data[key])
+            except (ValueError, TypeError):
+                pass
+    return out
+
+
+def _run_health_check(slug: str) -> dict:
+    """Check one client's website + portal and store the fresh live block."""
+    block = get_client_agency(slug)
+    if not block:
+        raise KeyError(slug)
+    live: dict = {"checkedAt": datetime.utcnow().isoformat() + "Z"}
+    website = (block.get("website") or "").strip()
+    portal = (block.get("portalUrl") or "").strip()
+    if website:
+        health, note = _check_site(website)
+        live["siteHealth"] = health
+        if note:
+            live["note"] = f"site: {note}"
+    if portal:
+        health, note = _check_site(portal)
+        live["portalHealth"] = health
+        if note:
+            live["note"] = (live.get("note", "") + (" · " if live.get("note") else "") + f"portal: {note}")
+        if health == "ok":
+            live.update(_read_portal_status(portal))
+    patch_client_agency(slug, {"live": live})
+    return live
+
+
+@app.post("/agency/api/clients/{slug}/health")
+def agency_client_health(slug: str, request: Request):
+    _agency_admin(request)
+    try:
+        live = _run_health_check(slug)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown client")
+    return JSONResponse({"slug": slug, "live": live})
+
+
+@app.post("/agency/api/health")
+def agency_health_sweep(request: Request):
+    """Check every client that has a website or portal URL, in parallel."""
+    _agency_admin(request)
+    from concurrent.futures import ThreadPoolExecutor
+    from app.db import get_conn
+    slugs = []
+    with get_conn() as conn:
+        for c in conn.execute("SELECT slug FROM clients").fetchall():
+            block = get_client_agency(c["slug"])
+            if (block.get("website") or "").strip() or (block.get("portalUrl") or "").strip():
+                slugs.append(c["slug"])
+    results = {}
+    if slugs:
+        with ThreadPoolExecutor(max_workers=min(8, len(slugs))) as pool:
+            for slug, live in zip(slugs, pool.map(_run_health_check, slugs)):
+                results[slug] = live
+    checked = len(results)
+    down = sum(1 for l in results.values()
+               if l.get("siteHealth") == "down" or l.get("portalHealth") == "down")
+    return JSONResponse({"checked": checked, "down": down, "results": results})
+
+
 @app.post("/agency/api/assist/client-setup")
 async def agency_assist_client_setup(request: Request):
     """Draft a whole client setup with Claude from a one-line description.

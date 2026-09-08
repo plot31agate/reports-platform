@@ -24,7 +24,9 @@ AGENCY_ROSTER = {
             "website": "https://theaerahouse.com",
             "cadence": {"report": "monthly", "articlesPerWeek": 1, "reviewMonths": 3},
             "strategy": {"updated": "2026-08-14", "focus": "Local authority + interiors content, grow branded search"},
-            "live": {"siteHealth": "ok", "pendingApprovals": 0, "contentDueThisWeek": 1},
+            # `live` is never seeded: the health sweep measures it for real
+            # (site/portal reachability + portal-published agency-status.json).
+            "live": {},
             "portalUrl": "https://theaerahouse.com/portal/",
             "portalStatus": "live",
         },
@@ -37,7 +39,7 @@ AGENCY_ROSTER = {
             "website": "",
             "cadence": {"report": "monthly", "articlesPerWeek": 1, "reviewMonths": 3},
             "strategy": {"updated": "2026-07-30", "focus": "At-a-glance leads narrative; lift qualified enquiries"},
-            "live": {"siteHealth": "ok", "pendingApprovals": 1, "contentDueThisWeek": 0},
+            "live": {},
             "portalStatus": "planned",
         },
     },
@@ -49,7 +51,7 @@ AGENCY_ROSTER = {
             "website": "",
             "cadence": {"report": "monthly", "articlesPerWeek": 2, "reviewMonths": 3},
             "strategy": {"updated": "2026-05-02", "focus": "Daily-trends story; consolidate top landing pages"},
-            "live": {"siteHealth": "warn", "pendingApprovals": 0, "contentDueThisWeek": 2, "note": "GA4 daily export 6 days stale"},
+            "live": {},
             "portalStatus": "planned",
         },
     },

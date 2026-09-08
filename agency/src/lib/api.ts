@@ -71,6 +71,17 @@ export const putConnection = (slug: string, provider: string, fields: Record<str
 export const testConnection = (slug: string, provider: string) =>
   req<{ ok: boolean; message: string }>(`/clients/${slug}/connections/${provider}/test`, 'POST', {});
 
+/* ---- live estate health ---- */
+export interface LiveBlock {
+  siteHealth?: 'ok' | 'warn' | 'down'; portalHealth?: 'ok' | 'warn' | 'down';
+  pendingApprovals?: number; contentDueThisWeek?: number;
+  note?: string; checkedAt?: string; updated?: string;
+}
+export const checkHealth = (slug: string) =>
+  req<{ slug: string; live: LiveBlock }>(`/clients/${slug}/health`, 'POST', {});
+export const checkAllHealth = () =>
+  req<{ checked: number; down: number; results: Record<string, LiveBlock> }>('/health', 'POST', {});
+
 /* ---- Claude setup assistant ---- */
 export interface SetupDraft {
   about?: string; strategy_focus?: string;

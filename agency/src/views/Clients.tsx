@@ -51,6 +51,25 @@ export function Clients({ states, store, snapshot, onOpen }: {
             Reset changes
           </button>
         )}
+        {store.online && (
+          <button
+            className="chiptoggle"
+            disabled={busy}
+            title="Ping every client's website and Client HQ portal, and pull portal-published status"
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await store.checkAllHealth();
+                toast(r.checked === 0 ? 'No sites or portals to check yet'
+                  : r.down > 0 ? `Checked ${r.checked} — ${r.down} down`
+                  : `Checked ${r.checked} — all up`);
+              } catch (e) { toast((e as Error).message); }
+              finally { setBusy(false); }
+            }}
+          >
+            {busy ? 'Checking…' : 'Check sites'}
+          </button>
+        )}
         <button className="btn" onClick={() => { setAdding(true); setEditSlug(null); }}>
           + Add client
         </button>

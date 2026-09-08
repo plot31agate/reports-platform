@@ -31,11 +31,17 @@ export interface StrategyState {
 
 export interface LiveState {
   siteHealth?: 'ok' | 'warn' | 'down';
+  /** Reachability of the Client HQ portal itself (measured, like siteHealth). */
+  portalHealth?: 'ok' | 'warn' | 'down';
   /** Client-facing plan/share links awaiting the client's sign-off. */
   pendingApprovals?: number;
   /** Articles planned for this week that aren't drafted yet. */
   contentDueThisWeek?: number;
   note?: string;
+  /** ISO stamp of the last health check — the whole block is what was measured then. */
+  checkedAt?: string;
+  /** ISO stamp the portal last wrote its agency-status.json. */
+  updated?: string;
 }
 
 /** Where a client's Client HQ portal is in its lifecycle. */
@@ -70,7 +76,6 @@ export const ROSTER: RosterClient[] = [
     owner: 'Steve',
     cadence: { report: 'monthly', articlesPerWeek: 1, reviewMonths: 3 },
     strategy: { updated: '2026-08-14', focus: 'Local authority + interiors content, grow branded search' },
-    live: { siteHealth: 'ok', pendingApprovals: 0, contentDueThisWeek: 1 },
     // Real Client HQ portal — deploys to /public_html/portal/ (see the-aera-house repo).
     portalUrl: 'https://theaerahouse.com/portal/',
   },
@@ -81,7 +86,6 @@ export const ROSTER: RosterClient[] = [
     owner: 'Steve',
     cadence: { report: 'monthly', articlesPerWeek: 1, reviewMonths: 3 },
     strategy: { updated: '2026-07-30', focus: 'At-a-glance leads narrative; lift qualified enquiries' },
-    live: { siteHealth: 'ok', pendingApprovals: 1, contentDueThisWeek: 0 },
     // No portal deployed yet (WP theme build) — leave unset so no dead button shows.
   },
   {
@@ -91,7 +95,6 @@ export const ROSTER: RosterClient[] = [
     owner: 'Steve',
     cadence: { report: 'monthly', articlesPerWeek: 2, reviewMonths: 3 },
     strategy: { updated: '2026-05-02', focus: 'Daily-trends story; consolidate top landing pages' },
-    live: { siteHealth: 'warn', pendingApprovals: 0, contentDueThisWeek: 2, note: 'GA4 daily export 6 days stale' },
     // No portal deployed yet (WP theme build) — leave unset so no dead button shows.
   },
   {
