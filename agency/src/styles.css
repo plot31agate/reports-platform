@@ -694,3 +694,28 @@ select.inp.cell { padding: 4px 6px; min-width: 92px; }
   .cal-chip-name { display: none; }
   .cal-chip { justify-content: center; padding: 4px; }
 }
+
+/* ============================================================
+   Client page — one page per client (replaces the modal sheet)
+   ============================================================ */
+.cp-quick { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 18px; }
+.cp-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 980px) { .cp-grid { grid-template-columns: 1fr; } }
+
+/* Derived setup checklist */
+.check-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 8px 2px;
+  border-bottom: 1px solid var(--line-soft); font: 500 13px "Inter", sans-serif;
+}
+.check-item:last-child { border-bottom: none; }
+.check-item:hover .ck-label { color: var(--cyan); }
+.check-item .ck-label { flex: 1; min-width: 0; }
+.ck-dot {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 700;
+}
+.ck-dot.done { background: rgba(30, 126, 78, 0.14); color: var(--pass); }
+.ck-dot.warn { background: rgba(150, 102, 10, 0.14); color: var(--warn); }
+.ck-dot.todo { background: transparent; border: 1.5px dashed var(--faint); }

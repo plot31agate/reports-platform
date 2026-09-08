@@ -442,14 +442,14 @@ function DoneScreen({ name, slug, online, kind, onClose, onOpenSheet }: {
         {' '}What's left is the part that needs you:
       </p>
       <ul className="wt-list" style={{ maxWidth: 460, margin: '0 auto', textAlign: 'left' }}>
-        <li><span className="num">1</span><span>Add their logins to the credential vault (client sheet → Setup) so the team can always get in.</span></li>
-        <li><span className="num">2</span><span>Test the data connections from the client sheet, then run the first sync in the workspace.</span></li>
+        <li><span className="num">1</span><span>Add their logins to the credential vault on the client page so the team can always get in.</span></li>
+        <li><span className="num">2</span><span>Test the data connections from the client page, then run the first sync in the workspace.</span></li>
         {kind === 'client-hq'
-          ? <li><span className="num">3</span><span>Stand up their Client HQ portal (the client-hq build) and mark it live on the client sheet.</span></li>
+          ? <li><span className="num">3</span><span>Stand up their Client HQ portal (the client-hq build) and mark it live on the client page.</span></li>
           : <li><span className="num">3</span><span>Open the month workspace and build their first report when the data's in.</span></li>}
       </ul>
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 22, flexWrap: 'wrap' }}>
-        <button className="btn" onClick={onOpenSheet ?? onClose}>{onOpenSheet ? 'Open the client sheet' : 'Done'}</button>
+        <button className="btn" onClick={onOpenSheet ?? onClose}>{onOpenSheet ? 'Open the client page' : 'Done'}</button>
         {online && slug && (
           <a className="btn ghost" href={`/admin/workspace?client=${slug}`} target="_blank" rel="noreferrer">Open workspace ↗</a>
         )}

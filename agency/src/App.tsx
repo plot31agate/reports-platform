@@ -13,7 +13,7 @@ import { ThisWeek } from './views/ThisWeek';
 import { Strategy } from './views/Strategy';
 import { Reminders } from './views/Reminders';
 import { Clients } from './views/Clients';
-import { ClientSheet } from './views/ClientSheet';
+import { ClientPage } from './views/ClientPage';
 import { Toaster, OfflineNote } from './components/ui';
 import dfLogo from './assets/df/logo-white.png';
 
@@ -45,6 +45,8 @@ const TITLES: Record<string, { h: string; sub: string }> = {
 
 function readHash(): string {
   const h = window.location.hash.replace('#', '');
+  // #client/<slug> is a real route: one page per client.
+  if (h.startsWith('client/') && h.length > 7) return h;
   return ROOMS.some((v) => v.id === h) ? h : 'overview';
 }
 
@@ -52,7 +54,6 @@ export function App() {
   const [view, setView] = useState(readHash);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [openSlug, setOpenSlug] = useState<string | null>(null);
   // Bumped whenever the Clients room mutates the roster overlay, to re-derive.
   const [rosterVersion, setRosterVersion] = useState(0);
 
@@ -61,6 +62,8 @@ export function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+  // Each route change starts at the top — matters most entering a client page.
+  useEffect(() => { document.querySelector('.main')?.scrollTo(0, 0); }, [view]);
   const reload = useCallback(() => loadSnapshot().then((s) => { setSnapshot(s); setLoaded(true); }), []);
   useEffect(() => { reload(); }, [reload]);
 
@@ -90,9 +93,17 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, demoN, rosterVersion]);
   const totals = useMemo(() => computeTotals(states), [states]);
-  const openState = openSlug ? states.find((s) => s.client.slug === openSlug) ?? null : null;
 
   const go = (v: string) => { window.location.hash = v; };
+  const openClient = (slug: string) => go(`client/${slug}`);
+
+  const clientSlug = view.startsWith('client/') ? view.slice('client/'.length) : null;
+  const clientState = clientSlug ? states.find((s) => s.client.slug === clientSlug) ?? null : null;
+  // A client route with no matching client (deleted, bad link) falls back home.
+  useEffect(() => {
+    if (clientSlug && !clientState && (loaded || !snapshot)) go('clients');
+  }, [clientSlug, clientState, loaded, snapshot]);
+
   const t = TITLES[view];
 
   return (
@@ -108,7 +119,11 @@ export function App() {
             <div className="navgroup" key={g.name || 'top'}>
               {g.name && <div className="navlabel">{g.name}</div>}
               {g.rooms.map((v) => (
-                <button key={v.id} className={`navlink ${view === v.id ? 'on' : ''}`} onClick={() => go(v.id)}>
+                <button
+                  key={v.id}
+                  className={`navlink ${view === v.id || (v.id === 'clients' && clientSlug) ? 'on' : ''}`}
+                  onClick={() => go(v.id)}
+                >
                   {v.label}
                 </button>
               ))}
@@ -126,30 +141,42 @@ export function App() {
 
       <main className="main">
         <div className="page">
-          <div className="pagehead">
-            <h1>{t.h}</h1>
-            <div className="sub">{t.sub}</div>
-          </div>
+          {clientState ? (
+            <ClientPage
+              key={clientState.client.slug}
+              state={clientState}
+              store={store}
+              snapshot={snapshot}
+              onBack={() => go('clients')}
+            />
+          ) : (
+            <>
+              {t && (
+                <div className="pagehead">
+                  <h1>{t.h}</h1>
+                  <div className="sub">{t.sub}</div>
+                </div>
+              )}
 
-          {demoN > 0 && (
-            <div className="card accent" style={{ marginBottom: 16, borderLeft: '3px solid var(--cyan)', padding: '10px 14px' }}>
-              <span className="eyebrow" style={{ color: 'var(--cyan)' }}>Scale preview</span>
-              <span className="small" style={{ color: 'var(--muted)', marginLeft: 10 }}>
-                Padded to {states.length} synthetic clients to show the layout at scale — drop <code>?demo</code> for the real roster.
-              </span>
-            </div>
+              {demoN > 0 && (
+                <div className="card accent" style={{ marginBottom: 16, borderLeft: '3px solid var(--cyan)', padding: '10px 14px' }}>
+                  <span className="eyebrow" style={{ color: 'var(--cyan)' }}>Scale preview</span>
+                  <span className="small" style={{ color: 'var(--muted)', marginLeft: 10 }}>
+                    Padded to {states.length} synthetic clients to show the layout at scale — drop <code>?demo</code> for the real roster.
+                  </span>
+                </div>
+              )}
+              {loaded && !snapshot && !demoN && <div style={{ marginBottom: 16 }}><OfflineNote /></div>}
+
+              {view === 'overview' && <Overview states={states} totals={totals} onOpen={openClient} go={go} />}
+              {view === 'week' && <ThisWeek states={states} onOpen={openClient} />}
+              {view === 'strategy' && <Strategy states={states} onOpen={openClient} />}
+              {view === 'clients' && <Clients states={states} store={store} snapshot={snapshot} onOpen={openClient} />}
+              {view === 'reminders' && <Reminders states={states} />}
+            </>
           )}
-          {loaded && !snapshot && !demoN && <div style={{ marginBottom: 16 }}><OfflineNote /></div>}
-
-          {view === 'overview' && <Overview states={states} totals={totals} onOpen={setOpenSlug} go={go} />}
-          {view === 'week' && <ThisWeek states={states} onOpen={setOpenSlug} />}
-          {view === 'strategy' && <Strategy states={states} onOpen={setOpenSlug} />}
-          {view === 'clients' && <Clients states={states} store={store} snapshot={snapshot} onOpen={setOpenSlug} />}
-          {view === 'reminders' && <Reminders states={states} />}
         </div>
       </main>
-
-      {openState && <ClientSheet key={openState.client.slug} state={openState} store={store} snapshot={snapshot} onClose={() => setOpenSlug(null)} />}
     </div>
   );
 }
