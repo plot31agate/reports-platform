@@ -6,7 +6,7 @@
    nothing here is a hand-kept to-do: tasks fall out of state you already track.
    Swap the snapshot source for a live endpoint and the same logic runs. */
 import { ROSTER } from './roster';
-import type { RosterClient, Cadence, StrategyState, LiveState, ClientKind, PortalStatus } from './roster';
+import type { RosterClient, Cadence, StrategyState, LiveState, ClientKind, PortalStatus, PortalKind } from './roster';
 
 /* ---------- snapshot shape (matches app/main.py _build_agency_snapshot) ---------- */
 export interface SnapReport { period: string; status: string; updated_at: string; }
@@ -22,7 +22,12 @@ export interface SecretMeta {
 export interface SnapAgency {
   kind?: ClientKind; owner?: string; website?: string;
   cadence?: Cadence; strategy?: StrategyState; live?: LiveState;
-  portalUrl?: string; portalStatus?: PortalStatus;
+  portalUrl?: string; portalStatus?: PortalStatus; portalKind?: PortalKind;
+}
+/** A person invited to a client's built-in portal. */
+export interface PortalUser {
+  id: number; email: string; name: string | null; invite_url: string;
+  last_login_at: string | null; revoked_at: string | null;
 }
 /** The client's reporting-core setup — the config the workspace and report
     builder read, now readable and writable from Agency HQ. */
@@ -45,6 +50,7 @@ export interface SnapClient {
   slug: string; display_name: string; source: string; created_at: string;
   tagline: string; agency?: SnapAgency; reports: SnapReport[]; latest_report: SnapReport | null;
   connections: SnapConnection[]; secrets?: SecretMeta[]; setup?: ClientSetup;
+  portal_users?: PortalUser[];
 }
 export interface Snapshot {
   generated_at: string; source: string; vault_ready?: boolean;
@@ -70,6 +76,7 @@ export function rosterFromSnapshot(snap: Snapshot): RosterClient[] {
       live: a.live,
       portalUrl: a.portalUrl || undefined,
       portalStatus: a.portalStatus ?? undefined,
+      portalKind: a.portalKind ?? undefined,
     };
   });
 }

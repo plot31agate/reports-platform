@@ -35,6 +35,10 @@ export interface Store {
   remove(slug: string): Promise<void>;
   createReporting(slug: string): Promise<string | undefined>; // returns workspace URL when online
   createPortal(slug: string, status: PortalStatus, url?: string): Promise<void>;
+  // built-in Client HQ portal (online only)
+  provisionHq(slug: string): Promise<void>;
+  addPortalUser(slug: string, input: { email: string; name?: string }): Promise<string>; // returns invite URL
+  revokePortalUser(id: number): Promise<void>;
   // reporting-core setup (online only)
   saveSettings(slug: string, settings: api.ClientSettingsInput): Promise<void>;
   saveConnection(slug: string, provider: string, fields: Record<string, string>): Promise<void>;
@@ -74,6 +78,9 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
       async remove(slug) { await api.deleteClient(slug); await done(); },
       async createReporting(slug) { const r = await api.createReporting(slug); await done(); return r.workspaceUrl; },
       async createPortal(slug, status, url) { await api.createPortal(slug, status, url); await done(); },
+      async provisionHq(slug) { await api.provisionHq(slug); await done(); },
+      async addPortalUser(slug, input) { const r = await api.addPortalUser(slug, input); await done(); return r.invite_url; },
+      async revokePortalUser(id) { await api.revokePortalUser(id); await done(); },
       async saveSettings(slug, settings) { await api.patchSettings(slug, settings); await done(); },
       async saveConnection(slug, provider, fields) { await api.putConnection(slug, provider, fields); await done(); },
       async testConnection(slug, provider) { const r = await api.testConnection(slug, provider); await done(); return r; },
@@ -104,7 +111,10 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
     async patch(slug, patch) { lsPatch(slug, patch); await done(); },
     async remove(slug) { lsRemove(slug); await done(); },
     async createReporting(slug) { lsPatch(slug, { kind: 'reporting' }); await done(); return undefined; },
-    async createPortal(slug, status, url) { lsPatch(slug, { kind: 'client-hq', portalStatus: status, ...(url ? { portalUrl: url } : {}) }); await done(); },
+    async createPortal(slug, status, url) { lsPatch(slug, { kind: 'client-hq', portalStatus: status, portalKind: 'external', ...(url ? { portalUrl: url } : {}) }); await done(); },
+    async provisionHq() { offlineCore(); },
+    async addPortalUser() { return offlineCore() as never; },
+    async revokePortalUser() { offlineCore(); },
     async saveSettings() { offlineCore(); },
     async saveConnection() { offlineCore(); },
     async testConnection() { return offlineCore() as never; },

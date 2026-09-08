@@ -46,6 +46,9 @@ export interface LiveState {
 
 /** Where a client's Client HQ portal is in its lifecycle. */
 export type PortalStatus = 'none' | 'planned' | 'building' | 'live';
+/** builtin = the portal hosted on this app (/portal); external = a bespoke
+    portal deployed to the client's own domain (the client-hq build). */
+export type PortalKind = 'builtin' | 'external';
 
 export interface RosterClient {
   slug: string;
@@ -63,6 +66,8 @@ export interface RosterClient {
   portalUrl?: string;
   /** Portal lifecycle — drives the Create-portal button's state. */
   portalStatus?: PortalStatus;
+  /** Which kind of portal: built-in (hosted here) or external (bespoke deploy). */
+  portalKind?: PortalKind;
 }
 
 /* Today's roster. Reporting-core slugs (sportingtech, northwind-gaming,

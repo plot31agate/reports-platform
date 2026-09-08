@@ -134,7 +134,6 @@ function SystemsCard({ state, store, onSetUpReporting }: {
 
   const reports = snap?.reports.length ?? 0;
   const reportingOn = client.cadence.report !== 'none' || reports > 0;
-  const portalStatus: PortalStatus = client.portalStatus ?? (client.portalUrl ? 'live' : 'none');
 
   const turnOnReporting = async () => {
     setBusy(true);
@@ -185,29 +184,8 @@ function SystemsCard({ state, store, onSetUpReporting }: {
       </div>
 
       {/* Client HQ */}
-      <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
-        <ModuleState
-          on={portalStatus === 'live'}
-          mid={portalStatus === 'planned' || portalStatus === 'building'}
-          name="Client HQ"
-          detail={portalStatus === 'live' ? 'Portal live'
-            : portalStatus !== 'none' ? `Portal ${portalStatus} — the site itself is a separate build (client-hq scaffold)`
-            : 'Client portal: content engine, plan approvals, post workbench, site health'}
-        />
-        <div className="seg" style={{ width: 'fit-content' }}>
-          {PORTAL_STAGES.map((st) => (
-            <button key={st.id} className={portalStatus === st.id ? 'on' : ''} disabled={busy} onClick={() => setStage(st.id)}>{st.label}</button>
-          ))}
-        </div>
-      </div>
-      {(portalStatus === 'live' || client.portalUrl) && (
-        <div className="setup-row" style={{ gap: 10, paddingTop: 0 }}>
-          <span style={{ width: 18 }} />
-          <input className="inp" placeholder="https://…/portal/" value={portalUrl} onChange={(e) => setPortalUrl(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn ghost sm" disabled={busy} onClick={() => setStage('live')}>Save link</button>
-          {client.portalUrl && <a className="btn sm" href={client.portalUrl} target="_blank" rel="noreferrer">Open ↗</a>}
-        </div>
-      )}
+      <ClientHqModule state={state} store={store} busy={busy} setBusy={setBusy}
+        portalUrl={portalUrl} setPortalUrl={setPortalUrl} setStage={setStage} />
 
       {/* Content */}
       <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)' }}>
@@ -226,6 +204,154 @@ function SystemsCard({ state, store, onSetUpReporting }: {
             <button className="btn ghost sm" disabled={busy} onClick={saveArticles}>Save</button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Client HQ: built-in portal (one click) or bespoke tracking ---- */
+function ClientHqModule({ state, store, busy, setBusy, portalUrl, setPortalUrl, setStage }: {
+  state: ClientState; store: Store; busy: boolean; setBusy: (b: boolean) => void;
+  portalUrl: string; setPortalUrl: (v: string) => void; setStage: (s: PortalStatus) => void;
+}) {
+  const { client } = state;
+  const portalStatus: PortalStatus = client.portalStatus ?? (client.portalUrl ? 'live' : 'none');
+  const kind = client.portalKind ?? (portalStatus === 'live' && client.portalUrl ? 'external' : undefined);
+  const [showBespoke, setShowBespoke] = useState(false);
+  const [members, setMembers] = useState(false);
+
+  const provision = async () => {
+    setBusy(true);
+    try { await store.provisionHq(client.slug); toast('Client HQ portal is live — invite the client below'); setMembers(true); }
+    catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // --- not set up yet: offer the one-click built-in portal ---
+  if (portalStatus === 'none') {
+    return (
+      <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
+        <ModuleState on={false} name="Client HQ"
+          detail="A client portal hosted here — they log in to see their reports and documents. One click, live now." />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn sm" disabled={busy} onClick={provision}>Create HQ portal</button>
+          <button className="linky" onClick={() => setShowBespoke((v) => !v)}>{showBespoke ? 'hide' : 'bespoke build?'}</button>
+        </div>
+        {showBespoke && (
+          <div style={{ width: '100%', marginTop: 8 }}>
+            <div className="pc-note" style={{ marginBottom: 8 }}>
+              A bespoke portal on the client's own domain (content engine, approvals — the client-hq build) is a separate project.
+              Track its progress here, and paste its URL once it's live.
+            </div>
+            <div className="seg" style={{ width: 'fit-content' }}>
+              {PORTAL_STAGES.filter((s) => s.id !== 'none').map((st) => (
+                <button key={st.id} disabled={busy} onClick={() => setStage(st.id)}>{st.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- built-in portal live: manage members ---
+  if (kind === 'builtin') {
+    const users = (state.snap?.portal_users ?? []).filter((u) => !u.revoked_at);
+    return (
+      <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
+        <ModuleState on name="Client HQ"
+          detail={`Portal live · hosted here · ${users.length} member${users.length === 1 ? '' : 's'}`} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a className="btn ghost sm" href={`${client.portalUrl}`} target="_blank" rel="noreferrer">Preview ↗</a>
+          <button className="btn sm" onClick={() => setMembers((v) => !v)}>{members ? 'Close' : 'Manage members'}</button>
+        </div>
+        {members && <div style={{ width: '100%', marginTop: 10 }}><PortalMembers state={state} store={store} /></div>}
+      </div>
+    );
+  }
+
+  // --- external/bespoke portal being tracked ---
+  return (
+    <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
+      <ModuleState
+        on={portalStatus === 'live'} mid={portalStatus === 'planned' || portalStatus === 'building'}
+        name="Client HQ"
+        detail={portalStatus === 'live' ? 'Bespoke portal live' : `Bespoke portal ${portalStatus} — separate build (client-hq scaffold)`}
+      />
+      <div className="seg" style={{ width: 'fit-content' }}>
+        {PORTAL_STAGES.map((st) => (
+          <button key={st.id} className={portalStatus === st.id ? 'on' : ''} disabled={busy} onClick={() => setStage(st.id)}>{st.label}</button>
+        ))}
+      </div>
+      {(portalStatus === 'live' || client.portalUrl) && (
+        <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 8 }}>
+          <input className="inp" placeholder="https://…/portal/" value={portalUrl} onChange={(e) => setPortalUrl(e.target.value)} style={{ flex: 1 }} />
+          <button className="btn ghost sm" disabled={busy} onClick={() => setStage('live')}>Save link</button>
+          {client.portalUrl && <a className="btn sm" href={client.portalUrl} target="_blank" rel="noreferrer">Open ↗</a>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- built-in portal members: invite (magic link) + revoke ---- */
+function PortalMembers({ state, store }: { state: ClientState; store: Store }) {
+  const users = (state.snap?.portal_users ?? []).filter((u) => !u.revoked_at);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [lastInvite, setLastInvite] = useState<string | null>(null);
+
+  const add = async () => {
+    if (!email.trim()) return;
+    setBusy(true);
+    try {
+      const url = await store.addPortalUser(state.client.slug, { email: email.trim(), name: name.trim() || undefined });
+      setLastInvite(url); setEmail(''); setName('');
+      toast('Invited — copy their join link');
+    } catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const revoke = async (id: number, who: string) => {
+    if (!confirm(`Revoke ${who}'s portal access?`)) return;
+    try { await store.revokePortalUser(id); toast('Access revoked'); } catch (e) { toast((e as Error).message); }
+  };
+
+  const copy = async (url: string) => {
+    try { await navigator.clipboard.writeText(url); toast('Join link copied'); } catch { toast('Copy failed'); }
+  };
+
+  return (
+    <div className="vault-form">
+      <div className="small" style={{ color: 'var(--muted)', marginBottom: 4 }}>
+        Invite the client's people. They get a one-click join link — no password. Send it however you like.
+      </div>
+      {users.length === 0 && <div className="small" style={{ color: 'var(--faint)' }}>No members yet.</div>}
+      {users.map((u) => (
+        <div key={u.id} className="vault-row" style={{ borderTop: '1px solid var(--line-soft)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: 'var(--ink)' }}>{u.name || u.email}</div>
+            <div className="small" style={{ color: 'var(--muted)' }}>
+              {u.name ? `${u.email} · ` : ''}{u.last_login_at ? `last in ${fmtDate(u.last_login_at.slice(0, 10))}` : 'not signed in yet'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button className="btn ghost sm" onClick={() => copy(u.invite_url)}>Copy link</button>
+            <button className="btn ghost sm" style={{ color: 'var(--fail)' }} onClick={() => revoke(u.id, u.name || u.email)}>Revoke</button>
+          </div>
+        </div>
+      ))}
+      {lastInvite && (
+        <div className="pc-note" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all', fontSize: 12 }}>{lastInvite}</span>
+          <button className="btn ghost sm" onClick={() => copy(lastInvite)}>Copy</button>
+        </div>
+      )}
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+        <SField label="Email"><input className="inp" type="email" placeholder="name@client.com" value={email} onChange={(e) => setEmail(e.target.value)} /></SField>
+        <SField label="Name (optional)"><input className="inp" value={name} onChange={(e) => setName(e.target.value)} /></SField>
+        <button className="btn sm" disabled={!email.trim() || busy} onClick={add}>Invite</button>
       </div>
     </div>
   );

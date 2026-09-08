@@ -98,6 +98,14 @@ export const createReporting = (slug: string) => req<ClientPayload>(`/clients/${
 export const createPortal = (slug: string, status: PortalStatus, portalUrl?: string) =>
   req<ClientPayload>(`/clients/${slug}/portal`, 'POST', { status, ...(portalUrl !== undefined ? { portalUrl } : {}) });
 
+/* ---- built-in Client HQ portal (hosted on this app) ---- */
+export const provisionHq = (slug: string) =>
+  req<ClientPayload & { portalManageUrl?: string }>(`/clients/${slug}/hq`, 'POST', {});
+export const addPortalUser = (slug: string, input: { email: string; name?: string }) =>
+  req<{ ok: boolean; invite_url: string }>(`/clients/${slug}/portal-users`, 'POST', input);
+export const revokePortalUser = (id: number) =>
+  req<{ ok: boolean }>(`/portal-users/${id}/revoke`, 'POST', {});
+
 /* ---- vault ---- */
 export interface SecretInput { label: string; login_url?: string; username?: string; password?: string; notes?: string }
 export const addSecret = (slug: string, input: SecretInput) =>

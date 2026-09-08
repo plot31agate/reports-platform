@@ -229,6 +229,18 @@ def _build_agency_snapshot() -> dict:
                     (slug,),
                 ).fetchall()
             ]
+            # Built-in portal members (Client HQ on the app itself), invite
+            # links included — the whole agency API is admin-gated.
+            portal_users = [
+                {
+                    "id": r["id"], "email": r["email"], "name": r["name"],
+                    "invite_url": f"{settings.app_url}/portal/join/{r['invite_token']}",
+                    "last_login_at": r["last_login_at"], "revoked_at": r["revoked_at"],
+                }
+                for r in conn.execute(
+                    "SELECT * FROM client_users WHERE client_slug=? ORDER BY created_at", (slug,),
+                ).fetchall()
+            ]
             agency = cfg.get("agency") if isinstance(cfg.get("agency"), dict) else {}
             clients.append({
                 "slug": slug,
@@ -241,6 +253,7 @@ def _build_agency_snapshot() -> dict:
                 "latest_report": reports[0] if reports else None,
                 "connections": connections,
                 "secrets": secrets,
+                "portal_users": portal_users,
                 # The reporting-core setup Agency HQ can now read AND write —
                 # the same keys the workspace and report builder consume.
                 "setup": {
@@ -569,7 +582,7 @@ async def agency_patch_client(slug: str, request: Request):
         with get_conn() as conn:
             conn.execute("UPDATE clients SET display_name = ? WHERE slug = ?", (body["name"].strip(), slug))
     patch = {k: v for k, v in body.items() if k in
-             ("kind", "owner", "website", "cadence", "strategy", "live", "portalUrl", "portalStatus")}
+             ("kind", "owner", "website", "cadence", "strategy", "live", "portalUrl", "portalStatus", "portalKind")}
     if patch:
         patch_client_agency(slug, patch)
     return JSONResponse(_agency_client_payload(slug))
@@ -615,21 +628,75 @@ async def agency_create_reporting(slug: str, request: Request):
 
 @app.post("/agency/api/clients/{slug}/portal")
 async def agency_create_portal(slug: str, request: Request):
-    """Move a client's Client HQ portal along its lifecycle. Standing up the
-    actual portal site is a separate build (the client-hq skill); this tracks
-    the state and captures the URL once it's live, so the button never lies
-    about work a web request can't do."""
+    """Track a BESPOKE Client HQ portal's lifecycle — a portal built and
+    deployed to the client's own domain (the client-hq skill). This captures
+    its state and URL; it doesn't build the site. For an instant working
+    portal hosted on the app itself, use /hq instead."""
     _agency_admin(request)
     block = get_client_agency(slug)
     if not block:
         raise HTTPException(status_code=404, detail="Unknown client")
     body = await request.json()
     status = body.get("status") if body.get("status") in ("none", "planned", "building", "live") else "planned"
-    patch = {"kind": "client-hq", "portalStatus": status}
+    patch = {"kind": "client-hq", "portalStatus": status, "portalKind": "external"}
     if body.get("portalUrl") is not None:
         patch["portalUrl"] = (body["portalUrl"] or "").strip()
+    if status == "none":
+        patch["portalKind"] = None
     patch_client_agency(slug, patch)
     return JSONResponse(_agency_client_payload(slug))
+
+
+@app.post("/agency/api/clients/{slug}/hq")
+def agency_provision_hq(slug: str, request: Request):
+    """Provision the BUILT-IN Client HQ portal for a client — the one this app
+    already hosts at /portal (invite-gated, serves their reports and
+    documents). One real click: flip the client to Client HQ, mark the portal
+    live, and point it at the app's own portal. The operator then invites the
+    client's people (portal members) from the same page. No separate deploy,
+    no fake state — the portal works the moment a member accepts their invite."""
+    _agency_admin(request)
+    block = get_client_agency(slug)
+    if not block:
+        raise HTTPException(status_code=404, detail="Unknown client")
+    patch_client_agency(slug, {
+        "kind": "client-hq",
+        "portalStatus": "live",
+        "portalKind": "builtin",
+        "portalUrl": f"{settings.app_url}/portal",
+    })
+    payload = _agency_client_payload(slug)
+    payload["portalManageUrl"] = f"/admin/portal?client={slug}"
+    return JSONResponse(payload)
+
+
+@app.post("/agency/api/clients/{slug}/portal-users")
+async def agency_add_portal_user(slug: str, request: Request):
+    """Invite a person to the client's built-in portal. Returns the join link
+    (one-click magic link, no password) for the operator to send on."""
+    _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    body = await request.json()
+    email = (body.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email is required")
+    token = secrets.token_urlsafe(24)
+    try:
+        create_client_user(slug, email, (body.get("name") or "").strip(), token)
+    except Exception:
+        raise HTTPException(status_code=409, detail="That email already has access")
+    return JSONResponse({"ok": True, "invite_url": f"{settings.app_url}/portal/join/{token}"})
+
+
+@app.post("/agency/api/portal-users/{user_id}/revoke")
+def agency_revoke_portal_user(user_id: int, request: Request):
+    _agency_admin(request)
+    user = get_client_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Unknown portal user")
+    revoke_client_user(user_id)
+    return JSONResponse({"ok": True})
 
 
 # ---- credential vault ----
