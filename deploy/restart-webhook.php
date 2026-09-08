@@ -1,12 +1,19 @@
 <?php
 // Webhook called by GitHub Actions after FTP deploy to restart the reporting service.
 // Token arrives in X-Deploy-Token header (never in URL — keeps it out of Apache logs).
+//
+// The token itself lives in deploy-token.php NEXT TO THIS FILE ON THE SERVER,
+// never in this file and never in git (same pattern as finance's
+// claude-config.php). Create it by hand in the webroot — a one-line PHP file
+// that returns the token string (no closing tag) — and chmod it 600. Put the
+// same value in the repo's DEPLOY_WEBHOOK_TOKEN Actions secret.
 
-$expected = 'XEarHCsRM4NWc8XDRz_rXAVeEEz9-0qX_Bn7M12X-Cw';
+$tokenFile = __DIR__ . '/deploy-token.php';
+$expected = is_file($tokenFile) ? (string) (include $tokenFile) : '';
 
 $provided = $_SERVER['HTTP_X_DEPLOY_TOKEN'] ?? '';
 
-if (!hash_equals($expected, $provided)) {
+if ($expected === '' || !hash_equals($expected, $provided)) {
     http_response_code(403);
     exit('Forbidden');
 }
