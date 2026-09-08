@@ -43,14 +43,43 @@ async function req<T>(path: string, method: string, body?: unknown): Promise<T> 
 
 export interface ClientPayload { slug: string; display_name: string; agency: SnapAgency; workspaceUrl?: string }
 
+/** Reporting-core config keys Agency HQ may write. */
+export interface ClientSettingsInput {
+  about?: string;
+  sections?: string[];
+  competitors?: string[];
+  executives?: string[];
+  sentiment_context?: string;
+  report_focus?: string;
+}
+
 export interface NewClientInput {
   name: string; kind: ClientKind; owner?: string; website?: string;
   cadence?: Partial<{ report: string; articlesPerWeek: number; reviewMonths: number }>;
   strategy?: { updated: string | null; focus?: string | null };
   portalUrl?: string;
+  /** The wizard sends the whole setup with the create, so a new client lands configured. */
+  settings?: ClientSettingsInput;
+  connections?: Record<string, Record<string, string>>;
 }
 
 export const createClient = (input: NewClientInput) => req<ClientPayload>('/clients', 'POST', input);
+export const patchSettings = (slug: string, settings: ClientSettingsInput) =>
+  req<ClientPayload>(`/clients/${slug}/settings`, 'PATCH', settings);
+export const putConnection = (slug: string, provider: string, fields: Record<string, string>) =>
+  req<{ ok: boolean }>(`/clients/${slug}/connections/${provider}`, 'PUT', fields);
+export const testConnection = (slug: string, provider: string) =>
+  req<{ ok: boolean; message: string }>(`/clients/${slug}/connections/${provider}/test`, 'POST', {});
+
+/* ---- Claude setup assistant ---- */
+export interface SetupDraft {
+  about?: string; strategy_focus?: string;
+  competitors?: string[]; executives?: string[];
+  sentiment_brief?: string; report_focus?: string;
+  core_keywords?: string[]; mention_queries?: string[]; sections?: string[];
+}
+export const draftClientSetup = (input: { name: string; website?: string; description?: string; kind?: ClientKind }) =>
+  req<{ draft: SetupDraft }>('/assist/client-setup', 'POST', input);
 export const patchClient = (slug: string, patch: Record<string, unknown>) =>
   req<ClientPayload>(`/clients/${slug}`, 'PATCH', patch);
 export const deleteClient = (slug: string) => req<{ ok: boolean }>(`/clients/${slug}`, 'DELETE');

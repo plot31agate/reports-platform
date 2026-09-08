@@ -136,6 +136,37 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 AGENCY_DIST = Path(__file__).parent.parent / "agency" / "dist"
 
 
+# Per-provider client fields whose values are secret (write-only in any UI).
+_SECRET_CLIENT_FIELDS = {
+    d["provider"]: {f["key"] for f in d["client_fields"] if f.get("secret")}
+    for d in connectors.CONNECTOR_DEFS
+}
+
+
+def _setup_meta() -> dict:
+    """Static setup vocabulary the Agency HQ wizard renders from: the report
+    sections on offer and each connector's per-client fields (secrets flagged,
+    values never included)."""
+    return {
+        "section_defs": [
+            {"key": d["key"], "label": d["label"], "hint": d["hint"], "default": d["default"]}
+            for d in SECTION_DEFS
+        ],
+        "connectors": [
+            {
+                "provider": d["provider"],
+                "label": d["label"],
+                "blurb": d["blurb"],
+                "client_fields": [
+                    {k: f.get(k) for k in ("key", "label", "type", "placeholder", "hint", "secret") if f.get(k) is not None}
+                    for f in d["client_fields"]
+                ],
+            }
+            for d in connectors.CONNECTOR_DEFS
+        ],
+    }
+
+
 def _build_agency_snapshot() -> dict:
     """The state Agency HQ's roster needs, straight from the core DB. Mirrors
     scripts/agency_snapshot.py, but live per-request instead of a static file."""
@@ -158,18 +189,28 @@ def _build_agency_snapshot() -> dict:
                     (slug,),
                 ).fetchall()
             ]
-            connections = [
-                {
+            connections = []
+            conn_settings = {}
+            for r in conn.execute(
+                "SELECT provider, status, status_detail, last_synced_at, config_json FROM client_connections WHERE client_slug=?",
+                (slug,),
+            ).fetchall():
+                connections.append({
                     "provider": r["provider"],
                     "status": r["status"],
                     "detail": r["status_detail"],
                     "last_synced_at": r["last_synced_at"],
+                })
+                try:
+                    saved = json.loads(r["config_json"] or "{}")
+                except (ValueError, TypeError):
+                    saved = {}
+                secret_keys = _SECRET_CLIENT_FIELDS.get(r["provider"], set())
+                # Secrets never leave the server — report only that one is set.
+                conn_settings[r["provider"]] = {
+                    k: ("•set•" if k in secret_keys and v else v)
+                    for k, v in saved.items() if isinstance(v, str)
                 }
-                for r in conn.execute(
-                    "SELECT provider, status, status_detail, last_synced_at FROM client_connections WHERE client_slug=?",
-                    (slug,),
-                ).fetchall()
-            ]
             secrets = [
                 {
                     "id": r["id"],
@@ -200,12 +241,26 @@ def _build_agency_snapshot() -> dict:
                 "latest_report": reports[0] if reports else None,
                 "connections": connections,
                 "secrets": secrets,
+                # The reporting-core setup Agency HQ can now read AND write —
+                # the same keys the workspace and report builder consume.
+                "setup": {
+                    "about": cfg.get("about") or "",
+                    "sections": enabled_sections(cfg),
+                    "competitors": cfg.get("competitors") or [],
+                    "executives": cfg.get("executives") or [],
+                    "sentiment_context": cfg.get("sentiment_context") or "",
+                    "report_focus": cfg.get("report_focus") or "",
+                    "connections": conn_settings,
+                },
             })
     from app.vault import vault_ready
     return {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "source": "reporting.db",
         "vault_ready": vault_ready(),
+        "assist_ready": bool(settings.anthropic_api_key),
+        "agency_keys": sorted(get_agency_credentials().keys()),
+        "meta": _setup_meta(),
         "clients": clients,
     }
 
@@ -266,8 +321,133 @@ async def agency_create_client(request: Request):
     if isinstance(body.get("strategy"), dict):
         block["strategy"] = body["strategy"]
 
-    create_client(slug, name, json.dumps({"agency": block}))
+    config: dict = {"agency": block}
+    create_client(slug, name, json.dumps(config))
+
+    # The wizard can hand the full reporting-core setup in the same POST, so a
+    # new client lands configured, not just named.
+    if isinstance(body.get("settings"), dict):
+        _apply_client_settings(slug, body["settings"])
+    if isinstance(body.get("connections"), dict):
+        for provider, fields in body["connections"].items():
+            if isinstance(fields, dict):
+                try:
+                    _save_client_connection(slug, provider, fields)
+                except KeyError:
+                    pass  # unknown provider in the payload — skip, don't fail the create
     return JSONResponse(_agency_client_payload(slug))
+
+
+# The reporting-core config keys Agency HQ may write. Lists are lists of
+# strings; the rest are free text. Everything else in config_json is off-limits
+# from this API (colours, agency block has its own endpoints, etc.).
+_SETTINGS_LIST_KEYS = ("competitors", "executives")
+_SETTINGS_TEXT_KEYS = ("about", "sentiment_context", "report_focus")
+
+
+def _apply_client_settings(slug: str, body: dict) -> list:
+    """Write the recognised setup keys from `body` into the client's config.
+    Returns the list of keys actually written."""
+    written = []
+    for key in _SETTINGS_LIST_KEYS:
+        if key in body and isinstance(body[key], list):
+            update_client_config_key(slug, key, [str(x).strip() for x in body[key] if str(x).strip()])
+            written.append(key)
+    for key in _SETTINGS_TEXT_KEYS:
+        if key in body and isinstance(body[key], str):
+            update_client_config_key(slug, key, body[key].strip())
+            written.append(key)
+    if "sections" in body and isinstance(body["sections"], list):
+        chosen = [k for k in ALL_SECTION_KEYS if k in body["sections"]]
+        if chosen:
+            update_client_config_key(slug, "sections", chosen)
+            written.append("sections")
+    return written
+
+
+def _save_client_connection(slug: str, provider: str, fields: dict) -> None:
+    """Upsert one provider's per-client connection settings (JSON API twin of
+    admin_connections_save). Blank secrets keep their stored value."""
+    cdef = connectors.get_def(provider)  # KeyError on unknown provider
+    old = _parse_config(get_connection(slug, provider))
+    config = {}
+    for f in cdef["client_fields"]:
+        val = str(fields.get(f["key"]) or "").strip()
+        if f.get("secret") and (not val or val == "•set•"):
+            val = old.get(f["key"], "")
+        config[f["key"]] = val
+    # Nothing filled and nothing stored → don't create an empty connection row.
+    if not any(v for v in config.values()) and not old:
+        return
+    upsert_connection(slug, provider, json.dumps(config))
+
+
+@app.patch("/agency/api/clients/{slug}/settings")
+async def agency_patch_settings(slug: str, request: Request):
+    """Save the client's reporting-core setup (sections, competitors,
+    executives, briefs) — the keys the workspace and report builder read."""
+    _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    body = await request.json()
+    _apply_client_settings(slug, body)
+    return JSONResponse(_agency_client_payload(slug))
+
+
+@app.put("/agency/api/clients/{slug}/connections/{provider}")
+async def agency_put_connection(slug: str, provider: str, request: Request):
+    _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    body = await request.json()
+    try:
+        _save_client_connection(slug, provider, body if isinstance(body, dict) else {})
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Unknown provider")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/agency/api/clients/{slug}/connections/{provider}/test")
+def agency_test_connection(slug: str, provider: str, request: Request):
+    """Test one client connection and stamp its status — same path as the
+    workspace Test button, returned as JSON for the SPA."""
+    _agency_admin(request)
+    try:
+        cdef = connectors.get_def(provider)
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Unknown provider")
+    saved = _parse_config(get_connection(slug, provider))
+    client_has_secret = any(
+        f.get("secret") and (saved.get(f["key"]) or "").strip() for f in cdef["client_fields"]
+    )
+    if not get_agency_credential(provider) and not client_has_secret:
+        return JSONResponse({"ok": False, "message": "No agency key for this provider yet — add it on the API keys page."})
+    ok, msg = connectors.test_connection(provider, _merged_config(provider, slug))
+    set_connection_status(slug, provider, "ok" if ok else "error", msg)
+    return JSONResponse({"ok": ok, "message": msg[:300]})
+
+
+@app.post("/agency/api/assist/client-setup")
+async def agency_assist_client_setup(request: Request):
+    """Draft a whole client setup with Claude from a one-line description.
+    Pure draft: nothing is saved until the operator reviews and creates."""
+    _agency_admin(request)
+    from app.assist import draft_client_setup
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="A client name is required")
+    result = draft_client_setup(
+        name,
+        (body.get("website") or "").strip(),
+        (body.get("description") or "").strip(),
+        body.get("kind") if body.get("kind") in ("client-hq", "reporting") else "reporting",
+    )
+    if not result.get("configured"):
+        raise HTTPException(status_code=400, detail="Claude API is not configured (ANTHROPIC_API_KEY).")
+    if not result.get("draft"):
+        raise HTTPException(status_code=502, detail=(result.get("error") or "Draft failed")[:200])
+    return JSONResponse({"draft": result["draft"]})
 
 
 @app.patch("/agency/api/clients/{slug}")

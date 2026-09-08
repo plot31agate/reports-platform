@@ -21,16 +21,25 @@ export interface NewClient {
   website?: string; portalUrl?: string;
   cadence: RosterClient['cadence'];
   focus?: string;
+  /** Full reporting-core setup from the wizard — saved with the create when
+      online; the offline overlay can only keep the roster basics. */
+  settings?: api.ClientSettingsInput;
+  connections?: Record<string, Record<string, string>>;
 }
 
 export interface Store {
   online: boolean;
   vaultReady: boolean;
-  createClient(c: NewClient): Promise<void>;
+  createClient(c: NewClient): Promise<string | undefined>; // returns the new slug when online
   patch(slug: string, patch: Partial<RosterClient>): Promise<void>;
   remove(slug: string): Promise<void>;
   createReporting(slug: string): Promise<string | undefined>; // returns workspace URL when online
   createPortal(slug: string, status: PortalStatus, url?: string): Promise<void>;
+  // reporting-core setup (online only)
+  saveSettings(slug: string, settings: api.ClientSettingsInput): Promise<void>;
+  saveConnection(slug: string, provider: string, fields: Record<string, string>): Promise<void>;
+  testConnection(slug: string, provider: string): Promise<{ ok: boolean; message: string }>;
+  draftSetup(input: { name: string; website?: string; description?: string; kind?: ClientKind }): Promise<api.SetupDraft>;
   // vault (online only)
   addSecret(slug: string, input: api.SecretInput): Promise<void>;
   updateSecret(id: number, input: api.SecretInput): Promise<void>;
@@ -39,6 +48,7 @@ export interface Store {
 }
 
 const offlineVault = () => { throw new Error('The credential vault needs the reporting core — sign in there to manage passwords.'); };
+const offlineCore = () => { throw new Error('This needs the reporting core — it saves to reporting.db, not this browser.'); };
 
 export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh: () => void | Promise<void> }): Store {
   const { online, vaultReady, refresh } = opts;
@@ -49,17 +59,23 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
       online: true,
       vaultReady,
       async createClient(c) {
-        await api.createClient({
+        const r = await api.createClient({
           name: c.name, kind: c.kind, owner: c.owner, website: c.website,
           cadence: c.cadence, portalUrl: c.portalUrl,
           strategy: c.focus ? { updated: isoToday(), focus: c.focus } : { updated: null },
+          settings: c.settings, connections: c.connections,
         });
         await done();
+        return r.slug;
       },
       async patch(slug, patch) { await api.patchClient(slug, patch as Record<string, unknown>); await done(); },
       async remove(slug) { await api.deleteClient(slug); await done(); },
       async createReporting(slug) { const r = await api.createReporting(slug); await done(); return r.workspaceUrl; },
       async createPortal(slug, status, url) { await api.createPortal(slug, status, url); await done(); },
+      async saveSettings(slug, settings) { await api.patchSettings(slug, settings); await done(); },
+      async saveConnection(slug, provider, fields) { await api.putConnection(slug, provider, fields); await done(); },
+      async testConnection(slug, provider) { const r = await api.testConnection(slug, provider); await done(); return r; },
+      async draftSetup(input) { return (await api.draftClientSetup(input)).draft; },
       async addSecret(slug, input) { await api.addSecret(slug, input); await done(); },
       async updateSecret(id, input) { await api.updateSecret(id, input); await done(); },
       async deleteSecret(id) { await api.deleteSecret(id); await done(); },
@@ -79,11 +95,16 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
         ...(c.portalUrl ? { portalUrl: c.portalUrl } : {}),
       };
       lsAdd(client); await done();
+      return client.slug;
     },
     async patch(slug, patch) { lsPatch(slug, patch); await done(); },
     async remove(slug) { lsRemove(slug); await done(); },
     async createReporting(slug) { lsPatch(slug, { kind: 'reporting' }); await done(); return undefined; },
     async createPortal(slug, status, url) { lsPatch(slug, { kind: 'client-hq', portalStatus: status, ...(url ? { portalUrl: url } : {}) }); await done(); },
+    async saveSettings() { offlineCore(); },
+    async saveConnection() { offlineCore(); },
+    async testConnection() { return offlineCore() as never; },
+    async draftSetup() { return offlineCore() as never; },
     async addSecret() { offlineVault(); },
     async updateSecret() { offlineVault(); },
     async deleteSecret() { offlineVault(); },

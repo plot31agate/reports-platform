@@ -144,12 +144,12 @@ export function App() {
           {view === 'overview' && <Overview states={states} totals={totals} onOpen={setOpenSlug} go={go} />}
           {view === 'week' && <ThisWeek states={states} onOpen={setOpenSlug} />}
           {view === 'strategy' && <Strategy states={states} onOpen={setOpenSlug} />}
-          {view === 'clients' && <Clients states={states} store={store} onOpen={setOpenSlug} />}
+          {view === 'clients' && <Clients states={states} store={store} snapshot={snapshot} onOpen={setOpenSlug} />}
           {view === 'reminders' && <Reminders states={states} />}
         </div>
       </main>
 
-      {openState && <ClientSheet key={openState.client.slug} state={openState} store={store} onClose={() => setOpenSlug(null)} />}
+      {openState && <ClientSheet key={openState.client.slug} state={openState} store={store} snapshot={snapshot} onClose={() => setOpenSlug(null)} />}
     </div>
   );
 }

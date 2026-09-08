@@ -24,12 +24,33 @@ export interface SnapAgency {
   cadence?: Cadence; strategy?: StrategyState; live?: LiveState;
   portalUrl?: string; portalStatus?: PortalStatus;
 }
+/** The client's reporting-core setup — the config the workspace and report
+    builder read, now readable and writable from Agency HQ. */
+export interface ClientSetup {
+  about: string;
+  sections: string[];
+  competitors: string[];
+  executives: string[];
+  sentiment_context: string;
+  report_focus: string;
+  /** provider -> saved client fields (secrets masked as "•set•"). */
+  connections: Record<string, Record<string, string>>;
+}
+export interface SectionDef { key: string; label: string; hint: string; default: boolean; }
+export interface ConnFieldDef { key: string; label: string; type?: string; placeholder?: string; hint?: string; secret?: boolean; }
+export interface ConnectorDef { provider: string; label: string; blurb: string; client_fields: ConnFieldDef[]; }
+export interface SetupMeta { section_defs: SectionDef[]; connectors: ConnectorDef[]; }
+
 export interface SnapClient {
   slug: string; display_name: string; source: string; created_at: string;
   tagline: string; agency?: SnapAgency; reports: SnapReport[]; latest_report: SnapReport | null;
-  connections: SnapConnection[]; secrets?: SecretMeta[];
+  connections: SnapConnection[]; secrets?: SecretMeta[]; setup?: ClientSetup;
 }
-export interface Snapshot { generated_at: string; source: string; vault_ready?: boolean; clients: SnapClient[]; }
+export interface Snapshot {
+  generated_at: string; source: string; vault_ready?: boolean;
+  assist_ready?: boolean; agency_keys?: string[]; meta?: SetupMeta;
+  clients: SnapClient[];
+}
 
 /* ---------- roster straight from the DB snapshot ----------
    The reporting core owns the roster now: each client carries its agency block

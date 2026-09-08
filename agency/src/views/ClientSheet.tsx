@@ -3,22 +3,28 @@
    Overview: what the roster row summarised, expanded — the task list, report
    history and connections from the core, the strategy plan, the portal link.
 
-   Setup: the client's own record, editable. Profile (name, website, lead, type,
-   cadence) writes straight to the reporting core; the credential vault holds the
-   client's logins (encrypted server-side, revealed on demand and audit-stamped);
-   and the two lifecycle actions — Create reporting and Create portal — wire this
-   client into the rest of the stack. Everything routes through the store, so it
-   persists to reporting.db online and to the local overlay offline. */
+   Setup: the client's own record, editable — the SAME setup vocabulary as the
+   new-client wizard, so nothing lives in a second place. Profile (name,
+   website, lead, type, cadence) writes straight to the reporting core; the
+   Reporting setup card edits the core config the workspace reads (sections,
+   competitors, executives, briefs, connections — with a Claude re-draft);
+   the credential vault holds the client's logins (encrypted server-side,
+   revealed on demand and audit-stamped); and the lifecycle actions wire this
+   client into the rest of the stack. Everything routes through the store, so
+   it persists to reporting.db online and to the local overlay offline. */
 import { useState } from 'react';
-import type { ClientState, SecretMeta } from '../lib/agency';
+import type { ClientState, SecretMeta, Snapshot } from '../lib/agency';
 import { fmtDate, periodLabel } from '../lib/agency';
 import type { RosterClient, ClientKind, PortalStatus } from '../lib/roster';
 import type { Store } from '../lib/store';
 import { StatusPill, TaskGlyph, toast } from '../components/ui';
+import { LinesArea, SectionsPicker, ConnectionFields, FALLBACK_META, fromLines, toLines } from '../components/setup';
 
 type Tab = 'overview' | 'setup';
 
-export function ClientSheet({ state, store, onClose }: { state: ClientState; store: Store; onClose: () => void }) {
+export function ClientSheet({ state, store, snapshot, onClose }: {
+  state: ClientState; store: Store; snapshot: Snapshot | null; onClose: () => void;
+}) {
   const { client } = state;
   const [tab, setTab] = useState<Tab>('overview');
   return (
@@ -39,7 +45,7 @@ export function ClientSheet({ state, store, onClose }: { state: ClientState; sto
           <button className={tab === 'setup' ? 'on' : ''} onClick={() => setTab('setup')}>Setup</button>
         </div>
         <div className="sheet-body">
-          {tab === 'overview' ? <OverviewTab state={state} /> : <SetupTab state={state} store={store} />}
+          {tab === 'overview' ? <OverviewTab state={state} /> : <SetupTab state={state} store={store} snapshot={snapshot} onClose={onClose} />}
         </div>
       </div>
     </div>
@@ -122,20 +128,225 @@ function OverviewTab({ state }: { state: ClientState }) {
 }
 
 /* ============================ SETUP ============================ */
-function SetupTab({ state, store }: { state: ClientState; store: Store }) {
+function SetupTab({ state, store, snapshot, onClose }: {
+  state: ClientState; store: Store; snapshot: Snapshot | null; onClose: () => void;
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {!store.online && (
         <div className="card accent" style={{ borderLeft: '3px solid var(--warn)', padding: '10px 14px' }}>
           <span className="eyebrow" style={{ color: 'var(--warn)' }}>Core offline</span>
           <span className="small" style={{ color: 'var(--muted)', marginLeft: 10 }}>
-            Profile edits save to this browser only; the credential vault needs the reporting core.
+            Profile edits save to this browser only; the reporting setup and credential vault need the reporting core.
           </span>
         </div>
       )}
       <ProfileCard client={state.client} store={store} />
+      {store.online && <ReportingSetupCard state={state} store={store} snapshot={snapshot} />}
       <ActionsCard state={state} store={store} />
       <VaultCard state={state} store={store} />
+      <DangerCard state={state} store={store} onClose={onClose} />
+    </div>
+  );
+}
+
+/* ---- remove client: type-the-name confirmation, then gone for good ---- */
+function DangerCard({ state, store, onClose }: { state: ClientState; store: Store; onClose: () => void }) {
+  const { client, snap } = state;
+  const [open, setOpen] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const armed = confirmName.trim().toLowerCase() === client.name.trim().toLowerCase();
+
+  const counts = [
+    snap?.reports.length ? `${snap.reports.length} report${snap.reports.length === 1 ? '' : 's'} and their share links` : null,
+    snap?.secrets?.length ? `${snap.secrets.length} vault login${snap.secrets.length === 1 ? '' : 's'}` : null,
+    'all uploaded data and connection settings',
+  ].filter(Boolean).join(', ');
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await store.remove(client.slug);
+      toast(`${client.name} removed`);
+      onClose();
+    } catch (e) {
+      toast((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ borderColor: open ? 'var(--fail)' : undefined }}>
+      <div className="controls" style={{ marginBottom: open ? 10 : 0 }}>
+        <div>
+          <div className="eyebrow" style={{ color: 'var(--fail)' }}>Remove client</div>
+          {open && (
+            <div className="small" style={{ color: 'var(--muted)', marginTop: 4, maxWidth: 560, lineHeight: 1.5 }}>
+              {store.online
+                ? <>Permanently deletes {client.name} from the reporting core — {counts}. There is no undo.</>
+                : <>The core is offline — this only removes {client.name} from this browser's roster overlay.</>}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button className="btn ghost sm" onClick={() => { setOpen((v) => !v); setConfirmName(''); }}>
+          {open ? 'Cancel' : 'Remove…'}
+        </button>
+      </div>
+      {open && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            className="inp"
+            style={{ maxWidth: 320 }}
+            placeholder={`Type "${client.name}" to confirm`}
+            value={confirmName}
+            onChange={(e) => setConfirmName(e.target.value)}
+            autoFocus
+          />
+          <button
+            className="btn sm"
+            style={{ background: 'var(--fail)', borderColor: 'var(--fail)' }}
+            disabled={!armed || busy}
+            onClick={remove}
+          >
+            {busy ? 'Removing…' : `Remove ${client.name}`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- reporting-core setup: same vocabulary as the new-client wizard ---- */
+function ReportingSetupCard({ state, store, snapshot }: { state: ClientState; store: Store; snapshot: Snapshot | null }) {
+  const meta = snapshot?.meta ?? FALLBACK_META;
+  const setup = state.snap?.setup;
+  const agencyKeys = snapshot?.agency_keys ?? [];
+
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [about, setAbout] = useState(setup?.about ?? '');
+  const [sections, setSections] = useState<string[]>(setup?.sections ?? []);
+  const [competitors, setCompetitors] = useState(toLines(setup?.competitors));
+  const [executives, setExecutives] = useState(toLines(setup?.executives));
+  const [sentiment, setSentiment] = useState(setup?.sentiment_context ?? '');
+  const [reportFocus, setReportFocus] = useState(setup?.report_focus ?? '');
+  const [conn, setConnState] = useState<Record<string, Record<string, string>>>(setup?.connections ?? {});
+  const setConn = (provider: string, key: string, value: string) =>
+    setConnState((prev) => ({ ...prev, [provider]: { ...(prev[provider] ?? {}), [key]: value } }));
+
+  const saveSettings = async () => {
+    setBusy(true);
+    try {
+      await store.saveSettings(state.client.slug, {
+        about: about.trim(), sections,
+        competitors: fromLines(competitors), executives: fromLines(executives),
+        sentiment_context: sentiment.trim(), report_focus: reportFocus.trim(),
+      });
+      toast('Reporting setup saved');
+    } catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const saveConn = async (provider: string) => {
+    setBusy(true);
+    try { await store.saveConnection(state.client.slug, provider, conn[provider] ?? {}); toast('Connection settings saved'); }
+    catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const testConn = async (provider: string) => {
+    setBusy(true);
+    try {
+      const r = await store.testConnection(state.client.slug, provider);
+      toast(r.ok ? `✓ ${r.message}` : r.message);
+    } catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const redraft = async () => {
+    setDrafting(true);
+    try {
+      const draft = await store.draftSetup({
+        name: state.client.name, website: state.client.website,
+        description: about.trim(), kind: state.client.kind,
+      });
+      if (draft.about && !about.trim()) setAbout(draft.about);
+      if (draft.competitors?.length && !competitors.trim()) setCompetitors(toLines(draft.competitors));
+      if (draft.executives?.length && !executives.trim()) setExecutives(toLines(draft.executives));
+      if (draft.sentiment_brief) setSentiment(draft.sentiment_brief);
+      if (draft.report_focus) setReportFocus(draft.report_focus);
+      if (draft.sections?.length && sections.length === 0) setSections(draft.sections);
+      toast('Drafted — review, then Save setup');
+    } catch (e) { toast((e as Error).message); }
+    finally { setDrafting(false); }
+  };
+
+  const toggle = (key: string) =>
+    setSections((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  return (
+    <div className="card">
+      <div className="controls" style={{ marginBottom: open ? 10 : 0 }}>
+        <div>
+          <div className="eyebrow">Reporting setup</div>
+          <div className="small" style={{ color: 'var(--muted)', marginTop: 4 }}>
+            {sections.length} sections · {fromLines(competitors).length} competitors ·{' '}
+            {sentiment.trim() ? 'sentiment brief set' : 'no sentiment brief'} ·{' '}
+            {reportFocus.trim() ? 'report focus set' : 'no report focus'}
+          </div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <button className="btn ghost sm" onClick={() => setOpen((v) => !v)}>{open ? 'Close' : 'Edit'}</button>
+      </div>
+
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn ghost sm" disabled={drafting || !snapshot?.assist_ready} onClick={redraft}>
+              {drafting ? 'Claude is drafting…' : 'Draft empty fields with Claude'}
+            </button>
+            {!snapshot?.assist_ready && <span className="small" style={{ color: 'var(--faint)' }}>ANTHROPIC_API_KEY isn't set on the server.</span>}
+          </div>
+          <LinesArea label="About" rows={2} hint="One or two sentences on what they do — context for every Claude draft."
+            value={about} onChange={setAbout} />
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>Report sections</div>
+            <SectionsPicker defs={meta.section_defs} chosen={sections} onToggle={toggle} />
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <LinesArea label="Competitors" placeholder={'One per line'} value={competitors} onChange={setCompetitors} />
+            <LinesArea label="Executives to track" placeholder={'One per line'} value={executives} onChange={setExecutives} />
+          </div>
+          <LinesArea label="Sentiment brief" rows={5}
+            hint="Read by the AI that scores every media mention from this client's commercial perspective."
+            value={sentiment} onChange={setSentiment} />
+          <LinesArea label="Report focus" rows={4}
+            hint="Read by the AI that writes the report's headline and commentary."
+            value={reportFocus} onChange={setReportFocus} />
+          <div>
+            <button className="btn" disabled={busy} onClick={saveSettings}>Save setup</button>
+          </div>
+
+          <div className="eyebrow" style={{ marginTop: 6 }}>Data connections</div>
+          {meta.connectors.map((c) => (
+            <ConnectionFields
+              key={c.provider} def={c}
+              hasAgencyKey={agencyKeys.includes(c.provider)}
+              values={conn[c.provider] ?? {}}
+              onChange={(k, v) => setConn(c.provider, k, v)}
+              extra={
+                <span style={{ display: 'inline-flex', gap: 6 }}>
+                  <button className="btn ghost sm" disabled={busy} onClick={() => saveConn(c.provider)}>Save</button>
+                  <button className="btn ghost sm" disabled={busy} onClick={() => testConn(c.provider)}>Test</button>
+                </span>
+              }
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
