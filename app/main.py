@@ -91,6 +91,10 @@ from app.db import (
     update_client_secret,
     delete_client_secret,
     touch_secret_reveal,
+    create_hq_build_job,
+    get_latest_hq_build_job,
+    get_hq_build_job,
+    cancel_hq_build_job,
 )
 from app import vault
 from app.reports import jobs
@@ -668,6 +672,116 @@ def agency_provision_hq(slug: str, request: Request):
     payload = _agency_client_payload(slug)
     payload["portalManageUrl"] = f"/admin/portal?client={slug}"
     return JSONResponse(payload)
+
+
+# ---- unattended Client HQ build (Create HQ -> build the real site) --------
+# The operator clicks once; the site + portal are built and deployed by an
+# out-of-process runner (scripts/hq_builder.py) that executes the client-hq
+# skill. This app owns the queue and the live build log; it never runs the
+# build itself (a web request must not spawn an agentic deploy).
+
+def _job_payload(job: dict | None) -> dict | None:
+    """The public shape of a build job for the Agency HQ UI (admin-only)."""
+    if not job:
+        return None
+    return {
+        "id": job["id"],
+        "slug": job["client_slug"],
+        "status": job["status"],
+        "log": job.get("log") or "",
+        "portalUrl": job.get("portal_url"),
+        "error": job.get("error"),
+        "buildPack": job.get("build_pack") or {},
+        "createdAt": job.get("created_at"),
+        "startedAt": job.get("started_at"),
+        "finishedAt": job.get("finished_at"),
+    }
+
+
+def _fallback_build_pack(slug: str, name: str, block: dict) -> dict:
+    """A deterministic, intake-shaped build spec used when Claude isn't
+    configured, so the build pipeline still works end-to-end (the runner's
+    dry-run proves it). Mirrors app.assist.draft_hq_build_pack's shape."""
+    from app.assist import OPERATOR_REQUIRED
+    website = (block.get("website") or "").strip()
+    domain = website.replace("https://", "").replace("http://", "").strip("/").split("/")[0]
+    return {
+        "name": name,
+        "slug": slug,
+        "owner": block.get("owner") or "Unassigned",
+        "client": {"wordmark": name, "domain": domain, "brief": "", "timezone_guess": "Europe/London"},
+        "site": {"exists": bool(domain), "kind": "php-static", "register_driven_content": True,
+                 "pages": ["Home", "About", "Services", "Contact"], "primary_cta": "Get in touch",
+                 "same_account": True},
+        "rooms": {"content_engine": "yes", "social_builder": "yes", "buffer": "later",
+                  "month_planner": "yes", "plan_approvals": "yes", "site_health": "yes", "reports": "later"},
+        "brand": {"primary_color": "#1f2937", "accent_color": "#2563eb", "tone_adjectives": [],
+                  "person": "we", "english_variant": "British English", "hard_rules": "", "tagline": ""},
+        "audience": "", "no_gos": [], "channels": ["Instagram", "Facebook"],
+        "cadence": {"articles_per_month": 4, "posts_per_week": 3, "reels_per_month": 0},
+        "posting_time": "17:00", "content_strands": [],
+        "reporting": {"on_platform": True, "headline_numbers": []},
+        "hosting": {"repo_name": slug, "owner": "plot31agate", "domain": domain,
+                    "notes": "drafted without Claude (no API key)"},
+        "operator_required": OPERATOR_REQUIRED,
+    }
+
+
+@app.post("/agency/api/clients/{slug}/build-hq")
+async def agency_build_hq(slug: str, request: Request):
+    """Queue an unattended Client HQ build. Drafts the build spec with Claude,
+    enqueues a job for the runner, and flips the client to 'building'. The
+    button that calls this then polls GET /build-hq to stream the build log."""
+    user = _agency_admin(request)
+    block = get_client_agency(slug)
+    if not block:
+        raise HTTPException(status_code=404, detail="Unknown client")
+
+    # Don't stack builds: if one is already in flight, hand it back.
+    existing = get_latest_hq_build_job(slug)
+    if existing and existing["status"] in ("queued", "running"):
+        return JSONResponse({"job": _job_payload(existing), "client": _agency_client_payload(slug),
+                             "reused": True})
+
+    row = get_client_row(slug)
+    name = row["display_name"] if row else slug
+    from app.assist import draft_hq_build_pack
+    result = draft_hq_build_pack(name, (block.get("website") or "").strip(),
+                                 "", block.get("owner") or "Unassigned")
+    if result.get("configured") and result.get("pack"):
+        pack = result["pack"]
+    elif result.get("configured") and result.get("error"):
+        # Claude configured but the draft failed — don't silently ship a stub.
+        raise HTTPException(status_code=502, detail=("Build-spec draft failed: "
+                                                     + (result.get("error") or ""))[:200])
+    else:
+        # No API key: fall back to a deterministic spec so the build still runs.
+        pack = _fallback_build_pack(slug, name, block)
+
+    job_id = create_hq_build_job(slug, pack, created_by=user if isinstance(user, str) else None)
+    patch_client_agency(slug, {"kind": "client-hq", "portalStatus": "building", "portalKind": "external"})
+    return JSONResponse({"job": _job_payload(get_hq_build_job(job_id)),
+                         "client": _agency_client_payload(slug), "reused": False})
+
+
+@app.get("/agency/api/clients/{slug}/build-hq")
+def agency_build_hq_status(slug: str, request: Request):
+    """Latest build job for a client — the UI polls this for the live log and
+    the building -> live transition."""
+    _agency_admin(request)
+    if not get_client_row(slug):
+        raise HTTPException(status_code=404, detail="Unknown client")
+    return JSONResponse({"job": _job_payload(get_latest_hq_build_job(slug))})
+
+
+@app.post("/agency/api/build-jobs/{job_id}/cancel")
+def agency_cancel_build(job_id: int, request: Request):
+    """Cancel a queued or running build. The runner checks for this and stops."""
+    _agency_admin(request)
+    ok = cancel_hq_build_job(job_id)
+    if not ok:
+        raise HTTPException(status_code=409, detail="Job already finished")
+    return JSONResponse({"ok": True})
 
 
 @app.post("/agency/api/clients/{slug}/portal-users")

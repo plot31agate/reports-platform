@@ -20,6 +20,7 @@ import type { ClientState, SecretMeta, Snapshot } from '../lib/agency';
 import { fmtDate, periodLabel } from '../lib/agency';
 import type { RosterClient, PortalStatus } from '../lib/roster';
 import type { Store } from '../lib/store';
+import type { BuildJob } from '../lib/api';
 import { StatusPill, TaskGlyph, toast } from '../components/ui';
 import { LinesArea, SectionsPicker, ConnectionFields, FALLBACK_META, fromLines, toLines } from '../components/setup';
 
@@ -227,7 +228,19 @@ function ClientHqModule({ state, store, busy, setBusy, portalUrl, setPortalUrl, 
     finally { setBusy(false); }
   };
 
-  // --- not set up yet: offer the one-click built-in portal ---
+  const build = async () => {
+    if (!confirm(
+      `Build ${client.name}'s Client HQ now?\n\n`
+      + `Claude drafts the whole build, then a runner provisions the site + portal on their own domain `
+      + `and deploys it live. You'll watch it build here. Continue?`
+    )) return;
+    setBusy(true);
+    try { await store.buildHq(client.slug); toast('Build queued — watch it below'); }
+    catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // --- not set up yet: offer the built-in portal OR the unattended build ---
   if (portalStatus === 'none') {
     return (
       <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
@@ -240,9 +253,14 @@ function ClientHqModule({ state, store, busy, setBusy, portalUrl, setPortalUrl, 
         {showBespoke && (
           <div style={{ width: '100%', marginTop: 8 }}>
             <div className="pc-note" style={{ marginBottom: 8 }}>
-              A bespoke portal on the client's own domain (content engine, approvals — the client-hq build) is a separate project.
-              Track its progress here, and paste its URL once it's live.
+              A bespoke Client HQ on the client's own domain (their site + content engine, approvals — the client-hq build).
+              Click to create builds and deploys it unattended; or track a hand-built one manually.
             </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+              <button className="btn sm" disabled={busy || !store.online} onClick={build}>⚡ Build HQ now</button>
+              {!store.online && <span className="small" style={{ color: 'var(--warn)' }}>needs the reporting core online</span>}
+            </div>
+            <div className="small" style={{ color: 'var(--muted)', marginBottom: 6 }}>…or track a manual build:</div>
             <div className="seg" style={{ width: 'fit-content' }}>
               {PORTAL_STAGES.filter((s) => s.id !== 'none').map((st) => (
                 <button key={st.id} disabled={busy} onClick={() => setStage(st.id)}>{st.label}</button>
@@ -270,25 +288,129 @@ function ClientHqModule({ state, store, busy, setBusy, portalUrl, setPortalUrl, 
     );
   }
 
-  // --- external/bespoke portal being tracked ---
+  // --- external/bespoke portal: unattended build + live log, or manual tracking ---
   return (
     <div className="setup-row" style={{ borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
       <ModuleState
         on={portalStatus === 'live'} mid={portalStatus === 'planned' || portalStatus === 'building'}
         name="Client HQ"
-        detail={portalStatus === 'live' ? 'Bespoke portal live' : `Bespoke portal ${portalStatus} — separate build (client-hq scaffold)`}
+        detail={portalStatus === 'live' ? 'Bespoke portal live' : `Bespoke portal ${portalStatus} — client-hq build`}
       />
-      <div className="seg" style={{ width: 'fit-content' }}>
-        {PORTAL_STAGES.map((st) => (
-          <button key={st.id} className={portalStatus === st.id ? 'on' : ''} disabled={busy} onClick={() => setStage(st.id)}>{st.label}</button>
-        ))}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {portalStatus !== 'live' && (
+          <button className="btn sm" disabled={busy || !store.online} onClick={build}>⚡ Build HQ now</button>
+        )}
       </div>
-      {(portalStatus === 'live' || client.portalUrl) && (
-        <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 8 }}>
-          <input className="inp" placeholder="https://…/portal/" value={portalUrl} onChange={(e) => setPortalUrl(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn ghost sm" disabled={busy} onClick={() => setStage('live')}>Save link</button>
-          {client.portalUrl && <a className="btn sm" href={client.portalUrl} target="_blank" rel="noreferrer">Open ↗</a>}
+      {store.online && <HqBuildPanel state={state} store={store} onBuild={build} busy={busy} />}
+      <details style={{ width: '100%', marginTop: 8 }}>
+        <summary className="linky">Track manually instead</summary>
+        <div style={{ marginTop: 8 }}>
+          <div className="seg" style={{ width: 'fit-content' }}>
+            {PORTAL_STAGES.map((st) => (
+              <button key={st.id} className={portalStatus === st.id ? 'on' : ''} disabled={busy} onClick={() => setStage(st.id)}>{st.label}</button>
+            ))}
+          </div>
+          {(portalStatus === 'live' || client.portalUrl) && (
+            <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 8 }}>
+              <input className="inp" placeholder="https://…/portal/" value={portalUrl} onChange={(e) => setPortalUrl(e.target.value)} style={{ flex: 1 }} />
+              <button className="btn ghost sm" disabled={busy} onClick={() => setStage('live')}>Save link</button>
+              {client.portalUrl && <a className="btn sm" href={client.portalUrl} target="_blank" rel="noreferrer">Open ↗</a>}
+            </div>
+          )}
         </div>
+      </details>
+    </div>
+  );
+}
+
+/* ---- live build log: polls the latest build job while it runs ---- */
+function HqBuildPanel({ state, store, onBuild, busy }: {
+  state: ClientState; store: Store; onBuild: () => void; busy: boolean;
+}) {
+  const { client } = state;
+  const [job, setJob] = useState<BuildJob | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const logRef = useRef<HTMLPreElement>(null);
+  const wasActive = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    let timer: number | undefined;
+    const tick = async () => {
+      try {
+        const j = await store.buildHqStatus(client.slug);
+        if (!alive) return;
+        setJob(j); setLoaded(true);
+        const active = !!j && (j.status === 'queued' || j.status === 'running');
+        if (active) {
+          wasActive.current = true;
+          timer = window.setTimeout(tick, 1500);
+        } else if (wasActive.current) {
+          // Build just settled out of band — refresh so the whole page (module
+          // header, checklist, portal link) reflects the new live state once.
+          wasActive.current = false;
+          store.refresh();
+        }
+      } catch { if (alive) setLoaded(true); }
+    };
+    tick();
+    return () => { alive = false; if (timer) window.clearTimeout(timer); };
+  }, [client.slug, store]);
+
+  // Keep the log scrolled to the newest line while it streams.
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [job?.log]);
+
+  const cancel = async () => {
+    if (!job) return;
+    try { await store.cancelBuild(job.id); toast('Build cancelled'); }
+    catch (e) { toast((e as Error).message); }
+  };
+
+  if (!loaded || !job) return null;
+
+  const active = job.status === 'queued' || job.status === 'running';
+  const label = { queued: 'Queued', running: 'Building…', live: 'Live', failed: 'Failed', cancelled: 'Cancelled' }[job.status];
+  const color = job.status === 'live' ? 'var(--ok)' : job.status === 'failed' ? 'var(--bad)'
+    : job.status === 'cancelled' ? 'var(--muted)' : 'var(--accent)';
+
+  return (
+    <div style={{ width: '100%', marginTop: 10, border: '1px solid var(--line-soft)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--surface-2, rgba(0,0,0,0.03))' }}>
+        <span style={{ fontWeight: 600 }}>Unattended build</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color }}>
+          {active && <span className="pulse-dot" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 8, background: color, marginRight: 6 }} />}
+          {label}
+        </span>
+        <span style={{ flex: 1 }} />
+        {active && <button className="btn ghost sm" onClick={cancel}>Cancel</button>}
+        {job.status === 'failed' && <button className="btn sm" disabled={busy} onClick={onBuild}>Retry</button>}
+        {job.status === 'live' && job.portalUrl && (
+          <a className="btn sm" href={job.portalUrl} target="_blank" rel="noreferrer">Open ↗</a>
+        )}
+      </div>
+      {job.log && (
+        <pre ref={logRef} style={{
+          margin: 0, padding: '10px 12px', maxHeight: 220, overflow: 'auto',
+          fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          background: 'var(--code-bg, #0d1117)', color: 'var(--code-fg, #d1d5db)',
+        }}>{job.log}</pre>
+      )}
+      {job.error && <div className="small" style={{ padding: '8px 12px', color: 'var(--bad)' }}>{job.error}</div>}
+      {Array.isArray((job.buildPack as { operator_required?: string[] })?.operator_required)
+        && (job.buildPack as { operator_required?: string[] }).operator_required!.length > 0 && (
+        <details style={{ padding: '8px 12px', borderTop: '1px solid var(--line-soft)' }}>
+          <summary className="small" style={{ color: 'var(--muted)', cursor: 'pointer' }}>
+            What a real (live) deploy still needs from you — add to the vault
+          </summary>
+          <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18, color: 'var(--muted)', lineHeight: 1.5 }}>
+            {(job.buildPack as { operator_required?: string[] }).operator_required!.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   );
