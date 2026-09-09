@@ -101,6 +101,23 @@ export const createPortal = (slug: string, status: PortalStatus, portalUrl?: str
 /* ---- built-in Client HQ portal (hosted on this app) ---- */
 export const provisionHq = (slug: string) =>
   req<ClientPayload & { portalManageUrl?: string }>(`/clients/${slug}/hq`, 'POST', {});
+
+/* ---- unattended Client HQ build (bespoke site + portal on the client's own
+   domain, built and deployed by the runner). buildHq enqueues; buildHqStatus
+   is polled for the live log; cancelBuild stops an in-flight build. */
+export type BuildStatus = 'queued' | 'running' | 'live' | 'failed' | 'cancelled';
+export interface BuildJob {
+  id: number; slug: string; status: BuildStatus; log: string;
+  portalUrl?: string | null; error?: string | null;
+  buildPack?: Record<string, unknown>;
+  createdAt?: string; startedAt?: string | null; finishedAt?: string | null;
+}
+export const buildHq = (slug: string) =>
+  req<{ job: BuildJob; client: ClientPayload; reused: boolean }>(`/clients/${slug}/build-hq`, 'POST', {});
+export const buildHqStatus = (slug: string) =>
+  req<{ job: BuildJob | null }>(`/clients/${slug}/build-hq`, 'GET');
+export const cancelBuild = (id: number) =>
+  req<{ ok: boolean }>(`/build-jobs/${id}/cancel`, 'POST', {});
 export const addPortalUser = (slug: string, input: { email: string; name?: string }) =>
   req<{ ok: boolean; invite_url: string }>(`/clients/${slug}/portal-users`, 'POST', input);
 export const revokePortalUser = (id: number) =>

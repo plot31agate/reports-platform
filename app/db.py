@@ -147,6 +147,21 @@ CREATE TABLE IF NOT EXISTS client_secrets (
     last_revealed_by TEXT,           -- audit: who last revealed it
     FOREIGN KEY(client_slug) REFERENCES clients(slug)
 );
+
+CREATE TABLE IF NOT EXISTS hq_build_jobs (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_slug    TEXT NOT NULL,
+    status         TEXT NOT NULL,   -- queued | running | live | failed | cancelled
+    build_pack     TEXT NOT NULL,   -- JSON: the Claude-drafted client-hq intake
+    log            TEXT NOT NULL DEFAULT '',  -- appended runner output, streamed to the UI
+    portal_url     TEXT,            -- set when the build goes live
+    error          TEXT,            -- short reason when status = failed
+    created_by     TEXT,
+    created_at     TEXT NOT NULL,
+    started_at     TEXT,            -- when the runner claimed it
+    finished_at    TEXT,
+    FOREIGN KEY(client_slug) REFERENCES clients(slug)
+);
 """
 
 
@@ -969,3 +984,97 @@ def set_mention_overrides(client_slug: str, period: str, overrides: dict):
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (client_slug, period, key, excluded, sentiment, now),
             )
+
+
+# ---- Client HQ build jobs (unattended "Create HQ" queue) ------------------
+# A build job is enqueued when the operator clicks "Create HQ (build the site)".
+# The standalone runner (scripts/hq_builder.py) claims queued jobs, runs the
+# client-hq skill for them, and streams its output back into `log`. The Agency
+# HQ UI polls the latest job to show the live build and the building -> live
+# transition. Nothing here runs the build itself — the DB is just the queue.
+
+def create_hq_build_job(client_slug: str, build_pack: dict, created_by: str | None = None) -> int:
+    """Enqueue a build job for a client and return its id."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO hq_build_jobs (client_slug, status, build_pack, log, created_by, created_at)
+               VALUES (?, 'queued', ?, '', ?, ?)""",
+            (client_slug, json.dumps(build_pack), created_by, datetime.utcnow().isoformat()),
+        )
+        return int(cur.lastrowid)
+
+
+def _job_row_to_dict(row) -> dict:
+    d = dict(row)
+    try:
+        d["build_pack"] = json.loads(d.get("build_pack") or "{}")
+    except (ValueError, TypeError):
+        d["build_pack"] = {}
+    return d
+
+
+def get_hq_build_job(job_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM hq_build_jobs WHERE id = ?", (job_id,)).fetchone()
+    return _job_row_to_dict(row) if row else None
+
+
+def get_latest_hq_build_job(client_slug: str) -> dict | None:
+    """The newest build job for a client, whatever its status — this is what the
+    UI shows next to the Create-HQ control."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM hq_build_jobs WHERE client_slug = ? ORDER BY id DESC LIMIT 1",
+            (client_slug,),
+        ).fetchone()
+    return _job_row_to_dict(row) if row else None
+
+
+def claim_next_hq_build_job() -> dict | None:
+    """Atomically claim the oldest queued job (queued -> running) and return it.
+    Uses an IMMEDIATE transaction so two runners can't grab the same job."""
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM hq_build_jobs WHERE status = 'queued' ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE hq_build_jobs SET status = 'running', started_at = ? WHERE id = ?",
+            (datetime.utcnow().isoformat(), row["id"]),
+        )
+    return _job_row_to_dict(row)
+
+
+def append_hq_build_log(job_id: int, text: str) -> None:
+    """Append runner output to a job's streaming log."""
+    if not text:
+        return
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE hq_build_jobs SET log = COALESCE(log, '') || ? WHERE id = ?",
+            (text, job_id),
+        )
+
+
+def finish_hq_build_job(job_id: int, status: str, portal_url: str | None = None,
+                        error: str | None = None) -> None:
+    """Mark a job terminal (live | failed | cancelled)."""
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE hq_build_jobs SET status = ?, portal_url = ?, error = ?, finished_at = ?
+               WHERE id = ?""",
+            (status, portal_url, (error or None), datetime.utcnow().isoformat(), job_id),
+        )
+
+
+def cancel_hq_build_job(job_id: int) -> bool:
+    """Cancel a job that hasn't finished. Returns True if it was cancellable."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE hq_build_jobs SET status = 'cancelled', finished_at = ? "
+            "WHERE id = ? AND status IN ('queued', 'running')",
+            (datetime.utcnow().isoformat(), job_id),
+        )
+        return cur.rowcount > 0

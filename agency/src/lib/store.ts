@@ -39,6 +39,13 @@ export interface Store {
   provisionHq(slug: string): Promise<void>;
   addPortalUser(slug: string, input: { email: string; name?: string }): Promise<string>; // returns invite URL
   revokePortalUser(id: number): Promise<void>;
+  // unattended Client HQ build (online only): enqueue, poll the live log, cancel
+  buildHq(slug: string): Promise<api.BuildJob>;
+  buildHqStatus(slug: string): Promise<api.BuildJob | null>;
+  cancelBuild(id: number): Promise<void>;
+  /** Re-pull the snapshot so the whole UI reflects out-of-band changes (e.g. a
+      build the runner just finished). Polling reads don't refresh on their own. */
+  refresh(): Promise<void>;
   // reporting-core setup (online only)
   saveSettings(slug: string, settings: api.ClientSettingsInput): Promise<void>;
   saveConnection(slug: string, provider: string, fields: Record<string, string>): Promise<void>;
@@ -81,6 +88,10 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
       async provisionHq(slug) { await api.provisionHq(slug); await done(); },
       async addPortalUser(slug, input) { const r = await api.addPortalUser(slug, input); await done(); return r.invite_url; },
       async revokePortalUser(id) { await api.revokePortalUser(id); await done(); },
+      async buildHq(slug) { const r = await api.buildHq(slug); await done(); return r.job; },
+      async buildHqStatus(slug) { return (await api.buildHqStatus(slug)).job; },
+      async cancelBuild(id) { await api.cancelBuild(id); await done(); },
+      async refresh() { await done(); },
       async saveSettings(slug, settings) { await api.patchSettings(slug, settings); await done(); },
       async saveConnection(slug, provider, fields) { await api.putConnection(slug, provider, fields); await done(); },
       async testConnection(slug, provider) { const r = await api.testConnection(slug, provider); await done(); return r; },
@@ -115,6 +126,10 @@ export function makeStore(opts: { online: boolean; vaultReady: boolean; refresh:
     async provisionHq() { offlineCore(); },
     async addPortalUser() { return offlineCore() as never; },
     async revokePortalUser() { offlineCore(); },
+    async buildHq() { return offlineCore() as never; },
+    async buildHqStatus() { return offlineCore() as never; },
+    async cancelBuild() { offlineCore(); },
+    async refresh() { await done(); },
     async saveSettings() { offlineCore(); },
     async saveConnection() { offlineCore(); },
     async testConnection() { return offlineCore() as never; },

@@ -182,7 +182,7 @@ export function NewClientWizard({ store, meta, assistReady, agencyKeys, onClose,
         <div className="pc-body">
           {done ? (
             <DoneScreen
-              name={done.name} slug={done.slug} online={store.online} kind={d.kind}
+              name={done.name} slug={done.slug} online={store.online} kind={d.kind} store={store}
               onClose={onClose}
               onOpenSheet={done.slug ? () => onOpenSheet(done.slug!) : undefined}
             />
@@ -428,9 +428,25 @@ function StepReview({ d, online, missingKeys }: { d: Draft; online: boolean; mis
   );
 }
 
-function DoneScreen({ name, slug, online, kind, onClose, onOpenSheet }: {
-  name: string; slug?: string; online: boolean; kind: ClientKind; onClose: () => void; onOpenSheet?: () => void;
+function DoneScreen({ name, slug, online, kind, store, onClose, onOpenSheet }: {
+  name: string; slug?: string; online: boolean; kind: ClientKind; store: Store;
+  onClose: () => void; onOpenSheet?: () => void;
 }) {
+  const [building, setBuilding] = useState(false);
+  const isHq = kind === 'client-hq';
+
+  const buildNow = async () => {
+    if (!slug) return;
+    if (!confirm(
+      `Build ${name}'s Client HQ now?\n\n`
+      + `Claude drafts the whole build, then a runner provisions the site + portal on their own domain `
+      + `and deploys it live. You'll watch it build on the client page. Continue?`
+    )) return;
+    setBuilding(true);
+    try { await store.buildHq(slug); toast('Build queued — opening the client page'); onOpenSheet?.(); }
+    catch (e) { toast((e as Error).message); setBuilding(false); }
+  };
+
   return (
     <div className="pc-done">
       <div className="pc-check">✓</div>
@@ -444,12 +460,15 @@ function DoneScreen({ name, slug, online, kind, onClose, onOpenSheet }: {
       <ul className="wt-list" style={{ maxWidth: 460, margin: '0 auto', textAlign: 'left' }}>
         <li><span className="num">1</span><span>Add their logins to the credential vault on the client page so the team can always get in.</span></li>
         <li><span className="num">2</span><span>Test the data connections from the client page, then run the first sync in the workspace.</span></li>
-        {kind === 'client-hq'
-          ? <li><span className="num">3</span><span>Stand up their Client HQ portal (the client-hq build) and mark it live on the client page.</span></li>
+        {isHq
+          ? <li><span className="num">3</span><span>Build their Client HQ — the site + portal on their own domain — with one click below, and watch it deploy.</span></li>
           : <li><span className="num">3</span><span>Open the month workspace and build their first report when the data's in.</span></li>}
       </ul>
       <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 22, flexWrap: 'wrap' }}>
-        <button className="btn" onClick={onOpenSheet ?? onClose}>{onOpenSheet ? 'Open the client page' : 'Done'}</button>
+        {isHq && online && slug && (
+          <button className="btn" disabled={building} onClick={buildNow}>⚡ Build their HQ now</button>
+        )}
+        <button className={isHq && online && slug ? 'btn ghost' : 'btn'} onClick={onOpenSheet ?? onClose}>{onOpenSheet ? 'Open the client page' : 'Done'}</button>
         {online && slug && (
           <a className="btn ghost" href={`/admin/workspace?client=${slug}`} target="_blank" rel="noreferrer">Open workspace ↗</a>
         )}
