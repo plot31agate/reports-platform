@@ -98,6 +98,10 @@ export function CashFlow({ go }: { go: (v: string) => void }) {
             {money(data.projection.monthly)}/mo of regular retainers on their bank rhythm
             ({data.projection.count} clients, from <button className="linky" onClick={() => go('moneyin')}>Money in</button>) +{' '}
           </>}
+          {data.retainerBook.count > 0 && <>
+            {money(data.retainerBook.monthly)}/mo of agreed retainers from the book not yet paying via
+            the bank ({data.retainerBook.count}) +{' '}
+          </>}
           won work from <button className="linky" onClick={() => go('pipeline')}>Pipeline</button> + the
           receipts below, minus committed payments.
           {hasScenario ? (

@@ -135,8 +135,15 @@ export interface CashflowData {
     bankCash: number | null; bankAsOf: string | null; vatFromSpaces: number | null;
   };
   projection: { count: number; monthly: number };
+  retainerBook: { count: number; monthly: number };
   payments: CashItem[]; receipts: CashItem[];
   included: { id: string; client: string; value: number; type: string }[];
+}
+
+/* ---- Retainer book (retainers.php) ---- */
+export interface Retainer {
+  id: string; client: string; monthly: number; startDate: string;
+  status: 'active' | 'paused' | 'ended'; note: string; createdAt: number;
 }
 
 /* ---- Bank statement (bank.php) ---- */
@@ -228,6 +235,15 @@ export const api = {
   xeroConnectUrl: () => `${BASE}xero.php?action=connect`,
   xeroSync: () => postAny<XeroSyncResult>('xero.php', { action: 'sync' }),
   xeroDisconnect: () => post<{ ok: boolean }>('xero.php', { action: 'disconnect' }),
+
+  // Retainer book (mutations return the full refreshed book)
+  retainers: () => get<{ ok: boolean; retainers: Retainer[] }>('retainers.php'),
+  retainerAdd: (r: Partial<Retainer>) =>
+    post<{ ok: boolean; retainers: Retainer[] }>('retainers.php', { action: 'add', ...r }),
+  retainerUpdate: (r: Partial<Retainer> & { id: string }) =>
+    post<{ ok: boolean; retainers: Retainer[] }>('retainers.php', { action: 'update', ...r }),
+  retainerDelete: (id: string) =>
+    post<{ ok: boolean; retainers: Retainer[] }>('retainers.php', { action: 'delete', id }),
 
   // Pipeline
   pipeline: () => get<PipelineData>('pipeline.php'),

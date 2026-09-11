@@ -68,6 +68,9 @@ export function Pipeline({ go }: { go: (v: string) => void }) {
         <p className="small fade" style={{ marginTop: 10 }}>
           Weighted value = value × win probability (auto from stage, override by typing a %). Won retainers feed
           the <button className="linky" onClick={() => go('cashflow')}>cash flow</button> as the floor; tick <b>Forecast</b> to add an open opportunity to the scenario line.
+          {' '}<b>Pipeline is for work you might still win</b> — an ongoing retainer you've already signed
+          belongs in the <button className="linky" onClick={() => go('moneyin')}>Retainer book</button> (Money
+          in), where it's reconciled against the bank; move it there and it's never counted twice.
         </p>
       </div>
     </>

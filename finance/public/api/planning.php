@@ -157,6 +157,34 @@ function bank_projection(): array {
   return is_array($rows) ? $rows : [];
 }
 
+/** The retainer book (retainers.php): the AGREED ongoing retainers, as
+    normalised views. Only 'active' entries feed the forecast. */
+function retainer_book(): array {
+  $s = store_read('retainers', ['items' => []]);
+  $out = [];
+  foreach ((is_array($s['items'] ?? null) ? $s['items'] : []) as $r) {
+    if (!is_array($r)) continue;
+    $status = (string) ($r['status'] ?? 'active');
+    $out[] = [
+      'id' => (string) ($r['id'] ?? ''),
+      'client' => (string) ($r['client'] ?? ''),
+      'monthly' => round((float) ($r['monthly'] ?? 0), 2),
+      'startDate' => (string) ($r['startDate'] ?? ''),
+      'status' => in_array($status, ['active', 'paused', 'ended'], true) ? $status : 'active',
+      'note' => (string) ($r['note'] ?? ''),
+      'createdAt' => (int) ($r['createdAt'] ?? 0),
+    ];
+  }
+  usort($out, fn($a, $b) => $b['monthly'] <=> $a['monthly']);
+  return $out;
+}
+
+/** True when two client/entity names refer to the same business, aliasing
+    parentheticals on either side ("Vivo (Lemino Payments)" ~ "Lemino"). */
+function cf_same_client(string $a, string $b): bool {
+  return cf_name_matches($a, $b) || cf_name_matches($b, $a);
+}
+
 /** Loose name match between a pipeline client and a bank entity so a won
     retainer that has started paying through the bank isn't counted twice.
     Mirrors the matching Money in uses. */
@@ -274,21 +302,41 @@ function cashflow_compute(): array {
     $addOcc($recScenario, 'monthly', (string) ($pr['nextDue'] ?? ''), '', $amt);
   }
 
+  // The retainer book: agreed ongoing retainers (Money in → Retainer book).
+  // One that already pays through the bank rhythm is tracked there — the
+  // dedupe order is bank rhythm > book > won pipeline, so nothing counts twice.
+  $book = retainer_book();
+  $bookMonthly = 0.0; $bookCount = 0;
+  foreach ($book as $r) {
+    if ($r['status'] !== 'active' || $r['monthly'] <= 0) continue;
+    $viaBank = false;
+    foreach ($projection as $pr) {
+      if (cf_same_client((string) ($pr['entity'] ?? ''), $r['client'])) { $viaBank = true; break; }
+    }
+    if ($viaBank) continue;
+    $bookCount++; $bookMonthly += $r['monthly'];
+    $addOcc($recCommitted, 'monthly', $r['startDate'], '', $r['monthly']);
+    $addOcc($recScenario, 'monthly', $r['startDate'], '', $r['monthly']);
+  }
+
   // Pipeline: WON → both lines; open+flagged → scenario only. A retainer bills
   // monthly from its start date; a project lands once on its start date. A won
-  // client already paying through the bank rhythm is skipped — never counted
-  // twice.
+  // client already paying through the bank rhythm or listed in the retainer
+  // book is skipped — never counted twice.
   $included = [];
   foreach ($pipe['opps'] as $o) {
     if ($o['value'] <= 0) continue;
     $inFloor = $o['stage'] === 'won';
     $inScenario = $inFloor || ($o['includeInForecast'] && $o['stage'] !== 'lost');
     if (!$inFloor && !$inScenario) continue;
-    $paysViaBank = false;
+    $covered = false;
     foreach ($projection as $pr) {
-      if (cf_name_matches((string) ($pr['entity'] ?? ''), (string) $o['client'])) { $paysViaBank = true; break; }
+      if (cf_same_client((string) ($pr['entity'] ?? ''), (string) $o['client'])) { $covered = true; break; }
     }
-    if ($paysViaBank) continue;
+    if (!$covered) foreach ($book as $r) {
+      if ($r['status'] === 'active' && cf_same_client($r['client'], (string) $o['client'])) { $covered = true; break; }
+    }
+    if ($covered) continue;
     $cadence = $o['type'] === 'retainer' ? 'monthly' : 'once';
     if ($inFloor) $addOcc($recCommitted, $cadence, $o['startDate'], '', $o['value']);
     if ($inScenario) {
@@ -340,6 +388,7 @@ function cashflow_compute(): array {
       'vatFromSpaces' => $bank !== null ? round($bank['vatSpaces'], 2) : null,
     ],
     'projection' => ['count' => count($projection), 'monthly' => round($projMonthly, 2)],
+    'retainerBook' => ['count' => $bookCount, 'monthly' => round($bookMonthly, 2)],
     'headline' => [
       'totalCash' => round($totalCash, 2),
       'vatSetAside' => round($vat, 2),
@@ -400,6 +449,17 @@ function planning_brief(): string {
   if (($cf['projection']['count'] ?? 0) > 0) {
     $lines[] = sprintf("  The 13-week floor includes £%s/mo of regular bank retainers (%d clients on rhythm).",
       number_format($cf['projection']['monthly'], 0), $cf['projection']['count']);
+  }
+  if (($cf['retainerBook']['count'] ?? 0) > 0) {
+    $lines[] = sprintf("  Plus £%s/mo from %d agreed retainer(s) in the book not yet paying through the bank.",
+      number_format($cf['retainerBook']['monthly'], 0), $cf['retainerBook']['count']);
+  }
+  $allBook = retainer_book();
+  $activeBook = array_values(array_filter($allBook, fn($r) => $r['status'] === 'active'));
+  if ($activeBook) {
+    $lines[] = '  Retainer book (agreed ongoing retainers): '
+      . implode('; ', array_map(fn($r) => sprintf('%s £%s/mo%s', $r['client'], number_format($r['monthly'], 0),
+          $r['startDate'] !== '' ? ' from ' . $r['startDate'] : ''), array_slice($activeBook, 0, 15))) . '.';
   }
   $lines[] = sprintf("  13-week forecast closing cash: committed £%s; with selected pipeline £%s. (%s)",
     number_format($h['endCommitted'], 0), number_format($h['endScenario'], 0), $h['runwayNote']);

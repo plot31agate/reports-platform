@@ -281,7 +281,7 @@ export interface ExpectedRow {
   received: number;       // paid so far this month
   due: number;            // max(0, expected - received)
   status: 'paid' | 'partial' | 'due';
-  source: 'regular' | 'pipeline';
+  source: 'regular' | 'pipeline' | 'book';
 }
 
 export interface ExpectedMonth {
