@@ -173,7 +173,9 @@ function QuestionsCard({ txs, extras, onSaved, go }: {
 
   async function askDave(q: { key: string; q: string; why: string }) {
     setAskBusy(true); setAiAnswer(null);
-    const r = await api.ask(`${q.q}\nContext behind the question: ${q.why}\nGive a concrete recommended next action.`);
+    // Files into the same Ask-the-data conversation (labelled with just the
+    // headline question), so the Overview and Ask share one memory.
+    const r = await api.ask(`${q.q}\nContext behind the question: ${q.why}\nGive a concrete recommended next action.`, q.q);
     setAskBusy(false);
     if (!r?.ok || !r.result) { toast(r?.error || 'Dave isn’t reachable — is the API key on the server?'); return; }
     setAiAnswer({ key: q.key, text: r.result.answer, figures: r.result.figures ?? [] });

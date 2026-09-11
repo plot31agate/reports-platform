@@ -61,7 +61,10 @@ export interface BudgetsData {
 
 /* ---- AI (ask.php / forecast.php) ---- */
 export interface Figure { label: string; value: string; }
-export interface AskResult { answer: string; figures: Figure[]; followups: string[]; }
+export interface AskResult { answer: string; figures: Figure[]; followups: string[]; noteworthy?: string; }
+export interface AskThreadItem { q: string; answer: string; figures: Figure[]; followups: string[]; at: number; }
+export interface AskNote { id: string; text: string; at: number; source: 'dave' | 'you'; }
+export interface AskThreadData { ok: boolean; thread: AskThreadItem[]; notebook: AskNote[]; }
 export interface ForecastResult { summary: string; impacts: Figure[]; risks: string[]; actions: string[]; }
 export interface AiResponse<T> { ok: boolean; needsKey?: boolean; error?: string; result?: T; }
 
@@ -207,7 +210,15 @@ export const api = {
   budgetDelete: (id: string) => post<{ ok: boolean }>('budgets.php', { action: 'delete', id }),
   budgetSeed: () => post<{ ok: boolean; seeded: number }>('budgets.php', { action: 'seed' }),
 
-  ask: (question: string) => postAny<AiResponse<AskResult>>('ask.php', { question }),
+  // Ask the data: a persistent conversation + Dave's notebook of standing
+  // context. `label` is what the thread displays when the question carries
+  // extra framing (the Overview's Ask Dave).
+  ask: (question: string, label?: string) =>
+    postAny<AiResponse<AskResult> & { thread?: AskThreadItem[]; notebook?: AskNote[] }>('ask.php', { question, label }),
+  askThread: () => get<AskThreadData>('ask.php'),
+  askClear: () => post<{ ok: boolean; thread: AskThreadItem[]; notebook: AskNote[] }>('ask.php', { action: 'clear' }),
+  askNoteAdd: (text: string) => post<{ ok: boolean; notebook: AskNote[] }>('ask.php', { action: 'note-add', text }),
+  askNoteDelete: (id: string) => post<{ ok: boolean; notebook: AskNote[] }>('ask.php', { action: 'note-delete', id }),
   forecast: (scenario: string, changes?: Record<string, string | number>) =>
     postAny<AiResponse<ForecastResult>>('forecast.php', { scenario, changes }),
 
