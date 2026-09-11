@@ -376,28 +376,41 @@ export function invoicesFor(entity: string, invoices: OutstandingInvoice[] | und
 }
 
 /* ---- Tax position: is HMRC covered? ----
-   An estimate from data already in the room: client money in since the last
-   VAT payment × 1/6 (standard-rated, VAT-inclusive) vs the VAT Spaces. Clearly
-   framed as an estimate — the point is the gap, not the pennies. */
+   An estimate from data already in the room: VATABLE client money in since
+   the last VAT payment × 1/6 (standard-rated, VAT-inclusive) vs the VAT
+   Spaces. `clientVat` is the owner-entered per-client flag (false = no UK VAT
+   on this client: overseas, outside scope) so non-VAT clients don't inflate
+   the accrual. Clearly framed as an estimate — the point is the gap. */
 export interface VatPosition {
   lastVatAmount: number;    // the last VAT bill actually paid (0 = none seen)
   lastVatDate: string;      // '' when none seen
-  revenueSince: number;     // client money in since then (or statement start)
-  estAccrued: number;       // ~revenueSince / 6
+  revenueSince: number;     // ALL client money in since then (or statement start)
+  vatableSince: number;     // the VATable slice the estimate is built on
+  excluded: { entity: string; amount: number }[];  // non-VAT clients + their money since
+  estAccrued: number;       // ~vatableSince / 6
   potHeld: number;          // VAT Spaces total
   gap: number;              // potHeld - estAccrued (negative = short)
   ttpMonthly: number;       // standing HMRC direct debit, if one runs
 }
 
-export function vatPosition(txs: Enriched[], spaces?: SpaceLite[]): VatPosition | null {
+export function vatPosition(txs: Enriched[], spaces?: SpaceLite[], clientVat?: Record<string, boolean>): VatPosition | null {
   if (txs.length === 0) return null;
   const isVat = (t: Enriched) => t.kind === 'tax' && t.amount < 0 && /vat/i.test(t.cp + ' ' + t.category + ' ' + t.ref);
   const vatPaid = txs.filter(isVat);
   const last = vatPaid[vatPaid.length - 1];
   const since = last ? last.date : txs[0].date;
-  const revenueSince = txs.filter((t) => t.group === 'Revenue' && t.date > since).reduce((s, t) => s + t.amount, 0);
+  const inSince = txs.filter((t) => t.group === 'Revenue' && t.date > since);
+  const revenueSince = inSince.reduce((s, t) => s + t.amount, 0);
+  const exMap = new Map<string, number>();
+  let vatableSince = 0;
+  for (const t of inSince) {
+    if (clientVat?.[t.entity] === false) exMap.set(t.entity, (exMap.get(t.entity) ?? 0) + t.amount);
+    else vatableSince += t.amount;
+  }
+  const excluded = [...exMap.entries()].map(([entity, amount]) => ({ entity, amount }))
+    .sort((a, b) => b.amount - a.amount);
   const potHeld = (spaces ?? []).filter((s) => s.kind === 'vat').reduce((s, x) => s + x.balance, 0);
-  const estAccrued = revenueSince / 6;
+  const estAccrued = vatableSince / 6;
   // A standing HMRC arrangement (NDDS/TTP): regular direct debits that aren't
   // the VAT return itself.
   const dd = txs.filter((t) => t.kind === 'tax' && t.type === 'DIRECT DEBIT' && t.amount < 0 && !isVat(t));
@@ -406,7 +419,7 @@ export function vatPosition(txs: Enriched[], spaces?: SpaceLite[]): VatPosition 
   return {
     lastVatAmount: last ? -last.amount : 0,
     lastVatDate: last ? last.date : '',
-    revenueSince, estAccrued, potHeld,
+    revenueSince, vatableSince, excluded, estAccrued, potHeld,
     gap: potHeld - estAccrued,
     ttpMonthly,
   };
@@ -600,6 +613,7 @@ export interface BankExtras {
   events?: BizEvent[];
   answers?: Record<string, QAnswer>;
   receivables?: OutstandingInvoice[];
+  clientVat?: Record<string, boolean>;   // false = no UK VAT on this client
 }
 
 /* ---------- The question engine ----------
@@ -805,10 +819,11 @@ export function buildDigest(txs: Enriched[], extras?: BankExtras): string {
       + spaces.map((s) => `${s.name} (${s.kind}) ${fm(s.balance)}`).join('; ')
       + `. Total set aside ${fm(spaces.reduce((s, x) => s + x.balance, 0))}.`);
   }
-  const vp = vatPosition(txs, spaces);
+  const vp = vatPosition(txs, spaces, extras?.clientVat);
   if (vp && vp.estAccrued > 0) {
-    lines.push(`VAT position (estimate, standard-rated VAT-inclusive): ~${fm(vp.estAccrued)} accrued on ${fm(vp.revenueSince)} of client income since `
+    lines.push(`VAT position (estimate, standard-rated VAT-inclusive): ~${fm(vp.estAccrued)} accrued on ${fm(vp.vatableSince)} of VATable client income since `
       + (vp.lastVatDate ? `the last VAT payment (${fm(vp.lastVatAmount)} on ${vp.lastVatDate})` : 'the statement start')
+      + (vp.excluded.length > 0 ? ` (excluded as non-VAT clients: ${vp.excluded.map((e) => `${e.entity} ${fm(e.amount)}`).join(', ')})` : '')
       + `; VAT set aside ${fm(vp.potHeld)} -> ${vp.gap >= 0 ? 'covered' : `SHORT by ${fm(vp.gap)}`}.`
       + (vp.ttpMonthly > 0 ? ` A standing HMRC direct debit also runs at ~${fm(vp.ttpMonthly)}/month.` : ''));
   }

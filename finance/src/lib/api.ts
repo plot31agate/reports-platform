@@ -158,6 +158,7 @@ export interface BankData {
   events: BizEvent[];
   answers: Record<string, QAnswer>;
   projection: ProjectionRow[];
+  clientVat: Record<string, boolean>;
 }
 export interface BankImportResult {
   ok: boolean; error?: string;
@@ -277,6 +278,8 @@ export const api = {
     post<{ ok: boolean; answers: Record<string, QAnswer> }>('bank.php', { action: 'answer', key, question, answer }),
   bankProjection: (rows: ProjectionRow[]) =>
     post<{ ok: boolean; projection: ProjectionRow[] }>('bank.php', { action: 'projection', rows }),
+  bankClientVat: (clientVat: Record<string, boolean>) =>
+    post<{ ok: boolean; clientVat: Record<string, boolean> }>('bank.php', { action: 'client-vat', clientVat }),
   bankReset: () => post<{ ok: boolean }>('bank.php', { action: 'reset' }),
 
   // Board reports

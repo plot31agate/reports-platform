@@ -8,7 +8,7 @@ import { api } from '../lib/api';
 import type { PipelineData, Receivables, Retainer } from '../lib/api';
 import { money, moneyShort } from '../lib/finance';
 import { useBank } from '../lib/useBank';
-import { clientRows, monthlyFlows, expectedThisMonth, invoicesFor, nameMatches } from '../lib/bank';
+import { clientRows, monthlyFlows, expectedThisMonth, invoicesFor, nameMatches, buildDigest } from '../lib/bank';
 import type { ClientRow, Enriched, ExpectedRow, OutstandingInvoice } from '../lib/bank';
 import { Stat, Working, OfflineNote, Empty, toast } from '../components/ui';
 
@@ -28,10 +28,26 @@ export function MoneyIn({ go }: { go: (v: string) => void }) {
   const [showSmall, setShowSmall] = useState(false);
   const [receivables, setReceivables] = useState<Receivables | null>(null);
   const [retainers, setRetainers] = useState<Retainer[]>([]);
+  const [vatMap, setVatMap] = useState<Record<string, boolean>>({});
   useEffect(() => {
     api.model().then((m) => m?.receivables && setReceivables(m.receivables));
     api.retainers().then((r) => r && setRetainers(r.retainers));
   }, []);
+  useEffect(() => { setVatMap(bank.clientVat); }, [bank.clientVat]);
+
+  // Per-client VAT flag: false = no UK VAT on this client (overseas, outside
+  // scope) — it tightens the Overview's VAT accrual estimate immediately.
+  async function setClientVat(entity: string, isVat: boolean) {
+    const next = { ...vatMap };
+    if (isVat) delete next[entity]; else next[entity] = false;
+    setVatMap(next);
+    const r = await api.bankClientVat(next);
+    if (!r?.ok) { toast('Could not save'); setVatMap(vatMap); return; }
+    await api.bankDigest(buildDigest(bank.txs ?? [], {
+      spaces: bank.spaces, events: bank.events, answers: bank.answers, clientVat: next,
+    }));
+    toast(isVat ? `${entity} counts as VATable again` : `${entity} excluded from the VAT estimate`);
+  }
 
   if (bank.loading) return <Working label="Loading clients…" />;
   if (bank.offline) return <OfflineNote />;
@@ -90,6 +106,7 @@ export function MoneyIn({ go }: { go: (v: string) => void }) {
               <th style={{ textAlign: 'right' }}>Typical / mo</th>
               <th>Cadence</th>
               <th style={{ textAlign: 'right' }}>Last paid</th>
+              <th style={{ textAlign: 'center' }} title="Does this client's income carry UK VAT? Untick overseas / outside-scope clients — the VAT estimate on the Overview only counts ticked ones.">VAT</th>
               <th style={{ textAlign: 'right' }}>Status</th>
             </tr>
           </thead>
@@ -97,11 +114,16 @@ export function MoneyIn({ go }: { go: (v: string) => void }) {
             {visible.map((r) => (
               <ClientTr key={r.entity} r={r} monthKeys={monthKeys}
                 invoices={invoicesFor(r.entity, receivables?.invoices)} asOf={asOf}
+                vat={vatMap[r.entity] !== false} onVat={(v) => setClientVat(r.entity, v)}
                 open={openRow === r.entity}
                 toggle={() => setOpenRow(openRow === r.entity ? null : r.entity)} />
             ))}
           </tbody>
         </table>
+        <div className="small fade" style={{ marginTop: 8 }}>
+          <b>VAT</b>: untick a client whose invoices carry no UK VAT (overseas, outside scope) — the
+          Overview's "Is HMRC covered?" estimate then leaves their money out.
+        </div>
         {receivables?.scopeMissing && attention > 0 && (
           <div className="small fade" style={{ marginTop: 10 }}>
             Want the invoices behind the late payers? Reconnect Xero once in{' '}
@@ -345,8 +367,9 @@ function MiniTot({ label, v, tone }: { label: string; v: number; tone?: string }
   );
 }
 
-function ClientTr({ r, monthKeys, invoices, asOf, open, toggle }: {
+function ClientTr({ r, monthKeys, invoices, asOf, vat, onVat, open, toggle }: {
   r: ClientRow; monthKeys: string[]; invoices: OutstandingInvoice[]; asOf: string;
+  vat: boolean; onVat: (v: boolean) => void;
   open: boolean; toggle: () => void;
 }) {
   const owed = invoices.reduce((s, i) => s + i.amountDue, 0);
@@ -363,11 +386,15 @@ function ClientTr({ r, monthKeys, invoices, asOf, open, toggle }: {
         <td style={{ textAlign: 'right' }} className="money">{r.cadence === 'one-off' ? '—' : money(r.medianMonthly)}</td>
         <td className="small">{r.cadence}</td>
         <td style={{ textAlign: 'right' }} className="small">{r.lastPaid} <span className="fade">({r.daysSince}d)</span></td>
+        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={vat} onChange={(e) => onVat(e.target.checked)}
+            title={vat ? 'Counts in the VAT estimate' : 'Excluded — no UK VAT on this client'} />
+        </td>
         <td style={{ textAlign: 'right' }}><span className={`pill ${STATUS_PILL[r.status]}`}>{STATUS_LABEL[r.status]}</span></td>
       </tr>
       {open && (
         <tr className="expand">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <div className="monthgrid">
               {monthKeys.map((k) => (
                 <div className="mg" key={k}>

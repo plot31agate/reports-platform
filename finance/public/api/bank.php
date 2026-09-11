@@ -23,6 +23,7 @@ function bank_store(): array {
   if (!isset($s['events']) || !is_array($s['events'])) $s['events'] = [];
   if (!isset($s['answers']) || !is_array($s['answers'])) $s['answers'] = [];
   if (!isset($s['projection']) || !is_array($s['projection'])) $s['projection'] = [];
+  if (!isset($s['clientVat']) || !is_array($s['clientVat'])) $s['clientVat'] = [];
   return $s;
 }
 
@@ -31,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   respond(['ok' => true, 'txs' => $s['txs'], 'importedAt' => $s['importedAt'] ?? 0,
     'digest' => $s['digest'], 'loanMeta' => (object) $s['loanMeta'],
     'spaces' => $s['spaces'], 'events' => $s['events'], 'answers' => (object) $s['answers'],
-    'projection' => $s['projection']]);
+    'projection' => $s['projection'], 'clientVat' => (object) $s['clientVat']]);
 }
 
 $b = body_json();
@@ -188,6 +189,23 @@ switch ($b['action'] ?? '') {
     }
     store_write('bank', $s);
     respond(['ok' => true, 'answers' => (object) $s['answers']]);
+  }
+
+  case 'client-vat': {
+    // Owner-entered fact per client: does their income carry UK VAT? Default
+    // is yes; overseas / outside-scope clients get flagged false so the VAT
+    // accrual estimate only counts VATable money. Keyed by the registry's
+    // entity name, like loanMeta.
+    $map = $b['clientVat'] ?? null;
+    if (!is_array($map)) fail('clientVat must be an object');
+    $clean = [];
+    foreach ($map as $entity => $v) {
+      // Only store the exceptions — false means "no UK VAT on this client".
+      if ((bool) $v === false) $clean[mb_substr((string) $entity, 0, 120)] = false;
+    }
+    $s['clientVat'] = $clean;
+    store_write('bank', $s);
+    respond(['ok' => true, 'clientVat' => (object) $clean]);
   }
 
   case 'projection': {

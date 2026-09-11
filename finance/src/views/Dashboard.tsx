@@ -41,7 +41,7 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
   if (txs.length === 0) return <EmptyState go={go} hasXero={!!model && model.meta.count > 0} model={model} />;
   const extras: BankExtras = {
     spaces: bank.spaces, events: bank.events, answers: bank.answers,
-    receivables: model?.receivables?.invoices,
+    receivables: model?.receivables?.invoices, clientVat: bank.clientVat,
   };
 
   return (
@@ -58,9 +58,9 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
       </div>
       <div className="grid g2" style={{ alignItems: 'start', marginBottom: 16 }}>
         <SpendGroupsCard txs={txs} go={go} />
-        <SpacesCard txs={txs} spaces={bank.spaces} events={bank.events} onSaved={bank.refresh} />
+        <SpacesCard txs={txs} spaces={bank.spaces} extras={extras} onSaved={bank.refresh} />
       </div>
-      <TaxCard txs={txs} spaces={bank.spaces} />
+      <TaxCard txs={txs} spaces={bank.spaces} clientVat={bank.clientVat} go={go} />
       {model && model.meta.count > 0 && <XeroStrip model={model} go={go} />}
     </>
   );
@@ -329,8 +329,8 @@ function SpendGroupsCard({ txs, go }: { txs: Enriched[]; go: (v: string) => void
    Spaces don't export statements, so the VAT pot and any other set-asides are
    invisible to the imported CSV. Track them here; the VAT total also syncs
    into the Cash flow room's set-aside so available cash reads true. */
-function SpacesCard({ txs, spaces, events, onSaved }: {
-  txs: Enriched[]; spaces: Space[]; events: BankExtras['events']; onSaved: () => void;
+function SpacesCard({ txs, spaces, extras, onSaved }: {
+  txs: Enriched[]; spaces: Space[]; extras: BankExtras; onSaved: () => void;
 }) {
   const [rows, setRows] = useState<Space[]>(spaces);
   const [dirty, setDirty] = useState(false);
@@ -346,7 +346,7 @@ function SpacesCard({ txs, spaces, events, onSaved }: {
     const clean = rows.filter((r) => r.name.trim() !== '');
     const r = await api.bankSpaces(clean);
     if (!r?.ok) { toast('Could not save'); return; }
-    await api.bankDigest(buildDigest(txs, { spaces: clean, events }));
+    await api.bankDigest(buildDigest(txs, { ...extras, spaces: clean }));
     toast('Spaces saved — the cash position and Cash flow read them directly');
     onSaved();
   }
@@ -393,8 +393,10 @@ function SpacesCard({ txs, spaces, events, onSaved }: {
    The scariest small-business question, answered from data already in the
    room: income since the last VAT payment × 1/6 vs the VAT Spaces. An
    estimate, and labelled as one — the point is the gap. */
-function TaxCard({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
-  const vp = vatPosition(txs, spaces);
+function TaxCard({ txs, spaces, clientVat, go }: {
+  txs: Enriched[]; spaces: Space[]; clientVat: Record<string, boolean>; go: (v: string) => void;
+}) {
+  const vp = vatPosition(txs, spaces, clientVat);
   if (!vp || vp.estAccrued <= 0) return null;
   const short = vp.gap < -100;
   return (
@@ -416,11 +418,19 @@ function TaxCard({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
         </div>
       </div>
       <div className="small fade" style={{ marginTop: 10 }}>
-        Estimate: {money(vp.revenueSince)} of client money in since{' '}
+        Estimate: {money(vp.vatableSince)} of VATable client money in since{' '}
         {vp.lastVatDate
           ? <>the last VAT payment ({money(vp.lastVatAmount)} on {vp.lastVatDate})</>
-          : 'the statement start'}, × 1/6 — assumes standard-rated, VAT-inclusive invoices; confirm the
+          : 'the statement start'}, × 1/6 — standard-rated, VAT-inclusive invoices; confirm the
         real return with the accountant.
+        {vp.excluded.length > 0 ? (
+          <> Excluded as non-VAT clients: {vp.excluded.map((e) => `${e.entity} (${money(e.amount)})`).join(', ')} —
+            {' '}manage the flags in <button className="linky" onClick={() => go('moneyin')}>Money in</button>.</>
+        ) : (
+          <> Counting <b>every</b> client as VATable — if any invoice without UK VAT (overseas, outside
+            scope), untick them in <button className="linky" onClick={() => go('moneyin')}>Money in</button> and
+            this estimate tightens.</>
+        )}
         {vp.ttpMonthly > 0 && <> A standing HMRC direct debit also runs at ~{money(vp.ttpMonthly)}/month on top.</>}
         {short && <> Topping the VAT space up by <b>{money(Math.abs(vp.gap))}</b> makes quarter-end a non-event.</>}
       </div>

@@ -135,6 +135,7 @@ function BankCard({ go }: { go: (v: string) => void }) {
       // filed decisions ride along so Claude keeps the whole picture).
       await api.bankDigest(buildDigest(enrich(r.txs), {
         spaces: data?.spaces ?? [], events: data?.events ?? [], answers: data?.answers ?? {},
+        clientVat: data?.clientVat ?? {},
       }));
       toast(`${r.added} transactions imported`);
       load();

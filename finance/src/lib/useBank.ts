@@ -14,6 +14,7 @@ export interface BankState {
   events: BizEvent[];
   answers: Record<string, QAnswer>;
   projection: ProjectionRow[];
+  clientVat: Record<string, boolean>;
   loading: boolean;
   offline: boolean;
   refresh: () => void;
@@ -26,6 +27,7 @@ export function useBank(): BankState {
   const [events, setEvents] = useState<BizEvent[]>([]);
   const [answers, setAnswers] = useState<Record<string, QAnswer>>({});
   const [projection, setProjection] = useState<ProjectionRow[]>([]);
+  const [clientVat, setClientVat] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
 
@@ -36,12 +38,12 @@ export function useBank(): BankState {
       else {
         setTxs(enrich(d.txs)); setLoanMeta(d.loanMeta ?? {});
         setSpaces(d.spaces ?? []); setEvents(d.events ?? []); setAnswers(d.answers ?? {});
-        setProjection(d.projection ?? []);
+        setProjection(d.projection ?? []); setClientVat(d.clientVat ?? {});
       }
       setLoading(false);
     });
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
-  return { txs, loanMeta, spaces, events, answers, projection, loading, offline, refresh };
+  return { txs, loanMeta, spaces, events, answers, projection, clientVat, loading, offline, refresh };
 }
