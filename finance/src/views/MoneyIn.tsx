@@ -5,11 +5,11 @@
    remember to check. */
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import type { PipelineData } from '../lib/api';
+import type { PipelineData, Receivables } from '../lib/api';
 import { money, moneyShort } from '../lib/finance';
 import { useBank } from '../lib/useBank';
-import { clientRows, monthlyFlows, expectedThisMonth } from '../lib/bank';
-import type { ClientRow, Enriched, ExpectedRow } from '../lib/bank';
+import { clientRows, monthlyFlows, expectedThisMonth, invoicesFor } from '../lib/bank';
+import type { ClientRow, Enriched, ExpectedRow, OutstandingInvoice } from '../lib/bank';
 import { Stat, Working, OfflineNote, Empty } from '../components/ui';
 
 const STATUS_LABEL: Record<ClientRow['status'], string> = {
@@ -23,6 +23,8 @@ export function MoneyIn({ go }: { go: (v: string) => void }) {
   const bank = useBank();
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [showSmall, setShowSmall] = useState(false);
+  const [receivables, setReceivables] = useState<Receivables | null>(null);
+  useEffect(() => { api.model().then((m) => m?.receivables && setReceivables(m.receivables)); }, []);
 
   if (bank.loading) return <Working label="Loading clients…" />;
   if (bank.offline) return <OfflineNote />;
@@ -79,11 +81,19 @@ export function MoneyIn({ go }: { go: (v: string) => void }) {
           <tbody>
             {visible.map((r) => (
               <ClientTr key={r.entity} r={r} monthKeys={monthKeys}
+                invoices={invoicesFor(r.entity, receivables?.invoices)} asOf={asOf}
                 open={openRow === r.entity}
                 toggle={() => setOpenRow(openRow === r.entity ? null : r.entity)} />
             ))}
           </tbody>
         </table>
+        {receivables?.scopeMissing && attention > 0 && (
+          <div className="small fade" style={{ marginTop: 10 }}>
+            Want the invoices behind the late payers? Reconnect Xero once in{' '}
+            <button className="linky" onClick={() => go('import')}>Import</button> — the connection
+            predates invoice access, and syncs will then pull each client's outstanding invoices in here.
+          </div>
+        )}
         {hidden > 0 && !showSmall && (
           <button className="linky" style={{ marginTop: 12 }} onClick={() => setShowSmall(true)}>
             show {hidden} smaller payer{hidden === 1 ? '' : 's'} (under £500 this year)
@@ -191,13 +201,20 @@ function MiniTot({ label, v, tone }: { label: string; v: number; tone?: string }
   );
 }
 
-function ClientTr({ r, monthKeys, open, toggle }: {
-  r: ClientRow; monthKeys: string[]; open: boolean; toggle: () => void;
+function ClientTr({ r, monthKeys, invoices, asOf, open, toggle }: {
+  r: ClientRow; monthKeys: string[]; invoices: OutstandingInvoice[]; asOf: string;
+  open: boolean; toggle: () => void;
 }) {
+  const owed = invoices.reduce((s, i) => s + i.amountDue, 0);
+  const overdueDays = (due: string) =>
+    due ? Math.floor((new Date(asOf).getTime() - new Date(due).getTime()) / 86400000) : 0;
   return (
     <>
       <tr onClick={toggle} style={{ cursor: 'pointer' }}>
-        <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.entity}</td>
+        <td style={{ fontWeight: 600, color: 'var(--ink)' }}>
+          {r.entity}
+          {owed > 0 && <span className="pill warn" style={{ marginLeft: 8 }}>{money(owed)} invoiced</span>}
+        </td>
         <td style={{ textAlign: 'right' }} className="money">{money(r.total)}</td>
         <td style={{ textAlign: 'right' }} className="money">{r.cadence === 'one-off' ? '—' : money(r.medianMonthly)}</td>
         <td className="small">{r.cadence}</td>
@@ -216,6 +233,23 @@ function ClientTr({ r, monthKeys, open, toggle }: {
               ))}
               <div className="small fade" style={{ alignSelf: 'center', marginLeft: 8 }}>{r.payments} payments</div>
             </div>
+            {invoices.length > 0 && (
+              <div className="small" style={{ marginTop: 10 }}>
+                <b>Outstanding in Xero:</b>{' '}
+                {invoices.map((i, idx) => {
+                  const od = overdueDays(i.dueDate);
+                  return (
+                    <span key={idx}>
+                      {idx > 0 && ' · '}
+                      {i.number || 'no number'} <span className="money">{money(i.amountDue)}</span>
+                      {i.dueDate && <span className={od > 0 ? '' : 'fade'}>
+                        {' '}due {i.dueDate}{od > 0 ? ` (${od}d overdue)` : ''}
+                      </span>}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </td>
         </tr>
       )}

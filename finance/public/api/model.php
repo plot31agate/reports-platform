@@ -118,6 +118,17 @@ function finance_model(): array {
   ];
 }
 
+/** Outstanding sales invoices pulled by the Xero sync (xero.php). Served with
+    the model so the watchlist can name the invoice behind a quiet client. */
+function receivables_view(): array {
+  $r = store_read('receivables', []);
+  return [
+    'invoices' => is_array($r['invoices'] ?? null) ? $r['invoices'] : [],
+    'fetchedAt' => (int) ($r['fetchedAt'] ?? 0),
+    'scopeMissing' => (bool) ($r['scopeMissing'] ?? false),
+  ];
+}
+
 /** A compact, token-light view of the model for a Claude prompt: monthly
     totals plus the latest month's line-level detail and the balance. */
 function finance_brief(int $months = 12): string {

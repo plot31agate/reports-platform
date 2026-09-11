@@ -74,6 +74,24 @@ export function Reports() {
           </div>
         </div>
         {err && <p className="small" style={{ color: 'var(--fail)', marginTop: 10 }}>{err}</p>}
+        {(() => {
+          // Old accounting data must never dress up as current: say which
+          // month the pack will actually describe when Xero is behind.
+          const last = model.meta.last;
+          if (!last) return null;
+          const [y, m] = last.split('-').map(Number);
+          const now = new Date();
+          const behind = (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - m);
+          if (behind < 2) return null;
+          const label = model.periods[model.periods.length - 1]?.label ?? last;
+          return (
+            <div className="pc-note" style={{ marginTop: 12 }}>
+              Xero's newest month is <b>{label}</b> — {behind} months behind today. A pack generated
+              now describes then, not now. Sync or upload a fresher P&amp;L in Import first if the board
+              needs the current picture.
+            </div>
+          );
+        })()}
       </div>
 
       {busy && <div className="card" style={{ marginBottom: 16 }}><Working label="Writing the board report…" /></div>}

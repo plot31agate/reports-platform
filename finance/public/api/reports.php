@@ -116,8 +116,23 @@ function board_generate(?string $month = null): array {
     'additionalProperties' => false,
   ];
 
+  // The cash truth and the owner's filed decisions ride along, so the pack
+  // reflects what the bank actually did and what has already been decided —
+  // it should reference decisions where relevant, never re-raise settled ones.
+  $bank = store_read('bank', []);
+  $bankDigest = trim(mb_substr((string) ($bank['digest'] ?? ''), 0, 5000));
+  $decisions = '';
+  $answers = is_array($bank['answers'] ?? null) ? array_values($bank['answers']) : [];
+  usort($answers, fn($a, $c) => ($c['savedAt'] ?? 0) <=> ($a['savedAt'] ?? 0));
+  foreach (array_slice($answers, 0, 8) as $a) {
+    $when = !empty($a['savedAt']) ? date('j M Y', (int) $a['savedAt']) : '';
+    $decisions .= sprintf("  - [%s] %s -> %s\n", $when, (string) ($a['question'] ?? ''), (string) ($a['answer'] ?? ''));
+  }
+
   $user = "Write the board report for Digital Footprints for $periodLabel.\n\n$figures\n\n"
     . "Full data for context:\n$brief\n\n"
+    . ($bankDigest !== '' ? "Bank & cash context (the cash truth — what actually moved):\n$bankDigest\n\n" : '')
+    . ($decisions !== '' ? "Decisions the owner has filed recently (treat as settled; reference where relevant, do not re-raise):\n$decisions\n" : '')
     . "Write for the board: crisp, honest about dips, quantified in £. This is a UK "
     . "limited company. Keep the tax note brief and clearly an estimate.";
 

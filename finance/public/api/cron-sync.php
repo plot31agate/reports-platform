@@ -3,10 +3,13 @@
  *
  *   /usr/local/bin/php /home/wwwdfootdigi/public_html/reports.digital-footprints.co.uk/finance/api/cron-sync.php
  *
- * It (1) pulls the last 12 months of P&L + the balance sheet from Xero, exactly
- * as the Import → Sync button does, then (2) auto-writes the board report for
- * the most recent COMPLETED month, once — so daily runs keep the figures fresh
- * without piling up a new AI board pack every day.
+ * It (0) emails the Monday brief (the stored bank digest — position, pace,
+ * open questions, who's gone quiet) when 'digest_to' is set in
+ * claude-config.php (pass --digest to force-send for testing), then (1) pulls
+ * the last 12 months of P&L + the balance sheet + outstanding invoices from
+ * Xero, exactly as the Import → Sync button does, then (2) auto-writes the
+ * board report for the most recent COMPLETED month, once — so daily runs keep
+ * the figures fresh without piling up a new AI board pack every day.
  *
  * CLI-only: it refuses to run over the web (and it sits behind Basic Auth in the
  * api/ folder anyway). It reuses the exact sync + report code the UI uses, so an
@@ -30,6 +33,50 @@ require_once __DIR__ . '/reports.php';  // defines board_generate(); returns bef
 function cron_log(string $msg): void {
   fwrite(STDOUT, '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n");
 }
+
+/* ---- 0) Monday digest email ----
+   Runs FIRST so a broken Xero connection never blocks the brief. Sends on
+   Mondays (or any run with --digest, for testing), once per day, to the
+   optional 'digest_to' in claude-config.php. The body is the stored bank
+   digest — the same compact brief that grounds "Ask the data": position,
+   month pace, client patterns, loans, open questions, filed decisions. */
+function cron_send_digest(bool $forced): void {
+  $ccFile = __DIR__ . '/claude-config.php';
+  $cc = is_file($ccFile) ? include $ccFile : null;
+  $to = is_array($cc) ? trim((string) ($cc['digest_to'] ?? '')) : '';
+  if ($to === '') { if ($forced) cron_log("Digest skipped: no 'digest_to' in api/claude-config.php."); return; }
+  if (!$forced && date('N') !== '1') return;   // Mondays only unless --digest
+
+  $cron = store_read('cron', []);
+  if (!$forced && ($cron['lastDigestDay'] ?? '') === date('Y-m-d')) {
+    cron_log('Digest already sent today — skipping.');
+    return;
+  }
+
+  $bank = store_read('bank', []);
+  $digest = trim((string) ($bank['digest'] ?? ''));
+  if ($digest === '') { cron_log('Digest skipped: no bank digest stored yet (import a statement).'); return; }
+
+  $from = trim((string) ($cc['digest_from'] ?? ''));
+  if ($from === '') $from = 'finance@' . (preg_replace('/^www\./', '', (string) gethostname()) ?: 'localhost');
+
+  $subject = 'Finance HQ — Monday brief (' . date('j M Y') . ')';
+  $body = "Your Monday brief from Finance HQ — the week's position, who's gone quiet,\n"
+    . "and the questions the data is raising. Open the dashboard to file decisions.\n\n"
+    . $digest . "\n\n--\nSent by the daily cron (api/cron-sync.php). "
+    . "To stop these, remove 'digest_to' from api/claude-config.php.\n";
+  $headers = "From: Finance HQ <$from>\r\nContent-Type: text/plain; charset=UTF-8";
+
+  if (@mail($to, $subject, $body, $headers)) {
+    $cron['lastDigestDay'] = date('Y-m-d');
+    store_write('cron', $cron);
+    cron_log("Digest emailed to $to.");
+  } else {
+    cron_log("ERROR: digest email to $to failed (PHP mail()).");
+  }
+}
+
+cron_send_digest(in_array('--digest', $argv ?? [], true));
 
 /* ---- 1) Pull from Xero ---- */
 $cfg = xero_cfg();

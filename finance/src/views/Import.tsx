@@ -255,7 +255,10 @@ function XeroCard({ onSynced }: { onSynced: () => void }) {
           <h3>{connected ? `Connected to ${status?.tenantName ?? 'Xero'}` : 'Connect Xero'}</h3>
           <p className="fade small" style={{ margin: '4px 0 0', maxWidth: 520 }}>
             {connected
-              ? (status?.lastSync ? `Last synced ${new Date(status.lastSync * 1000).toLocaleString('en-GB')}.` : 'Never synced yet.') + ' Pulls the last 12 months of P&L and the balance sheet.'
+              ? (status?.lastSync ? `Last synced ${new Date(status.lastSync * 1000).toLocaleString('en-GB')}.` : 'Never synced yet.')
+                + ' Pulls the last 12 months of P&L, the balance sheet and outstanding sales invoices.'
+                + (status?.receivables && !status.receivables.scopeMissing && status.receivables.count > 0
+                  ? ` ${status.receivables.count} unpaid invoice${status.receivables.count === 1 ? '' : 's'} on file.` : '')
               : 'Sign in to Xero once, then pull your accounts with a click — no exports, no uploads.'}
           </p>
         </div>
@@ -271,6 +274,14 @@ function XeroCard({ onSynced }: { onSynced: () => void }) {
         </div>
       </div>
       {busy && <Working label="Pulling from Xero…" />}
+      {connected && status?.receivables?.scopeMissing ? (
+        <div className="pc-note" style={{ marginTop: 14 }}>
+          This connection predates invoice access, so syncs can't list outstanding invoices yet.
+          Click <a className="linky" href={api.xeroConnectUrl()}>Connect Xero</a> once more to
+          re-consent (read-only, as before) — then Money in and the watchlist name the exact
+          invoice behind every late payer.
+        </div>
+      ) : null}
       {connected && status?.lastSyncSummary?.unmapped?.length ? (
         <div className="pc-note" style={{ marginTop: 14 }}>
           Last sync skipped {status.lastSyncSummary.unmapped.length} P&amp;L section

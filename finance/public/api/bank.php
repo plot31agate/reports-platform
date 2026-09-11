@@ -22,6 +22,7 @@ function bank_store(): array {
   if (!isset($s['spaces']) || !is_array($s['spaces'])) $s['spaces'] = [];
   if (!isset($s['events']) || !is_array($s['events'])) $s['events'] = [];
   if (!isset($s['answers']) || !is_array($s['answers'])) $s['answers'] = [];
+  if (!isset($s['projection']) || !is_array($s['projection'])) $s['projection'] = [];
   return $s;
 }
 
@@ -29,7 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $s = bank_store();
   respond(['ok' => true, 'txs' => $s['txs'], 'importedAt' => $s['importedAt'] ?? 0,
     'digest' => $s['digest'], 'loanMeta' => (object) $s['loanMeta'],
-    'spaces' => $s['spaces'], 'events' => $s['events'], 'answers' => (object) $s['answers']]);
+    'spaces' => $s['spaces'], 'events' => $s['events'], 'answers' => (object) $s['answers'],
+    'projection' => $s['projection']]);
 }
 
 $b = body_json();
@@ -186,6 +188,31 @@ switch ($b['action'] ?? '') {
     }
     store_write('bank', $s);
     respond(['ok' => true, 'answers' => (object) $s['answers']]);
+  }
+
+  case 'projection': {
+    // The regular-retainer rhythm the browser computes from the statement
+    // (entity, typical monthly, next expected date). The 13-week cash flow
+    // folds these into its committed receipts, so the forecast floor and
+    // Money in's run-rate are one number, not two.
+    $rows = $b['rows'] ?? null;
+    if (!is_array($rows)) fail('rows must be a list');
+    $clean = [];
+    foreach (array_slice($rows, 0, 100) as $r) {
+      if (!is_array($r)) continue;
+      $entity = mb_substr(trim((string) ($r['entity'] ?? '')), 0, 120);
+      $monthly = (float) ($r['monthly'] ?? 0);
+      if ($entity === '' || $monthly <= 0) continue;
+      $clean[] = [
+        'entity' => $entity,
+        'monthly' => round($monthly, 2),
+        'nextDue' => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($r['nextDue'] ?? '')) ? (string) $r['nextDue'] : '',
+      ];
+    }
+    $s['projection'] = $clean;
+    $s['projectionAt'] = time();
+    store_write('bank', $s);
+    respond(['ok' => true, 'projection' => $clean]);
   }
 
   case 'reset': {

@@ -11,6 +11,7 @@ import { money, delta, pctLabel } from '../lib/finance';
 import { useBank } from '../lib/useBank';
 import {
   monthlyFlows, clientRows, spendGroups, loans, computeQuestions, buildDigest, median, expectedThisMonth,
+  buildProjection, vatPosition,
 } from '../lib/bank';
 import type { Enriched, BankExtras } from '../lib/bank';
 import { DeltaChip, IncomeCostChart, SpendBars, Working, OfflineNote, Empty, toast } from '../components/ui';
@@ -26,15 +27,26 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
   const [model, setModel] = useState<FinanceModel | null>(null);
   useEffect(() => { api.model().then((m) => m && setModel(m)); }, []);
 
+  // Keep the stored retainer projection (the cash-flow room's receipts floor)
+  // in step with the statement — recomputed here, posted only when it changed.
+  const txs = bank.txs ?? [];
+  useEffect(() => {
+    if (txs.length === 0) return;
+    const next = buildProjection(txs);
+    if (JSON.stringify(next) !== JSON.stringify(bank.projection)) api.bankProjection(next);
+  }, [txs, bank.projection]);
+
   if (bank.loading) return <Working label="Loading the numbers…" />;
   if (bank.offline) return <OfflineNote />;
-  const txs = bank.txs ?? [];
   if (txs.length === 0) return <EmptyState go={go} hasXero={!!model && model.meta.count > 0} model={model} />;
-  const extras: BankExtras = { spaces: bank.spaces, events: bank.events, answers: bank.answers };
+  const extras: BankExtras = {
+    spaces: bank.spaces, events: bank.events, answers: bank.answers,
+    receivables: model?.receivables?.invoices,
+  };
 
   return (
     <>
-      <Hero txs={txs} spaces={bank.spaces} />
+      <Hero txs={txs} spaces={bank.spaces} go={go} />
       <QuestionsCard txs={txs} extras={extras} onSaved={bank.refresh} go={go} />
       <div className="grid g2" style={{ alignItems: 'start', margin: '16px 0' }}>
         <div className="card">
@@ -48,6 +60,7 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
         <SpendGroupsCard txs={txs} go={go} />
         <SpacesCard txs={txs} spaces={bank.spaces} events={bank.events} onSaved={bank.refresh} />
       </div>
+      <TaxCard txs={txs} spaces={bank.spaces} />
       {model && model.meta.count > 0 && <XeroStrip model={model} go={go} />}
     </>
   );
@@ -58,9 +71,12 @@ export function Dashboard({ go }: { go: (v: string) => void }) {
    young month never reads as a slump, and the three numbers that explain the
    position — last complete month's revenue (vs the 3-month norm, not vs one
    spiky month), net per month, and debt service. */
-function Hero({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
+function Hero({ txs, spaces, go }: { txs: Enriched[]; spaces: Space[]; go: (v: string) => void }) {
   const flows = monthlyFlows(txs);
   const asOf = txs[txs.length - 1].date;
+  // How old is the truth? The whole room reads from the statement, so say so
+  // loudly once it's more than a few days behind.
+  const staleDays = Math.floor((Date.now() - new Date(asOf).getTime()) / 86400000);
   const asOfMonth = asOf.slice(0, 7);
   const complete = flows.filter((f) => f.key !== asOfMonth);
   const latest = complete[complete.length - 1];
@@ -113,6 +129,12 @@ function Hero({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
         expected from regular payers — so the figures above anchor
         on {latest ? monthLabel(latest.key) : 'the last complete month'}.
       </div>
+      {staleDays > 5 && (
+        <div className="pc-note" style={{ marginTop: 12 }}>
+          This statement ends <b>{asOf}</b> — {staleDays} days ago. Everything on this screen stops
+          there. <button className="linky" onClick={() => go('import')}>Drop a newer export in Import →</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -322,10 +344,8 @@ function SpacesCard({ txs, spaces, events, onSaved }: {
     const clean = rows.filter((r) => r.name.trim() !== '');
     const r = await api.bankSpaces(clean);
     if (!r?.ok) { toast('Could not save'); return; }
-    const vat = clean.filter((s) => s.kind === 'vat').reduce((s, x) => s + x.balance, 0);
-    if (vat > 0) await api.cashflowSettings({ vatSetAside: vat });
     await api.bankDigest(buildDigest(txs, { spaces: clean, events }));
-    toast(vat > 0 ? 'Spaces saved — VAT set-aside synced to Cash flow' : 'Spaces saved');
+    toast('Spaces saved — the cash position and Cash flow read them directly');
     onSaved();
   }
 
@@ -335,7 +355,7 @@ function SpacesCard({ txs, spaces, events, onSaved }: {
       <h3 style={{ marginBottom: 6 }}>Starling Spaces &amp; set-asides</h3>
       <p className="small fade" style={{ margin: '0 0 12px' }}>
         Spaces don't appear in the statement export — keep their balances here so cash reads true.
-        VAT spaces sync into the Cash flow set-aside automatically.
+        The position above and the Cash flow room read these directly: one cash truth.
       </p>
       {rows.map((r, i) => (
         <div className="row" key={i} style={{ gap: 8, marginBottom: 8 }}>
@@ -367,17 +387,62 @@ function SpacesCard({ txs, spaces, events, onSaved }: {
   );
 }
 
+/* ---- Tax position: is HMRC covered? ----
+   The scariest small-business question, answered from data already in the
+   room: income since the last VAT payment × 1/6 vs the VAT Spaces. An
+   estimate, and labelled as one — the point is the gap. */
+function TaxCard({ txs, spaces }: { txs: Enriched[]; spaces: Space[] }) {
+  const vp = vatPosition(txs, spaces);
+  if (!vp || vp.estAccrued <= 0) return null;
+  const short = vp.gap < -100;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div className="eyebrow">Tax position</div>
+          <h3>Is HMRC covered?</h3>
+        </div>
+        <div className="row" style={{ gap: 28, flexWrap: 'wrap' }}>
+          <MiniKpi label="VAT accruing (est.)" v={`~${money(vp.estAccrued)}`} />
+          <MiniKpi label="Set aside (VAT Spaces)" v={money(vp.potHeld)} />
+          <div>
+            <div className="money" style={{ fontSize: 20, color: short ? 'var(--fail)' : 'var(--pass)' }}>
+              {short ? `−${money(Math.abs(vp.gap))}` : money(Math.max(0, vp.gap))}
+            </div>
+            <div className="small fade">{short ? 'short of the estimate' : 'ahead of the estimate'}</div>
+          </div>
+        </div>
+      </div>
+      <div className="small fade" style={{ marginTop: 10 }}>
+        Estimate: {money(vp.revenueSince)} of client money in since{' '}
+        {vp.lastVatDate
+          ? <>the last VAT payment ({money(vp.lastVatAmount)} on {vp.lastVatDate})</>
+          : 'the statement start'}, × 1/6 — assumes standard-rated, VAT-inclusive invoices; confirm the
+        real return with the accountant.
+        {vp.ttpMonthly > 0 && <> A standing HMRC direct debit also runs at ~{money(vp.ttpMonthly)}/month on top.</>}
+        {short && <> Topping the VAT space up by <b>{money(Math.abs(vp.gap))}</b> makes quarter-end a non-event.</>}
+      </div>
+    </div>
+  );
+}
+
 /* ---- Xero reconciliation strip ---- */
 function XeroStrip({ model, go }: { model: FinanceModel; go: (v: string) => void }) {
   const latest = model.latest;
   if (!latest) return null;
   const t = latest.totals;
+  // Months between Xero's newest month and now — old accounting data must
+  // never dress up as current.
+  const now = new Date();
+  const [ly, lm] = latest.key.split('-').map(Number);
+  const monthsBehind = (now.getFullYear() - ly) * 12 + (now.getMonth() + 1 - lm);
+  const stale = monthsBehind >= 2;
   return (
-    <div className="card">
+    <div className="card" style={stale ? { opacity: 0.92 } : undefined}>
       <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div className="eyebrow">Accounting view · Xero</div>
-          <h3>P&amp;L · {latest.label}</h3>
+          <div className="eyebrow">Accounting view · Xero{stale ? ' · stale' : ''}</div>
+          <h3 style={stale ? { color: 'var(--warn)' } : undefined}>P&amp;L · {latest.label}</h3>
         </div>
         <div className="row" style={{ gap: 28, flexWrap: 'wrap' }}>
           <MiniKpi label="Revenue" v={money(t.income)} />
@@ -386,6 +451,13 @@ function XeroStrip({ model, go }: { model: FinanceModel; go: (v: string) => void
           <button className="btn ghost sm" onClick={() => go('reports')}>Board report →</button>
         </div>
       </div>
+      {stale && (
+        <div className="pc-note" style={{ marginTop: 10 }}>
+          Xero's newest month is <b>{latest.label}</b> — {monthsBehind} months behind today. These
+          figures describe then, not now.{' '}
+          <button className="linky" onClick={() => go('import')}>Sync or upload a fresh P&amp;L in Import →</button>
+        </div>
+      )}
       <div className="small fade" style={{ marginTop: 10 }}>
         The bank view above is cash (when money moved); this is the accounting view (when it was earned).
         Differences are timing — unpaid invoices, VAT set aside, accruals.

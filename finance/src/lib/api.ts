@@ -18,6 +18,11 @@ export interface Balance {
   asAt: string; cash: number; debtors: number; creditors: number;
   source: string; importedAt: number;
 }
+export interface Receivables {
+  invoices: OutstandingInvoice[];
+  fetchedAt: number;
+  scopeMissing: boolean;
+}
 export interface FinanceModel {
   ok: boolean;
   currency: string; jurisdiction: string;
@@ -26,6 +31,7 @@ export interface FinanceModel {
   latest: Period | null;
   previous: Period | null;
   balance: Balance | null;
+  receivables?: Receivables;
 }
 
 /* ---- Import (import.php) ---- */
@@ -64,6 +70,7 @@ export interface XeroStatus {
   ok: boolean; configured: boolean; connected: boolean;
   tenantName: string | null; lastSync: number;
   lastSyncSummary: { months: number; at: number; unmapped?: string[] } | null;
+  receivables?: { count: number; scopeMissing: boolean; fetchedAt: number };
 }
 export interface XeroSyncResult {
   ok: boolean; error?: string; tenantName?: string;
@@ -116,15 +123,21 @@ export interface CashHeadline {
   totalCash: number; vatSetAside: number; availableCash: number;
   runwayWeeks: number | null; runwayNote: string; endCommitted: number; endScenario: number;
 }
+export type CashSource = 'manual' | 'bank' | 'balance-sheet' | 'none';
 export interface CashflowData {
   ok: boolean; weeks: CashWeek[]; headline: CashHeadline;
-  settings: { totalCash: number; vatSetAside: number; usingBalanceCash: boolean };
+  settings: {
+    totalCash: number; vatSetAside: number; usingBalanceCash: boolean;
+    cashSource: CashSource; vatSource: 'manual' | 'spaces' | 'none';
+    bankCash: number | null; bankAsOf: string | null; vatFromSpaces: number | null;
+  };
+  projection: { count: number; monthly: number };
   payments: CashItem[]; receipts: CashItem[];
   included: { id: string; client: string; value: number; type: string }[];
 }
 
 /* ---- Bank statement (bank.php) ---- */
-import type { BankTx, BizEvent, QAnswer } from './bank';
+import type { BankTx, BizEvent, QAnswer, ProjectionRow, OutstandingInvoice } from './bank';
 export interface LoanMeta { balance: number; apr: number; note: string; }
 export type SpaceKind = 'vat' | 'tax' | 'savings' | 'other';
 export interface Space { name: string; kind: SpaceKind; balance: number; }
@@ -134,6 +147,7 @@ export interface BankData {
   spaces: Space[];
   events: BizEvent[];
   answers: Record<string, QAnswer>;
+  projection: ProjectionRow[];
 }
 export interface BankImportResult {
   ok: boolean; error?: string;
@@ -234,6 +248,8 @@ export const api = {
     post<{ ok: boolean; events: BizEvent[] }>('bank.php', { action: 'events', events }),
   bankAnswer: (key: string, question: string, answer: string) =>
     post<{ ok: boolean; answers: Record<string, QAnswer> }>('bank.php', { action: 'answer', key, question, answer }),
+  bankProjection: (rows: ProjectionRow[]) =>
+    post<{ ok: boolean; projection: ProjectionRow[] }>('bank.php', { action: 'projection', rows }),
   bankReset: () => post<{ ok: boolean }>('bank.php', { action: 'reset' }),
 
   // Board reports

@@ -14,10 +14,12 @@ is one business here (DF itself), configured in `src/lib/client.ts`.
 
 | Room | What it does |
 | --- | --- |
-| **Overview** | The bank is the cash truth, Xero the accounting truth — this screen ties them together: cash today, client revenue, 3-month net, debt service, the money-in/out trend, a watchlist of clients gone quiet, **the questions the data raises this week**, and a Xero P&L reconciliation strip. |
-| **Money in** | Every client from the bank statement: paid this year, typical month, cadence, last paid — and a status (on track / late / **gone quiet**) measured against each client's own payment rhythm. This is where the retainers feed in. |
+| **Overview** | The bank is the cash truth, Xero the accounting truth — this screen ties them together: cash today, client revenue, 3-month net, debt service, the money-in/out trend, a watchlist of clients gone quiet, **the questions the data raises this week**, a **tax-position card** (VAT accruing vs the VAT Spaces, estimated at 1/6 of income since the last VAT payment), and a Xero P&L reconciliation strip. Staleness is shouted, never whispered: a statement more than 5 days old gets a banner, and a Xero month 2+ months behind is flagged as describing *then*, not now. |
+| **Money in** | Every client from the bank statement: paid this year, typical month, cadence, last paid — and a status (on track / late / **gone quiet**) measured against each client's own payment rhythm. This is where the retainers feed in. When Xero sync runs, each late/quiet client also shows their **outstanding invoices** (number, amount, days overdue) — chase a number, not a hunch. |
 | **Spending** | Money out in owner language: analytic groups (people, debt service, premises…), biggest payees, and a **recurring-subscription audit** with per-service monthly cost. |
-| **Debt & loans** | Every facility (loans and revolving credit) with its monthly service from the statement; add balance + APR and it shows payoff dates, what an overpayment buys, and frames the live decision: **replace the leaver or pay debt down faster**. |
+| **Debt & loans** | Every facility (loans and revolving credit) with its monthly service from the statement; add balance + APR and it shows payoff dates, what an overpayment buys, and frames the live decision: **replace the leaver or pay debt down faster**. If the largest facility has no balance entered, the room says so out loud rather than reasoning around it. |
+| **Cash flow** | A 13-week rolling forecast with **one cash truth**: the opening balance defaults to the bank statement + Spaces (exactly what the Overview shows) and the VAT set-aside follows the VAT Spaces; a manual override that drifts from the bank gets an amber warning with a one-click way back. The committed floor = regular retainers on their bank rhythm (projected from Money in) + won pipeline + one-off receipts − committed payments. |
+| **Pipeline** | Agreed vs potential work, weighted by stage. Won retainers feed the cash-flow floor automatically — unless they've already started paying through the bank, in which case the bank rhythm wins and they're never counted twice. |
 | **Import** | Drop a **Starling statement CSV** (re-imports dedupe cleanly; the counterparty registry in `src/lib/bank.ts` knows which counterparties are clients, loans, HMRC and payroll). Or **connect Xero for live sync** (OAuth 2.0, read-only), or drop/paste a Xero **Profit & Loss** / **Balance Sheet** CSV export. Manual balance entry too. |
 | **Ask the data** | Interrogate the numbers in plain English. Answers are grounded only in what you've imported — the Xero brief plus a digest of the bank statement (client patterns, loans, subscriptions) — Claude won't invent figures. |
 | **Budgets & Forecast** | Spend layers ("what we should spend on X") vs actuals with variance bars; a 12-month cash runway projection; and what-if sliders + a free-text scenario Claude assesses against the real figures. |
@@ -33,13 +35,16 @@ Read-only, OAuth 2.0. To enable, register a **Web app** at
 URI to `https://<your-domain>/finance/api/xero.php`, and copy
 `api/xero-config.example.php` to `api/xero-config.php` with the client id,
 secret and that redirect URI. Then **Import → Connect Xero**. Scopes requested:
-`offline_access accounting.reports.read accounting.settings.read` — Finance HQ
-never writes to Xero. Tokens live in the flat store (behind Basic Auth,
-gitignored, never served); the refresh token rotates on each sync. The CSV
-importer and the API sync share one classifier (`classify.php`), so an upload
-and a pull produce identical months.
+the per-report P&L + Balance Sheet read scopes, plus
+`accounting.transactions.read` for **outstanding sales invoices** (still
+read-only — Finance HQ never writes to Xero). A consent granted before the
+invoices scope was added keeps syncing the reports but 403s on invoices; the
+Import room flags it — reconnect once to grant it. Tokens live in the flat
+store (behind Basic Auth, gitignored, never served); the refresh token rotates
+on each sync. The CSV importer and the API sync share one classifier
+(`classify.php`), so an upload and a pull produce identical months.
 
-### Automatic daily pull + board report
+### Automatic daily pull + board report + Monday brief
 
 `api/cron-sync.php` is a **command-line job** (it refuses to run over the web)
 that runs the same sync the button does, then auto-writes the board report for
@@ -47,6 +52,13 @@ the most recent **completed** month — once, so daily runs keep the figures fre
 without stacking up a new AI pack every day. It reuses `xero_run_sync()` and
 `board_generate()`, the exact code the UI calls, so automatic and manual runs
 are identical.
+
+On Mondays it also emails the **Monday brief** — the stored bank digest
+(position, month pace, client patterns, loans, open questions, filed
+decisions) — to the optional `digest_to` address in `claude-config.php`
+(`digest_from` optional; no address, no email, and it runs *before* the Xero
+sync so a broken connection never blocks it). Test with
+`php api/cron-sync.php --digest`.
 
 Prerequisites: `xero-config.php` + `claude-config.php` in place, and Xero
 connected once in the browser (that one OAuth consent can't be scripted). After

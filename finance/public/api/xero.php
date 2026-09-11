@@ -21,9 +21,13 @@ const XERO_CONNECTIONS = 'https://api.xero.com/connections';
 const XERO_API = 'https://api.xero.com/api.xro/2.0';
 // Xero split the old catch-all accounting.reports.read into per-report scopes;
 // request exactly the two reports the sync pulls (P&L + Balance Sheet). Plus
-// offline_access for the rotating refresh token. Settings isn't used (tenants
-// come from the /connections endpoint, which needs no extra scope).
-const XERO_SCOPES = 'openid profile email offline_access accounting.reports.profitandloss.read accounting.reports.balancesheet.read';
+// offline_access for the rotating refresh token, and transactions.read so the
+// sync can list OUTSTANDING SALES INVOICES (still read-only) — that's what
+// turns "client gone quiet" into "invoice X is Y days overdue". Settings isn't
+// used (tenants come from /connections, which needs no extra scope).
+// NOTE: a consent granted before transactions.read was added keeps working for
+// the reports but returns 403 on invoices — reconnect once to grant it.
+const XERO_SCOPES = 'openid profile email offline_access accounting.reports.profitandloss.read accounting.reports.balancesheet.read accounting.transactions.read';
 
 function xero_cfg(): ?array {
   $f = __DIR__ . '/xero-config.php';
@@ -130,6 +134,41 @@ function xero_run_sync(array &$store, array $cfg): array {
     $balSummary = $b2;
   }
 
+  // Outstanding sales invoices — who owes what, per invoice, so the watchlist
+  // can chase a number instead of a hunch. Needs accounting.transactions.read;
+  // an older consent 403s, which is flagged (reconnect once), never fatal.
+  $recv = ['fetchedAt' => time(), 'scopeMissing' => false, 'invoices' => []];
+  $inv = xero_api_get(XERO_API . '/Invoices?' . http_build_query([
+    'where' => 'Type=="ACCREC" AND Status=="AUTHORISED"',
+    'order' => 'DueDate',
+  ]), $token, $tenant);
+  if ($inv['status'] === 403) {
+    $recv['scopeMissing'] = true;
+  } elseif ($inv['status'] === 200) {
+    // Accept: application/json gives ISO "DateString"/"DueDateString"; the
+    // epoch "/Date(ms)/" form is the fallback for safety.
+    $ymd = function ($iso, $epoch): string {
+      $s = (string) $iso;
+      if (preg_match('/^\d{4}-\d{2}-\d{2}/', $s)) return substr($s, 0, 10);
+      if (preg_match('/\/Date\((\d+)/', (string) $epoch, $m)) return gmdate('Y-m-d', (int) ($m[1] / 1000));
+      return '';
+    };
+    foreach (array_slice((array) ($inv['data']['Invoices'] ?? []), 0, 200) as $i) {
+      $due = (float) ($i['AmountDue'] ?? 0);
+      if ($due <= 0) continue;
+      $recv['invoices'][] = [
+        'number' => (string) ($i['InvoiceNumber'] ?? ''),
+        'contact' => (string) ($i['Contact']['Name'] ?? ''),
+        'date' => $ymd($i['DateString'] ?? '', $i['Date'] ?? ''),
+        'dueDate' => $ymd($i['DueDateString'] ?? '', $i['DueDate'] ?? ''),
+        'amountDue' => round($due, 2),
+        'total' => round((float) ($i['Total'] ?? 0), 2),
+        'reference' => (string) ($i['Reference'] ?? ''),
+      ];
+    }
+  }
+  store_write('receivables', $recv);
+
   $fin['updatedAt'] = time();
   store_write('finance', $fin);
 
@@ -201,6 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $store = xero_store();
 
   if ($action === 'status') {
+    $recv = store_read('receivables', []);
     respond([
       'ok' => true,
       'configured' => $cfg !== null,
@@ -208,6 +248,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
       'tenantName' => $store['tenantName'] ?? null,
       'lastSync' => (int) ($store['lastSync'] ?? 0),
       'lastSyncSummary' => $store['lastSyncSummary'] ?? null,
+      'receivables' => [
+        'count' => is_array($recv['invoices'] ?? null) ? count($recv['invoices']) : 0,
+        'scopeMissing' => (bool) ($recv['scopeMissing'] ?? false),
+        'fetchedAt' => (int) ($recv['fetchedAt'] ?? 0),
+      ],
     ]);
   }
 

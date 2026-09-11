@@ -12,7 +12,7 @@
 require __DIR__ . '/model.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-  respond(['ok' => true] + finance_model());
+  respond(['ok' => true] + finance_model() + ['receivables' => receivables_view()]);
 }
 
 $b = body_json();

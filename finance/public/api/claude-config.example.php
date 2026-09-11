@@ -15,4 +15,11 @@ return [
 
   // OR a short-lived OAuth bearer token (local testing):
   // 'auth_token' => '...',
+
+  // Optional: the Monday-morning digest email the daily cron sends (position,
+  // pace, open questions, who's gone quiet). Leave 'digest_to' empty (or omit
+  // it) and no email is ever sent. 'digest_from' defaults to
+  // finance@<this-domain> if omitted.
+  // 'digest_to' => 'you@example.co.uk',
+  // 'digest_from' => 'finance@example.co.uk',
 ];

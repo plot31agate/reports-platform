@@ -78,6 +78,21 @@ export function Debt({ go }: { go: (v: string) => void }) {
           note="what's available to overpay or hire with" />
       </div>
 
+      {(() => {
+        // The room's decision maths is only as good as the balances entered —
+        // shout when the LARGEST facility is the one running blind.
+        const biggest = [...rows].sort((a, b) => b.recentMonthly - a.recentMonthly)[0];
+        if (!biggest || biggest.recentMonthly <= 0 || (meta[biggest.entity]?.balance ?? 0) > 0) return null;
+        return (
+          <div className="pc-note" style={{ marginBottom: 16 }}>
+            <b>{biggest.entity}</b> is your largest facility ({money(biggest.recentMonthly)}/month,{' '}
+            {money(biggest.paidTotal)} repaid this year) but has <b>no balance entered</b> — "Owed
+            today" and the decision below are reasoning without your biggest debt. Add the balance
+            from its last statement to get its payoff date.
+          </div>
+        );
+      })()}
+
       <div className="grid g3" style={{ marginBottom: 16, alignItems: 'stretch' }}>
         {rows.map((l) => (
           <LoanCard key={l.entity} l={l} asOf={asOf}

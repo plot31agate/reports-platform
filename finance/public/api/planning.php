@@ -122,6 +122,55 @@ function cashflow_store(): array {
   return $s;
 }
 
+/* ---- The bank's own cash position ----
+   The statement's closing balance plus the ring-fenced Spaces is the cash
+   truth the Overview shows; the forecast opens from the same figure so the two
+   rooms can never tell different stories. A manual override still wins, but
+   the UI warns when it drifts from this. */
+function bank_cash_snapshot(): ?array {
+  $s = store_read('bank', []);
+  $txs = $s['txs'] ?? null;
+  if (!is_array($txs) || count($txs) === 0) return null;
+  $last = $txs[count($txs) - 1];
+  $spacesTotal = 0.0; $vatSpaces = 0.0;
+  foreach ((is_array($s['spaces'] ?? null) ? $s['spaces'] : []) as $sp) {
+    $bal = (float) ($sp['balance'] ?? 0);
+    $spacesTotal += $bal;
+    if (($sp['kind'] ?? '') === 'vat') $vatSpaces += $bal;
+  }
+  return [
+    'bankBalance' => (float) ($last['balance'] ?? 0),
+    'spacesTotal' => $spacesTotal,
+    'vatSpaces' => $vatSpaces,
+    'cash' => (float) ($last['balance'] ?? 0) + $spacesTotal,
+    'asOf' => (string) ($last['date'] ?? ''),
+  ];
+}
+
+/** The regular-retainer projection the browser computes from the bank rhythm
+    (lib/bank.ts, stored via bank.php) — entity, typical monthly amount, next
+    expected date. Feeds the committed receipts so the 13-week floor includes
+    the money that reliably arrives, not just manual entries + won pipeline. */
+function bank_projection(): array {
+  $s = store_read('bank', []);
+  $rows = $s['projection'] ?? null;
+  return is_array($rows) ? $rows : [];
+}
+
+/** Loose name match between a pipeline client and a bank entity so a won
+    retainer that has started paying through the bank isn't counted twice.
+    Mirrors the matching Money in uses. */
+function cf_name_matches(string $entity, string $client): bool {
+  $c = strtolower(trim($client));
+  if (strlen($c) < 3) return false;
+  $aliases = [strtolower(trim(preg_replace('/\s*\([^)]*\)\s*/', ' ', $entity)))];
+  if (preg_match('/\(([^)]+)\)/', $entity, $m)) $aliases[] = strtolower(trim($m[1]));
+  foreach ($aliases as $a) {
+    if (strlen($a) >= 3 && (str_contains($a, $c) || str_contains($c, $a))) return true;
+  }
+  return false;
+}
+
 /** Monday 00:00 of the week containing $d. */
 function week_monday(DateTimeImmutable $d): DateTimeImmutable {
   $dow = (int) $d->format('N');           // 1 (Mon) … 7 (Sun)
@@ -173,11 +222,19 @@ function cashflow_compute(): array {
   $winStart = week_monday(new DateTimeImmutable('today'));
   $winEnd = $winStart->modify('+' . (CASH_WEEKS * 7 - 1) . ' days')->setTime(23, 59, 59);
 
-  // Opening bank: explicit setting, else the imported balance-sheet cash.
+  // Opening bank — ONE cash truth. Priority: a manual override, else the bank
+  // statement + Spaces (what the Overview shows), else balance-sheet cash.
   $settings = $store['settings'];
+  $bank = bank_cash_snapshot();
   $balCash = (float) ($model['balance']['cash'] ?? 0);
-  $totalCash = array_key_exists('totalCash', $settings) ? (float) $settings['totalCash'] : $balCash;
-  $vat = (float) ($settings['vatSetAside'] ?? 0);
+  $manualCash = array_key_exists('totalCash', $settings);
+  $totalCash = $manualCash ? (float) $settings['totalCash'] : ($bank !== null ? $bank['cash'] : $balCash);
+  $cashSource = $manualCash ? 'manual' : ($bank !== null ? 'bank' : (!empty($model['balance']) ? 'balance-sheet' : 'none'));
+
+  // VAT set-aside: a manual figure wins, else the VAT Spaces balance rides in.
+  $manualVat = array_key_exists('vatSetAside', $settings);
+  $vat = $manualVat ? (float) $settings['vatSetAside'] : ($bank !== null ? $bank['vatSpaces'] : 0.0);
+  $vatSource = $manualVat ? 'manual' : ($bank !== null && $bank['vatSpaces'] > 0 ? 'spaces' : 'none');
 
   // Empty per-week accumulators.
   $recCommitted = array_fill(0, CASH_WEEKS, 0.0);
@@ -204,14 +261,34 @@ function cashflow_compute(): array {
     $addOcc($pay, $p['cadence'] ?? 'once', $p['date'] ?? '', $p['until'] ?? '', $amt);
   }
 
+  // Regular bank retainers (the rhythm Money in measures, projected by the
+  // browser and stored alongside the statement): each one lands monthly from
+  // its next expected date, on BOTH lines — they're the real receipts floor.
+  $projection = bank_projection();
+  $projMonthly = 0.0;
+  foreach ($projection as $pr) {
+    $amt = (float) ($pr['monthly'] ?? 0);
+    if ($amt <= 0) continue;
+    $projMonthly += $amt;
+    $addOcc($recCommitted, 'monthly', (string) ($pr['nextDue'] ?? ''), '', $amt);
+    $addOcc($recScenario, 'monthly', (string) ($pr['nextDue'] ?? ''), '', $amt);
+  }
+
   // Pipeline: WON → both lines; open+flagged → scenario only. A retainer bills
-  // monthly from its start date; a project lands once on its start date.
+  // monthly from its start date; a project lands once on its start date. A won
+  // client already paying through the bank rhythm is skipped — never counted
+  // twice.
   $included = [];
   foreach ($pipe['opps'] as $o) {
     if ($o['value'] <= 0) continue;
     $inFloor = $o['stage'] === 'won';
     $inScenario = $inFloor || ($o['includeInForecast'] && $o['stage'] !== 'lost');
     if (!$inFloor && !$inScenario) continue;
+    $paysViaBank = false;
+    foreach ($projection as $pr) {
+      if (cf_name_matches((string) ($pr['entity'] ?? ''), (string) $o['client'])) { $paysViaBank = true; break; }
+    }
+    if ($paysViaBank) continue;
     $cadence = $o['type'] === 'retainer' ? 'monthly' : 'once';
     if ($inFloor) $addOcc($recCommitted, $cadence, $o['startDate'], '', $o['value']);
     if ($inScenario) {
@@ -252,7 +329,17 @@ function cashflow_compute(): array {
 
   return [
     'weeks' => $weeks,
-    'settings' => ['totalCash' => round($totalCash, 2), 'vatSetAside' => round($vat, 2), 'usingBalanceCash' => !array_key_exists('totalCash', $settings)],
+    'settings' => [
+      'totalCash' => round($totalCash, 2),
+      'vatSetAside' => round($vat, 2),
+      'usingBalanceCash' => $cashSource === 'balance-sheet',
+      'cashSource' => $cashSource,
+      'vatSource' => $vatSource,
+      'bankCash' => $bank !== null ? round($bank['cash'], 2) : null,
+      'bankAsOf' => $bank !== null ? $bank['asOf'] : null,
+      'vatFromSpaces' => $bank !== null ? round($bank['vatSpaces'], 2) : null,
+    ],
+    'projection' => ['count' => count($projection), 'monthly' => round($projMonthly, 2)],
     'headline' => [
       'totalCash' => round($totalCash, 2),
       'vatSetAside' => round($vat, 2),
@@ -305,8 +392,15 @@ function planning_brief(): string {
   if ($s['topClient']) {
     $lines[] = sprintf("  Client concentration: %s is %.0f%% of the committed book.", $s['topClient'], $s['topClientShare']);
   }
-  $lines[] = sprintf("  Cash now: total £%s, available (ex-VAT set-aside £%s) £%s.",
-    number_format($h['totalCash'], 0), number_format($h['vatSetAside'], 0), number_format($h['availableCash'], 0));
+  $src = $cf['settings']['cashSource'] ?? '';
+  $srcNote = $src === 'bank' ? sprintf(' (bank statement + Spaces, as of %s)', $cf['settings']['bankAsOf'] ?? '?')
+    : ($src === 'manual' ? ' (set manually)' : ($src === 'balance-sheet' ? ' (from the balance sheet)' : ''));
+  $lines[] = sprintf("  Cash now: total £%s%s, available (ex-VAT set-aside £%s) £%s.",
+    number_format($h['totalCash'], 0), $srcNote, number_format($h['vatSetAside'], 0), number_format($h['availableCash'], 0));
+  if (($cf['projection']['count'] ?? 0) > 0) {
+    $lines[] = sprintf("  The 13-week floor includes £%s/mo of regular bank retainers (%d clients on rhythm).",
+      number_format($cf['projection']['monthly'], 0), $cf['projection']['count']);
+  }
   $lines[] = sprintf("  13-week forecast closing cash: committed £%s; with selected pipeline £%s. (%s)",
     number_format($h['endCommitted'], 0), number_format($h['endScenario'], 0), $h['runwayNote']);
 

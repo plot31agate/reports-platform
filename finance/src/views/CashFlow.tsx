@@ -26,19 +26,57 @@ export function CashFlow({ go }: { go: (v: string) => void }) {
   if (!data) return <Working label="Building the forecast…" />;
 
   const h = data.headline;
+  const s = data.settings;
   const hasScenario = data.included.length > 0;
   const points: CashWeekPoint[] = data.weeks.map((w) => ({ label: w.label, committed: w.closingCommitted, scenario: w.closingScenario }));
+
+  const cashNote = s.cashSource === 'bank' ? `bank statement + Spaces${s.bankAsOf ? ` · as of ${s.bankAsOf}` : ''}`
+    : s.cashSource === 'manual' ? 'set manually — override'
+    : s.cashSource === 'balance-sheet' ? 'from balance sheet' : 'no source yet';
+  const vatNote = s.vatSource === 'spaces' ? 'from your VAT Spaces' : s.vatSource === 'manual' ? 'set manually — override' : 'ring-fenced (Starling Space)';
+
+  // One cash truth: a manual override that has drifted from what the bank
+  // statement + Spaces says gets called out, with the one-click way back.
+  const cashDrift = s.cashSource === 'manual' && s.bankCash !== null
+    && Math.abs(h.totalCash - s.bankCash) > Math.max(500, s.bankCash * 0.05);
+  const vatDrift = s.vatSource === 'manual' && s.vatFromSpaces !== null
+    && Math.abs(h.vatSetAside - s.vatFromSpaces) > 100;
+
+  async function useBankFigure() {
+    const r = await api.cashflowSettings({ totalCash: '' });
+    if (r) { setData(r); toast('Tracking the bank statement + Spaces'); }
+  }
+  async function useSpacesVat() {
+    const r = await api.cashflowSettings({ vatSetAside: '' });
+    if (r) { setData(r); toast('Tracking the VAT Spaces'); }
+  }
 
   return (
     <>
       {/* Headline: total vs available, VAT shown separately, runway */}
       <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Tile n={money(h.totalCash)} label="Total cash" note={data.settings.usingBalanceCash ? 'from balance sheet' : 'set manually'} />
+        <Tile n={money(h.totalCash)} label="Total cash" note={cashNote} />
         <Tile n={money(h.availableCash)} label="Available cash" note="total − VAT set-aside" />
-        <Tile n={money(h.vatSetAside)} label="VAT set-aside" note="ring-fenced (Starling Space)" />
+        <Tile n={money(h.vatSetAside)} label="VAT set-aside" note={vatNote} />
         <Tile n={h.runwayWeeks !== null ? `${h.runwayWeeks} wk` : '13+ wk'} label="Runway" note={h.runwayNote}
           neg={h.runwayWeeks !== null && h.runwayWeeks <= 6} />
       </div>
+
+      {cashDrift && (
+        <div className="pc-note" style={{ marginBottom: 16 }}>
+          Total cash is a manual override of <b>{money(h.totalCash)}</b>, but the bank statement +
+          Spaces says <b>{money(s.bankCash!)}</b>{s.bankAsOf ? <> as of {s.bankAsOf}</> : null} — the
+          Overview shows that figure, so the two rooms currently disagree.{' '}
+          <button className="linky" onClick={useBankFigure}>Use the bank figure</button>
+        </div>
+      )}
+      {vatDrift && (
+        <div className="pc-note" style={{ marginBottom: 16 }}>
+          The VAT set-aside is a manual <b>{money(h.vatSetAside)}</b>, but your VAT Spaces hold{' '}
+          <b>{money(s.vatFromSpaces!)}</b>.{' '}
+          <button className="linky" onClick={useSpacesVat}>Use the Spaces figure</button>
+        </div>
+      )}
 
       <Settings data={data} onSaved={setData} />
 
@@ -54,16 +92,20 @@ export function CashFlow({ go }: { go: (v: string) => void }) {
           </div>
         </div>
         <div style={{ marginTop: 14 }}><CashFlowChart weeks={points} hasScenario={hasScenario} /></div>
-        {hasScenario ? (
-          <p className="small fade" style={{ marginTop: 8 }}>
-            Scenario line adds: {data.included.map((o) => `${o.client} (${money(o.value)}${o.type === 'retainer' ? '/mo' : ''})`).join(', ')}.
-            {' '}Toggle these in <button className="linky" onClick={() => go('pipeline')}>Pipeline</button>.
-          </p>
-        ) : (
-          <p className="small fade" style={{ marginTop: 8 }}>
-            The floor uses won work + committed payments. In <button className="linky" onClick={() => go('pipeline')}>Pipeline</button>, tick an open opportunity's <b>Forecast</b> box to model winning it.
-          </p>
-        )}
+        <p className="small fade" style={{ marginTop: 8 }}>
+          <b>Where the floor comes from:</b>{' '}
+          {data.projection.count > 0 && <>
+            {money(data.projection.monthly)}/mo of regular retainers on their bank rhythm
+            ({data.projection.count} clients, from <button className="linky" onClick={() => go('moneyin')}>Money in</button>) +{' '}
+          </>}
+          won work from <button className="linky" onClick={() => go('pipeline')}>Pipeline</button> + the
+          receipts below, minus committed payments.
+          {hasScenario ? (
+            <> The dashed line adds: {data.included.map((o) => `${o.client} (${money(o.value)}${o.type === 'retainer' ? '/mo' : ''})`).join(', ')} — toggle these in Pipeline.</>
+          ) : (
+            <> Tick an open opportunity's <b>Forecast</b> box in Pipeline to model winning it.</>
+          )}
+        </p>
       </div>
 
       {/* Weekly grid */}
@@ -104,7 +146,7 @@ export function CashFlow({ go }: { go: (v: string) => void }) {
         <ItemEditor kind="payment" title="Committed payments" items={data.payments}
           hint="Obligations Xero can't future-date: tax plans (HMRC TTP), CCS, VAT, PAYE, lease, payroll, contractors." onChange={setData} categories={PAY_CATEGORIES} />
         <ItemEditor kind="receipt" title="Expected receipts" items={data.receipts}
-          hint="Income not already in the pipeline — ad-hoc invoices, deposits, grants. Won retainers are added automatically." onChange={setData} />
+          hint="One-offs only — ad-hoc invoices, deposits, grants. Regular retainers project automatically from the bank rhythm, and won pipeline rides in from Pipeline; adding either here would double-count it." onChange={setData} />
       </div>
     </>
   );
@@ -130,9 +172,14 @@ function Mini({ label, v, tone }: { label: string; v: number; tone?: string }) {
 }
 
 function Settings({ data, onSaved }: { data: CashflowData; onSaved: (d: CashflowData) => void }) {
-  const [total, setTotal] = useState(data.settings.usingBalanceCash ? '' : String(data.settings.totalCash));
-  const [vat, setVat] = useState(String(data.settings.vatSetAside));
+  // Blank = tracking automatically; only a manual override shows a value.
+  const [total, setTotal] = useState(data.settings.cashSource === 'manual' ? String(data.settings.totalCash) : '');
+  const [vat, setVat] = useState(data.settings.vatSource === 'manual' ? String(data.settings.vatSetAside) : '');
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setTotal(data.settings.cashSource === 'manual' ? String(data.settings.totalCash) : '');
+    setVat(data.settings.vatSource === 'manual' ? String(data.settings.vatSetAside) : '');
+  }, [data.settings.cashSource, data.settings.vatSource, data.settings.totalCash, data.settings.vatSetAside]);
 
   async function save() {
     setBusy(true);
@@ -147,14 +194,15 @@ function Settings({ data, onSaved }: { data: CashflowData; onSaved: (d: Cashflow
         <div>
           <label className="f">Total cash (opening)</label>
           <input className="inp num" style={{ width: 150 }} value={total} onChange={(e) => setTotal(e.target.value)}
-            placeholder={data.settings.usingBalanceCash ? `${data.settings.totalCash} (balance sheet)` : ''} />
+            placeholder={data.settings.cashSource !== 'manual' ? `${data.settings.totalCash} (${data.settings.cashSource === 'bank' ? 'bank + Spaces' : 'balance sheet'})` : ''} />
         </div>
         <div>
           <label className="f">VAT set-aside (Starling Space)</label>
-          <input className="inp num" style={{ width: 150 }} value={vat} onChange={(e) => setVat(e.target.value)} placeholder="0" />
+          <input className="inp num" style={{ width: 150 }} value={vat} onChange={(e) => setVat(e.target.value)}
+            placeholder={data.settings.vatSource === 'spaces' ? `${data.settings.vatSetAside} (VAT Spaces)` : '0'} />
         </div>
         <button className="btn gold" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
-        <span className="small fade">Leave total blank to track the imported balance-sheet cash.</span>
+        <span className="small fade">Leave a field blank to track it automatically — total follows the bank statement + Spaces, the set-aside follows your VAT Spaces.</span>
       </div>
     </div>
   );

@@ -39,8 +39,10 @@ switch ($action) {
   case 'settings': {
     if (array_key_exists('totalCash', $b)) $store['settings']['totalCash'] = money_num($b['totalCash']);
     if (array_key_exists('vatSetAside', $b)) $store['settings']['vatSetAside'] = abs(money_num($b['vatSetAside']));
-    // An empty totalCash clears the override → fall back to balance-sheet cash.
+    // An empty value clears the override → totalCash falls back to the bank
+    // statement + Spaces (else balance-sheet cash); vatSetAside to the VAT Spaces.
     if (($b['totalCash'] ?? null) === '') unset($store['settings']['totalCash']);
+    if (($b['vatSetAside'] ?? null) === '') unset($store['settings']['vatSetAside']);
     store_write('cashflow', $store);
     respond(['ok' => true] + cashflow_compute());
   }

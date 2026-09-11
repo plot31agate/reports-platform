@@ -217,6 +217,7 @@ export interface ClientRow {
   medianMonthly: number;            // typical month WHERE they paid
   lastPaid: string;                 // YYYY-MM-DD
   daysSince: number;                // vs the statement's asOf date
+  typicalGap: number;               // usual days between payments
   cadence: 'monthly' | 'irregular' | 'one-off';
   status: 'ontrack' | 'late' | 'quiet' | 'oneoff';
 }
@@ -260,7 +261,7 @@ export function clientRows(txs: Enriched[]): { rows: ClientRow[]; asOf: string }
         : 'ontrack';
     rows.push({
       entity, total: list.reduce((s, t) => s + t.amount, 0), payments: list.length,
-      months, medianMonthly: median(Object.values(months)), lastPaid, daysSince, cadence, status,
+      months, medianMonthly: median(Object.values(months)), lastPaid, daysSince, typicalGap, cadence, status,
     });
   }
   rows.sort((a, b) => b.total - a.total);
@@ -318,6 +319,96 @@ export function expectedThisMonth(txs: Enriched[]): ExpectedMonth {
     received: rows.reduce((s, r) => s + r.received, 0),
     due: rows.reduce((s, r) => s + r.due, 0),
     otherReceived,
+  };
+}
+
+/* ---- The retainer projection the cash flow reads ----
+   Each on-rhythm monthly payer, at their typical month, anchored on their next
+   expected date. Stored server-side (bank.php {action:'projection'}) so the
+   13-week forecast's committed receipts include the money that reliably
+   arrives — one receipts floor, shared with Money in. Gone-quiet retainers are
+   excluded here exactly as they are from "expected this month". */
+export interface ProjectionRow { entity: string; monthly: number; nextDue: string; }
+
+export function buildProjection(txs: Enriched[]): ProjectionRow[] {
+  const { rows, asOf } = clientRows(txs);
+  const out: ProjectionRow[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const floor = today > asOf ? today : asOf;
+  for (const c of rows) {
+    if (c.cadence !== 'monthly' || c.status === 'quiet' || c.medianMonthly <= 0) continue;
+    const next = new Date(c.lastPaid);
+    next.setDate(next.getDate() + Math.round(c.typicalGap || 30));
+    const nextDue = next.toISOString().slice(0, 10);
+    // A payment already "due" projects from today, not a month later.
+    out.push({ entity: c.entity, monthly: Math.round(c.medianMonthly * 100) / 100, nextDue: nextDue > floor ? nextDue : floor });
+  }
+  return out;
+}
+
+/* ---- Name matching across sources ----
+   The bank registry says "Vivo (Lemino Payments)"; Xero and the pipeline say
+   "Vivo" or "Lemino". Alias both halves so an invoice or an opp finds its
+   bank entity without exact spelling. */
+export function entityAliases(entity: string): string[] {
+  const out = [entity.toLowerCase().replace(/\s*\([^)]*\)\s*/g, ' ').trim()];
+  const m = /\(([^)]+)\)/.exec(entity);
+  if (m) out.push(m[1].toLowerCase().trim());
+  return out.filter((a) => a.length >= 3);
+}
+
+export function nameMatches(entity: string, other: string): boolean {
+  const o = other.toLowerCase().trim();
+  if (o.length < 3) return false;
+  return entityAliases(entity).some((a) => a.includes(o) || o.includes(a));
+}
+
+/* ---- Outstanding invoices (from the Xero sync) ---- */
+export interface OutstandingInvoice {
+  number: string; contact: string; date: string; dueDate: string;
+  amountDue: number; total: number; reference: string;
+}
+
+/** The unpaid invoices that belong to one bank entity. */
+export function invoicesFor(entity: string, invoices: OutstandingInvoice[] | undefined): OutstandingInvoice[] {
+  if (!invoices?.length) return [];
+  return invoices.filter((i) => nameMatches(entity, i.contact));
+}
+
+/* ---- Tax position: is HMRC covered? ----
+   An estimate from data already in the room: client money in since the last
+   VAT payment × 1/6 (standard-rated, VAT-inclusive) vs the VAT Spaces. Clearly
+   framed as an estimate — the point is the gap, not the pennies. */
+export interface VatPosition {
+  lastVatAmount: number;    // the last VAT bill actually paid (0 = none seen)
+  lastVatDate: string;      // '' when none seen
+  revenueSince: number;     // client money in since then (or statement start)
+  estAccrued: number;       // ~revenueSince / 6
+  potHeld: number;          // VAT Spaces total
+  gap: number;              // potHeld - estAccrued (negative = short)
+  ttpMonthly: number;       // standing HMRC direct debit, if one runs
+}
+
+export function vatPosition(txs: Enriched[], spaces?: SpaceLite[]): VatPosition | null {
+  if (txs.length === 0) return null;
+  const isVat = (t: Enriched) => t.kind === 'tax' && t.amount < 0 && /vat/i.test(t.cp + ' ' + t.category + ' ' + t.ref);
+  const vatPaid = txs.filter(isVat);
+  const last = vatPaid[vatPaid.length - 1];
+  const since = last ? last.date : txs[0].date;
+  const revenueSince = txs.filter((t) => t.group === 'Revenue' && t.date > since).reduce((s, t) => s + t.amount, 0);
+  const potHeld = (spaces ?? []).filter((s) => s.kind === 'vat').reduce((s, x) => s + x.balance, 0);
+  const estAccrued = revenueSince / 6;
+  // A standing HMRC arrangement (NDDS/TTP): regular direct debits that aren't
+  // the VAT return itself.
+  const dd = txs.filter((t) => t.kind === 'tax' && t.type === 'DIRECT DEBIT' && t.amount < 0 && !isVat(t));
+  const ddMonths = new Set(dd.map((t) => t.date.slice(0, 7)));
+  const ttpMonthly = ddMonths.size >= 3 ? dd.reduce((s, t) => s + -t.amount, 0) / ddMonths.size : 0;
+  return {
+    lastVatAmount: last ? -last.amount : 0,
+    lastVatDate: last ? last.date : '',
+    revenueSince, estAccrued, potHeld,
+    gap: potHeld - estAccrued,
+    ttpMonthly,
   };
 }
 
@@ -508,6 +599,7 @@ export interface BankExtras {
   spaces?: SpaceLite[];
   events?: BizEvent[];
   answers?: Record<string, QAnswer>;
+  receivables?: OutstandingInvoice[];
 }
 
 /* ---------- The question engine ----------
@@ -531,13 +623,19 @@ export function computeQuestions(txs: Enriched[], extras?: BankExtras): Question
   const cash = txs[txs.length - 1].balance;
   const fm = (n: number) => '£' + Math.round(Math.abs(n)).toLocaleString('en-GB');
 
-  // 1. Clients gone quiet
+  // 1. Clients gone quiet — with the actual outstanding invoices when the
+  // Xero sync has them, so "chase them" becomes "chase INV-0231".
   const { rows } = clientRows(txs);
   for (const r of rows.filter((r) => (r.status === 'quiet' || r.status === 'late') && r.medianMonthly >= 300).slice(0, 3)) {
+    const invs = invoicesFor(r.entity, extras?.receivables);
+    const invNote = invs.length > 0
+      ? ` Xero shows ${invs.length === 1 ? 'an unpaid invoice' : `${invs.length} unpaid invoices`}: ` +
+        invs.slice(0, 3).map((i) => `${i.number || 'no number'} ${fm(i.amountDue)}${i.dueDate ? ` due ${i.dueDate}` : ''}`).join(', ') + '.'
+      : '';
     out.push({
       key: `quiet:${r.entity}`,
       q: `Is ${r.entity} still active — and what's outstanding?`,
-      why: `They've paid ${fm(r.total)} this year (typically ${fm(r.medianMonthly)}/month) but nothing for ${r.daysSince} days. If invoices are out, chase them; if the work stopped, the run-rate needs reforecasting.`,
+      why: `They've paid ${fm(r.total)} this year (typically ${fm(r.medianMonthly)}/month) but nothing for ${r.daysSince} days.${invNote}${invNote ? ' Chase those first;' : ' If invoices are out, chase them;'} if the work stopped, the run-rate needs reforecasting.`,
       tone: r.status === 'quiet' ? 'bad' : 'warn',
     });
   }
@@ -706,6 +804,19 @@ export function buildDigest(txs: Enriched[], extras?: BankExtras): string {
     lines.push('Ring-fenced in Starling Spaces (NOT in the main balance above): '
       + spaces.map((s) => `${s.name} (${s.kind}) ${fm(s.balance)}`).join('; ')
       + `. Total set aside ${fm(spaces.reduce((s, x) => s + x.balance, 0))}.`);
+  }
+  const vp = vatPosition(txs, spaces);
+  if (vp && vp.estAccrued > 0) {
+    lines.push(`VAT position (estimate, standard-rated VAT-inclusive): ~${fm(vp.estAccrued)} accrued on ${fm(vp.revenueSince)} of client income since `
+      + (vp.lastVatDate ? `the last VAT payment (${fm(vp.lastVatAmount)} on ${vp.lastVatDate})` : 'the statement start')
+      + `; VAT set aside ${fm(vp.potHeld)} -> ${vp.gap >= 0 ? 'covered' : `SHORT by ${fm(vp.gap)}`}.`
+      + (vp.ttpMonthly > 0 ? ` A standing HMRC direct debit also runs at ~${fm(vp.ttpMonthly)}/month.` : ''));
+  }
+  const recv = extras?.receivables ?? [];
+  if (recv.length > 0) {
+    const owed = recv.reduce((s, i) => s + i.amountDue, 0);
+    lines.push(`Outstanding sales invoices in Xero: ${recv.length} totalling ${fm(owed)} — `
+      + recv.slice(0, 8).map((i) => `${i.contact} ${i.number || ''} ${fm(i.amountDue)}${i.dueDate ? ` due ${i.dueDate}` : ''}`.replace(/\s+/g, ' ').trim()).join('; ') + '.');
   }
   const events = extras?.events ?? [];
   if (events.length > 0) {
