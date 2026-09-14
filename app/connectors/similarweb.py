@@ -87,9 +87,14 @@ def sync(config, source_key, dest, period):
         raise ConnectorError(f"Similarweb connector can't feed {source_key}")
     # Monthly granularity needs a complete month - Similarweb data also lags,
     # so a just-finished month may not be available yet; surface their error.
+    # Custom ranges are widened to the calendar months they touch.
+    from app.periods import months_covered
+    covered = months_covered(period)
+    if not covered:
+        raise ConnectorError(f"Period must be YYYY-MM or YYYY-MM-DD_YYYY-MM-DD, got {period}")
     data = _get(config, f"/v1/website/{_domain(config)}/total-traffic-and-engagement/visits", {
-        "start_date": period,
-        "end_date": period,
+        "start_date": covered[0],
+        "end_date": covered[-1],
         "country": "world",
         "granularity": "monthly",
         "main_domain_only": "false",

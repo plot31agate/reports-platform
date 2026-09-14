@@ -1,6 +1,5 @@
 """Shared helpers for API connectors."""
-import calendar
-from datetime import date, datetime
+from datetime import date
 
 
 class ConnectorError(Exception):
@@ -8,15 +7,14 @@ class ConnectorError(Exception):
 
 
 def period_range(period: str) -> tuple[str, str]:
-    """'2026-06' -> ('2026-06-01', '2026-06-30'), clamped to yesterday for the
-    current month so APIs aren't asked for data that doesn't exist yet."""
-    try:
-        dt = datetime.strptime(period, "%Y-%m")
-    except ValueError:
-        raise ConnectorError(f"Period must be YYYY-MM, got {period}")
-    last_day = calendar.monthrange(dt.year, dt.month)[1]
-    start = date(dt.year, dt.month, 1)
-    end = date(dt.year, dt.month, last_day)
+    """'2026-06' -> ('2026-06-01', '2026-06-30'); a custom range
+    '2026-06-03_2026-06-14' -> its own start/end. Either form is clamped to
+    yesterday so APIs aren't asked for data that doesn't exist yet."""
+    from app.periods import bounds
+    b = bounds(period)
+    if not b:
+        raise ConnectorError(f"Period must be YYYY-MM or YYYY-MM-DD_YYYY-MM-DD, got {period}")
+    start, end = b
     today = date.today()
     if end >= today:
         end = today if start >= today else date.fromordinal(today.toordinal() - 1)

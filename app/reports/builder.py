@@ -8,6 +8,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from app import periods
 from app.clients import get_client
 from app.config import settings
 from app.db import (
@@ -233,6 +234,7 @@ def build_context(client_slug: str, period: str, progress=None) -> dict:
         "client_logo": client_logo,
         "period": period,
         "period_display": _period_display(period),
+        "is_custom_range": periods.custom_bounds(period) is not None,
         "generated_at": datetime.utcnow().strftime("%d %b %Y"),
         "app_url": settings.app_url,
         "data": parsed,
@@ -498,14 +500,13 @@ def _trend_svg(points: list, key: str, maxv) -> str:
 
 
 def _parse_prev_month(client_slug: str, period: str) -> tuple:
-    """Parse the prior month's data folder once — shared by the
-    month-on-month strip and the at-a-glance rules.
+    """Parse the prior period's data folder once — shared by the
+    month-on-month strip and the at-a-glance rules. For a custom range the
+    prior period is the equal-length window just before it.
     Returns (prev_period, folder_exists, parsed_dict)."""
-    try:
-        dt = datetime.strptime(period, "%Y-%m")
-    except ValueError:
+    prev_period = periods.prev_period(period)
+    if not prev_period:
         return None, False, {}
-    prev_period = (dt.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
     prev_dir = settings.data_dir / client_slug / prev_period
     if not prev_dir.exists():
         return prev_period, False, {}
@@ -517,14 +518,11 @@ def _parse_prev_month(client_slug: str, period: str) -> tuple:
 
 def _build_mom(period: str, parsed: dict, technical_seo: dict | None,
                prev_parsed: dict) -> dict | None:
-    """Month-on-month strip: this month's headline numbers against the prior
-    month's data folder. First tracked month renders as a baseline."""
-    try:
-        dt = datetime.strptime(period, "%Y-%m")
-    except ValueError:
+    """Month-on-month strip: this period's headline numbers against the prior
+    period's data folder. First tracked period renders as a baseline."""
+    prev_period = periods.prev_period(period)
+    if not prev_period:
         return None
-    prev_dt = dt.replace(day=1) - timedelta(days=1)
-    prev_period = prev_dt.strftime("%Y-%m")
 
     def dig(tree, src, key):
         node = ((tree.get(src) or {}).get("data") or {}) if tree else {}
@@ -580,8 +578,8 @@ def _build_mom(period: str, parsed: dict, technical_seo: dict | None,
     return {
         "metrics": metrics,
         "has_prev": any(m["prev"] is not None for m in metrics),
-        "month_name": dt.strftime("%B"),
-        "prev_name": prev_dt.strftime("%B"),
+        "month_name": periods.short_display(period),
+        "prev_name": periods.short_display(prev_period),
         "prev_period": prev_period,
     }
 
@@ -762,14 +760,19 @@ def _build_technical_seo(parsed: dict, period: str) -> dict | None:
     if not metrics_rows:
         return None
 
-    current = next((r for r in metrics_rows if r["month"] == period), None)
+    # The metrics file is keyed by calendar month; a custom range reads the
+    # latest month it touches.
+    covered = periods.months_covered(period)
+    current = next((r for m in reversed(covered)
+                    for r in metrics_rows if r["month"] == m), None)
     if not current:
         return None
+    cur_month = current["month"]
 
     earliest = min(r["month"] for r in metrics_rows)
-    is_baseline = (period == earliest)
+    is_baseline = (cur_month == earliest)
 
-    prior_candidates = [r for r in metrics_rows if r["month"] < period]
+    prior_candidates = [r for r in metrics_rows if r["month"] < cur_month]
     prior = max(prior_candidates, key=lambda r: r["month"]) if prior_candidates else None
 
     health_delta = None
@@ -895,9 +898,8 @@ def _fmt_duration(secs) -> str:
 
 
 def _period_display(period: str) -> str:
-    """2026-06 -> 'June 2026'."""
+    """2026-06 -> 'June 2026'; custom ranges -> '3–14 June 2026'."""
     try:
-        dt = datetime.strptime(period, "%Y-%m")
-        return dt.strftime("%B %Y")
-    except ValueError:
+        return periods.display(period)
+    except (ValueError, TypeError):
         return period

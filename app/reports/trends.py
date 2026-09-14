@@ -108,12 +108,9 @@ def _peak_label(days: list, cur: list, fmt: str) -> str:
 
 
 def _prev_name(period: str) -> str:
-    from datetime import timedelta
-    try:
-        dt = datetime.strptime(period, "%Y-%m")
-    except ValueError:
-        return "last month"
-    return (dt.replace(day=1) - timedelta(days=1)).strftime("%B")
+    from app.periods import prev_period, short_display
+    prev = prev_period(period)
+    return short_display(prev) if prev else "last month"
 
 
 def _fmt_secs(secs) -> str:

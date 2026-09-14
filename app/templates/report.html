@@ -196,7 +196,7 @@
         </span>
       </div>
     </div>
-    <div class="kicker">/ Monthly Performance Report · {{ period_display }}</div>
+    <div class="kicker">/ {% if is_custom_range %}Performance Report{% else %}Monthly Performance Report{% endif %} · {{ period_display }}</div>
     {% if editable %}
     <span class="edit-tag">Headline</span>
     <textarea class="edit-input edit-input--title" name="headline" rows="2" placeholder="Performance Report">{{ commentary.headline }}</textarea>
@@ -295,7 +295,7 @@
 {# ================== MONTH ON MONTH ================== #}
 {% if (editable or 'mom' not in hidden_sections) and (mom and mom.metrics and (editable or mom.metrics | length > 0 or notes.get('mom') or notes.get('callout_mom'))) %}
 <div class="section">
-  <div class="slabel">Month on month</div>
+  <div class="slabel">{% if is_custom_range %}Period on period{% else %}Month on month{% endif %}</div>
   {{ sectiontoggle('mom') }}
   <h2>{% if mom.has_prev %}{{ mom.month_name }} against {{ mom.prev_name }}{% else %}{{ mom.month_name }} baseline{% endif %}</h2>
   {{ note('mom') }}

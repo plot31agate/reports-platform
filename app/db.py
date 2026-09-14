@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
+from app import periods
 from app.config import settings
 
 
@@ -540,7 +541,8 @@ def data_months(client_slug: str) -> dict:
     if not root.is_dir():
         return out
     for folder in root.iterdir():
-        if not folder.is_dir() or not re.match(r"^\d{4}-\d{2}$", folder.name):
+        # Month folders (2026-06) and custom-range folders (2026-06-03_2026-06-14).
+        if not folder.is_dir() or not periods.is_valid(folder.name):
             continue
         files = [f for f in folder.iterdir() if f.is_file() and not f.name.startswith(".")]
         if not files:

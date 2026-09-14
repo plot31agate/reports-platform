@@ -31,6 +31,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSON
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from app import periods
 from app.auth import (
     COOKIE_NAME,
     PORTAL_COOKIE_NAME,
@@ -904,9 +905,9 @@ env.filters["thousands"] = lambda v: f"{v:,}" if isinstance(v, (int, float)) els
 
 
 def _month_name(period: str) -> str:
-    """'2026-06' -> 'June 2026'."""
+    """'2026-06' -> 'June 2026'; custom ranges -> '3–14 June 2026'."""
     try:
-        return datetime.strptime(period, "%Y-%m").strftime("%B %Y")
+        return periods.display(period)
     except (ValueError, TypeError):
         return period or ""
 
@@ -1208,7 +1209,8 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
     if not clients:
         return RedirectResponse("/admin/clients/new", status_code=302)
     slug = client if client and any(c["slug"] == client for c in clients) else clients[0]["slug"]
-    period = period if period and re.match(r"^\d{4}-\d{2}$", period) else datetime.utcnow().strftime("%Y-%m")
+    period = period if period and periods.is_valid(period) else datetime.utcnow().strftime("%Y-%m")
+    custom_range = periods.custom_bounds(period)
 
     client_config = get_client(slug)
     report = next((r for r in list_reports(slug) if r["period"] == period), None)
@@ -1301,6 +1303,8 @@ def admin_workspace(request: Request, client: str = None, period: str = None,
         client=client_config,
         selected_client=slug,
         period=period,
+        custom_start=custom_range[0].isoformat() if custom_range else "",
+        custom_end=custom_range[1].isoformat() if custom_range else "",
         months=months,
         this_month=this_month,
         source_defs=client_source_defs,
@@ -1429,9 +1433,9 @@ async def admin_parse_upload(
         result = summarise_parsed(source_key, data)
         # Flag month mismatches - e.g. a June-named file dropped into July.
         name_period = re.search(r"\d{4}-\d{2}", file.filename or "")
-        if name_period and name_period.group(0) != period:
+        if name_period and name_period.group(0) not in periods.months_covered(period):
             result.setdefault("warnings", []).append(
-                f"File name says {name_period.group(0)} but you are uploading into {period} - check the period box"
+                f"File name says {name_period.group(0)} but you are uploading into {periods.display(period)} - check the period box"
             )
             if result.get("status") == "ok":
                 result["status"] = "warning"
@@ -2319,7 +2323,11 @@ def portal_home(request: Request):
             dt = datetime.strptime(r["period"], "%Y-%m")
             month_abbr, year = dt.strftime("%b"), dt.strftime("%Y")
         except ValueError:
-            month_abbr, year = r["period"], ""
+            rng = periods.custom_bounds(r["period"])
+            if rng:
+                month_abbr, year = periods.short_display(r["period"]), rng[1].strftime("%Y")
+            else:
+                month_abbr, year = r["period"], ""
         reports.append({
             **r,
             "period_display": _period_display_safe(r["period"]),
@@ -2422,8 +2430,8 @@ def client_document(slug: str, name: str):
 
 def _period_display_safe(period: str) -> str:
     try:
-        return datetime.strptime(period, "%Y-%m").strftime("%B %Y")
-    except ValueError:
+        return periods.display(period)
+    except (ValueError, TypeError):
         return period
 
 

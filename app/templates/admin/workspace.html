@@ -8,10 +8,23 @@
     <div class="page-head__sub">Everything for one month lives here: data in, build, review, deliver.</div>
   </div>
   <div class="page-head__actions">
-    <label class="head-field head-field--accent">
+    <style>.page-head__actions [hidden] { display: none !important; }</style>
+    <label class="head-field head-field--accent" id="ws-month-field" {% if custom_start %}hidden{% endif %}>
       <span class="head-field__label">Reporting month</span>
-      <input type="month" id="ws-period" value="{{ period }}" title="Reporting month">
+      <input type="month" id="ws-period" value="{{ '' if custom_start else period }}" title="Reporting month">
     </label>
+    <div class="head-field head-field--accent" id="ws-range-field" {% if not custom_start %}hidden{% endif %}>
+      <span class="head-field__label">Custom range</span>
+      <span style="display:flex;align-items:center;gap:6px;">
+        <input type="date" id="ws-range-start" value="{{ custom_start }}" title="Range start">
+        <span>–</span>
+        <input type="date" id="ws-range-end" value="{{ custom_end }}" title="Range end">
+        <button class="chip-link chip-link--go" type="button" id="ws-range-go">Go</button>
+      </span>
+    </div>
+    <button class="chip-link" type="button" id="ws-period-mode" title="Report on exact dates instead of a whole month">
+      {% if custom_start %}Use a month{% else %}Custom range{% endif %}
+    </button>
   </div>
 </div>
 
@@ -179,7 +192,7 @@
 
     <div class="panel">
       <div class="panel__head">
-        <h2>Other months</h2>
+        <h2>Other periods</h2>
         <span class="ws-views">{{ months | selectattr('generated_at') | list | length }} built</span>
       </div>
       {% if months %}
@@ -255,10 +268,36 @@
   var CLIENT = {{ selected_client | tojson }};
   var PERIOD = {{ period | tojson }};
   var HAS_REPORT = {{ (report is not none) | tojson }};
+  // Data can live on disk without upload rows (seeded, FTP'd, copied in) -
+  // the server checked the folder, so an empty upload table alone must not
+  // re-lock the build button.
+  var HAS_DATA = {{ has_uploads | tojson }};
   var SOURCE_KEYS = [{% for src in source_defs %}{{ src.key | tojson }}{{ "," if not loop.last }}{% endfor %}];
 
+  function openPeriod(period) {
+    window.location = '/admin/workspace?client=' + encodeURIComponent(CLIENT) + '&period=' + encodeURIComponent(period);
+  }
+
   document.getElementById('ws-period').addEventListener('change', function() {
-    window.location = '/admin/workspace?client=' + encodeURIComponent(CLIENT) + '&period=' + encodeURIComponent(this.value);
+    if (this.value) openPeriod(this.value);
+  });
+
+  // Custom range: the period key is start_end, e.g. 2026-08-03_2026-08-30.
+  document.getElementById('ws-range-go').addEventListener('click', function() {
+    var s = document.getElementById('ws-range-start').value;
+    var e = document.getElementById('ws-range-end').value;
+    if (!s || !e) { alert('Pick both a start and an end date.'); return; }
+    if (e < s) { alert('The end date is before the start date.'); return; }
+    openPeriod(s + '_' + e);
+  });
+
+  document.getElementById('ws-period-mode').addEventListener('click', function() {
+    var month = document.getElementById('ws-month-field');
+    var range = document.getElementById('ws-range-field');
+    var toRange = range.hidden;
+    month.hidden = toRange;
+    range.hidden = !toRange;
+    this.textContent = toRange ? 'Use a month' : 'Custom range';
   });
 
   window.toggleHint = function(key) {
@@ -309,8 +348,9 @@
     if (!HAS_REPORT) {
       var btn = document.getElementById('build-btn');
       var gate = document.getElementById('build-gate');
-      if (btn) btn.disabled = (n === 0);
-      if (gate) gate.style.display = (n === 0) ? '' : 'none';
+      var locked = (n === 0 && !HAS_DATA);
+      if (btn) btn.disabled = locked;
+      if (gate) gate.style.display = locked ? '' : 'none';
     }
   }
 
