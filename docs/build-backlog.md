@@ -1,171 +1,96 @@
-# Build Backlog — the client-facing monthly loop
+# Build Backlog — the real roadmap
 
-Turns `docs/platform-blueprint.md` into ordered, buildable work, grounded in
-what's actually in the repo (`docs/reconciliation.md`). Scope: build the
-client-facing loop on top of the live reporting core.
+Updated 2026-09-22 once the client-facing loop was located in
+`plot31agate/social-builder`. Read `docs/reconciliation.md` first — the loop
+is **built** (per-client Client HQ portals), so this is **not** a "build the
+loop" backlog. It's the work to make what exists scalable and complete.
 
-**Assumes this repo is the build target.** If the loop is already built in
-another repo, stop and redo the reconciliation first.
-
-How to use this: build **thin vertical slices**, one module at a time, each
-working end-to-end for one real client before widening. Reuse the foundations
-named per module. Items marked **(?)** are decisions to make, not tasks to do.
-
----
-
-## Suggested order (and why)
-
-The Report module is already live, so build the rest of the loop back toward
-it, reusing existing foundations first:
-
-0. **Walking skeleton** — prove the loop end-to-end, thinnest possible.
-1. **Client HQ dashboard** — surfaces what already exists; fastest visible value.
-2. **Plan** — closes the Report → Plan backbone; reuses Strategy tracking.
-3. **Make** (Studio + Content) — the largest build.
-4. **Push** — depends on Make (a queue to push) and Plan (a calendar).
-5. **Leads Central** — parallel track (different stack); feeds Report.
+Scope split:
+- **`reports-platform`** (this repo): Report engine, Agency HQ, Client HQ
+  provisioning, Finance HQ.
+- **`social-builder`** (+ per-client clones): the Client HQ portal loop
+  (Dashboard, Planner, Studio, Social/Push, Content, Reports room, Setup).
 
 ---
 
-## 0. Walking skeleton (do this first)
+## The real problem to solve
 
-**Goal:** one real client moves a single item through Plan → Make → Push →
-Report in the app, however crudely, so the data model and module seams are
-proven before feature depth.
-
-**Done when:** for one client you can create a plan item, attach a piece of
-content to it, mark it pushed, and see it referenced in that period's report —
-even if every screen is bare.
-
-**Why:** de-risks the shared data model (client → period → plan item →
-content → push → report linkage) that all four modules depend on.
+The loop works in production, but it's delivered as **hand-cloned per-client
+repos** (`social-builder`, `daisy-social-builder`, `igs-social-builder` …),
+each brand-configured and deployed to its own cPanel folder, and they **drift**
+(CLIENT.md notes YM is an "older-clone portal" that lost the runtime `modules`
+toggle and needed manual re-pointing). The roadmap is about **repeatability,
+not features.**
 
 ---
 
-## 1. Client HQ dashboard
+## Track 1 — Productise the Client HQ (highest leverage)
 
-**Goal:** a client-facing front door — report stats + "this week needs" —
-distinct from the Agency HQ (internal) console.
+**Goal:** one template + per-client config, instead of N diverging clones.
 
-**Reuse:** client portal (`app/templates/portal/*`, `/portal/*`) for auth +
-shell; Agency HQ task engine (`agency/src/views/ThisWeek.tsx`,
-`agency/src/lib/agency.ts`) for the "this week needs" logic.
+- **Single source template.** One canonical Client HQ codebase; each client is
+  **config**, not a fork. Kills clone drift.
+- **Runtime `modules` toggle everywhere.** Every clone should honour the
+  Setup → Rooms toggles (YM's clone lost this). Rooms on/off per client at
+  runtime, no code edits.
+- **Repeatable provisioning.** Harden the `client-hq` skill /
+  `scripts/hq_builder.py` path in this repo so spinning up a new Client HQ is
+  one reliable action (it currently defaults to dry-run). This provisioning IS
+  the paid "Launchpad" from `docs/commercialisation-plan.md`.
+- **Decision (?):** stay per-client-instance (simpler, current model, fits
+  managed service) vs move to **multi-tenant** (needed only if self-serve SaaS
+  is pursued — see commercialisation plan). Don't build multi-tenant on spec;
+  gate it on the self-serve decision.
 
-**Thin slice:** logged-in client sees latest report stats + a "this week"
-list, pulled from existing data.
+**Acceptance:** a new client can be stood up from the template + a config file
++ the provisioning action, with rooms selected at Setup, no code fork.
 
-**Acceptance criteria:**
-- A portal-authenticated client sees a dashboard (not just the report list).
-- Shows headline report stats for the current period.
-- Shows "this week needs" derived from real state (due items / approvals).
-- First-load walkthrough and stepped setup form exist but are **deferrable**
-  (per the blueprint) — ship the dashboard first, walkthrough second.
+## Track 2 — Build Leads Central (the one missing module)
 
-**(?) decisions:** how much of the Agency HQ task logic is client-safe to
-expose; what "this week needs" means to a client vs to DF.
+**Goal:** the blueprint's WordPress lead engine — the only piece not built in
+either repo. Best treated as a **separate WordPress track / front-door
+product** (per `docs/commercialisation-plan.md`).
 
-## 2. Plan (start of month)
-
-**Goal:** build next month from last month's results, on a calendar, shareable
-for sign-off.
-
-**Reuse:** Report synthesis already outputs recommended actions + the "why"
-(`app/reports/*`) — Plan consumes them. Strategy tracking (`Strategy.tsx`) as
-a starting UI.
-
-**Thin slice:** show last report's recommended actions; let the operator
-accept/reject ~3 into a plan for the period.
-
-**Acceptance criteria:**
-- Pulls the previous report's results + recommended actions into a review.
-- Suggested strategy = ~3 items, each accept/reject (✗/✓) with an
-  outcome + tactics; informed by client notes/setup.
-- "Plan Month" calendar view of accepted items.
-- Calendar supports drag-and-drop and export.
-- A shareable plan view a client can sign off (calendar view).
-- Client setup here is **flexible** (flagged in the blueprint) — setup model
-  must bend per client, not a fixed form.
-
-**(?) decisions:** reminder pings (channel? timing?); one shared sign-off
-pattern across Plan and Push (see below).
-
-## 3. Make — Studio + Content
-
-**Goal:** produce the month's content, from idea to review-ready, feeding a
-social queue.
-
-**Reuse:** none directly — this is new. Keep the data model aligned with Plan
-(a plan item → one or more content pieces) and Push (a piece → a queue entry).
-
-### 3a. Studio
-- Upload templates (reusable) and reuse a saved plan setup.
-- Reels / short-form support.
-- Calendar view = a "you need…" checklist you tick off; ticking adds the item
-  to the social queue.
-
-**Acceptance:** a piece can be produced from a template and, when ticked on
-the calendar, appears in the social queue.
-
-### 3b. Content
-- Ideas board → "what are you creating" flow.
-- Draft → Review workflow.
-- SEO check and image add.
-
-**Acceptance:** an idea moves ideas-board → draft → review; SEO + image
-attach; a reviewed piece is available to Push.
-
-**(?) decisions:** template format/storage; where images live; SEO check depth
-(heuristic vs API); reels tooling.
-
-## 4. Push (schedule + publish)
-
-**Goal:** get approved content live via the client's scheduler, with optional
-sign-off.
-
-**Reuse:** none built — **there is no Buffer integration today** (the
-blueprint's "current scheduler" does not exist in this repo). This is a new
-integration.
-
-**Thin slice:** connect one Buffer account; push one queued item to it.
-
-**Acceptance criteria:**
-- Buffer account connects (OAuth/token) per client.
-- A social-queue item can be scheduled and pushed to Buffer.
-- Schedule → push-to-live states are visible.
-- Optional pre-publish **client sign-off gate** before anything publishes.
-
-**(?) decisions:** confirm Buffer is the target (vs another scheduler); the
-third Push route sketched in the notebook (undefined); unify the sign-off
-pattern with Plan's sign-off.
-
-## 5. Leads Central (parallel track)
-
-**Goal:** a WordPress plugin on the client's site that captures, scores and
-chases leads, and feeds the numbers back into the Report.
-
-**Reuse:** the leads CSV path already feeds the report at-a-glance
-(`app/ingestion/parsers/leads.py`) — Leads Central would replace the manual
-CSV with a live feed. **The plugin itself does not exist** and is a different
-stack (PHP/WordPress) — treat as a separate track/repo.
-
-**Acceptance criteria (v1):**
-- Plugin installs on a WordPress site with secure login.
-- Monitors + scores incoming leads; manages follow-ups; automated email
+- Monitor + score incoming leads; manage follow-ups; automated email
   follow-up sequences.
-- Reporting for sales tracking + acquisition tracking.
-- Feeds lead data back into the platform's reporting.
+- Secure login; sales-tracking + acquisition reporting.
+- Feed lead data back into the hub's Report (replacing the manual leads CSV
+  path in `app/ingestion/parsers/leads.py`).
+- **(?) decisions:** which CRMs to connect; snapshot-analysis scope; build
+  fresh vs adapt an existing WP lead framework.
 
-**(?) decisions:** CRM connect (which CRMs?); snapshot analysis scope;
-build vs adapt an existing WP lead framework.
+**Acceptance (v1):** plugin installs on a client WP site, captures + scores
+leads, runs a follow-up sequence, and its numbers appear in that client's
+monthly report.
+
+## Track 3 — Tidy the seams between hub and Client HQ
+
+Smaller, valuable consistency work:
+
+- **Reporting handoff.** Keep the heavy report in the hub; make the Client HQ
+  Reports room's link/headline-numbers pull consistently (avoid per-clone
+  divergence in what "headline numbers" mean — YM already renamed
+  traffic→reach, clicks→engagement).
+- **One sign-off pattern.** Plan-approval share links (`plan.php`) exist; if a
+  pre-publish (Push) sign-off is wanted, reuse the same pattern rather than a
+  second mechanism.
+- **Agency HQ ↔ Client HQ status.** Ensure Agency HQ's roster/health reflects
+  live Client HQ state (the roster model has placeholder approval/health
+  fields — wire them to real portal data).
 
 ---
 
-## Cross-cutting, decide once (affects several modules)
+## Suggested order
 
-- **Shared data model:** client → period → plan item → content piece → push →
-  report linkage. Nail this in the walking skeleton.
-- **One sign-off pattern** used by both Plan (plan sign-off) and Push
-  (pre-publish sign-off).
-- **Client HQ vs Agency HQ boundary:** what's client-facing vs DF-internal.
-- **Self-serve vs DF-operated** (from `docs/commercialisation-plan.md`) —
-  changes auth, roles, and how setup/onboarding work across every module.
+1. **Track 1 first** — productise provisioning + kill clone drift. It's the
+   bottleneck on every client you add and underpins the commercial model.
+2. **Track 3** in parallel where cheap (consistency/seam fixes).
+3. **Track 2 (Leads Central)** when a client actually needs it / as the
+   front-door product — not before Track 1 pays off.
+
+## Cross-cutting decision that shapes all of it
+
+**Self-serve vs DF-operated** (`docs/commercialisation-plan.md`). DF-operated
+→ per-client instances are fine; Track 1 is "template + config + provisioning."
+Self-serve → you need genuine multi-tenancy + billing + roles, a much bigger
+Track 1. Decide this before investing heavily in Track 1's shape.

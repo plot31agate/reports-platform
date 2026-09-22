@@ -7,15 +7,22 @@ out, and where the build is heading. For the product vision see
 
 ## What this is
 
-Digital Footprints' agency platform. Today it is **an in-house tool centred on
-a live monthly reporting product**, with an internal ops console around it.
-The wider vision is a full **monthly client operating loop**
-(Client HQ → Plan → Make → Push → Report) plus a **Leads Central** WordPress
-plugin — most of which is **not built yet** (see `docs/reconciliation.md`).
+Digital Footprints' agency platform. **This repo (`reports-platform`) is the
+hub**: the live monthly **Report** engine, the internal **Agency HQ** ops
+console, and **Finance HQ**. Agency HQ also **provisions the client-facing
+Client HQ portals** (via the `client-hq` skill / `scripts/hq_builder.py`).
 
-Do not assume the Plan / Make / Push / Client-HQ-dashboard / Leads Central
-modules exist. They don't, in this repo. Verify against the code before
-building on any assumption.
+The client-facing monthly loop (Client HQ → Plan → Make → Push) is **built,
+but in a separate repo**: `plot31agate/social-builder` (and per-client clones
+like `daisy-social-builder`, `igs-social-builder`) — one Client HQ portal
+instance per client. So the platform is a **hub + per-client Client HQ
+portals**, not multi-tenant SaaS. See `docs/reconciliation.md` for the full
+map.
+
+In THIS repo you will NOT find Plan / Make / Push / Client-HQ-dashboard code —
+that's in `social-builder`. What lives here is Report + Agency HQ + Finance HQ.
+**Leads Central** (lead scoring / follow-up / CRM) is the one blueprint module
+not built in either repo. Verify against the code before assuming.
 
 ## The three apps in this repo
 
@@ -67,11 +74,13 @@ building on any assumption.
 
 ## Where the build is heading
 
-The near-term build is the **client-facing monthly loop** on top of the live
-reporting core. The sliced, ordered plan with acceptance criteria is in
-`docs/build-backlog.md`. Build thin vertical slices, one module at a time,
-reusing the foundations named in `docs/reconciliation.md`. The loop's backbone
-is Report → Plan: recommended actions from the report feed next month's plan.
+The client-facing loop already exists (in `social-builder`, per client). The
+near-term work is **productising the per-client Client HQ** — repeatable /
+multi-tenant provisioning instead of hand-maintained clones — plus building
+**Leads Central**. The sliced plan is in `docs/build-backlog.md`. The loop's
+backbone is Report → Plan: recommended actions from the hub's report feed the
+Client HQ's next-month plan. For loop code, work in `social-builder`; for the
+report, provisioning and ops, work here.
 
 ## Docs map
 
