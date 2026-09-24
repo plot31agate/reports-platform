@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+declare const process: { env: Record<string, string | undefined> };
+// CORE_URL points the dev proxy at another core (e.g. a scratch-DB test server).
+const CORE = process.env.CORE_URL || 'http://127.0.0.1:8001';
+
 // Served at /agency by the reporting app (FastAPI mount), so the base is the
 // absolute /agency/ — asset and data URLs then resolve correctly whether or not
 // the visitor's URL has a trailing slash. In dev the app therefore lives at
@@ -17,8 +21,9 @@ export default defineConfig({
     // When the backend isn't running the proxy simply fails and the app falls
     // back to public/snapshot.json + the localStorage overlay.
     proxy: {
-      '/agency/api': { target: 'http://127.0.0.1:8001', changeOrigin: true },
-      '/agency/snapshot.json': { target: 'http://127.0.0.1:8001', changeOrigin: true },
+      '/agency/api': { target: CORE, changeOrigin: true },
+      '/agency/snapshot.json': { target: CORE, changeOrigin: true },
+      '/agency/join': { target: CORE, changeOrigin: true },
     },
   },
   build: {

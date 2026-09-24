@@ -887,6 +887,12 @@ def agency_delete_secret(secret_id: int, request: Request):
     return JSONResponse({"ok": True})
 
 
+# Time tracking room (team members, timers, timesheets). Registered before the
+# /agency static mount so /agency/join/<token> and its API win.
+from app import timetrack
+app.include_router(timetrack.router)
+
+
 @app.get("/agency")
 def agency_root():
     # Normalise to the trailing slash so the SPA's absolute /agency/ asset URLs
@@ -940,6 +946,7 @@ env.globals["static_v"] = _static_version()
 @app.on_event("startup")
 def startup():
     init_db()
+    timetrack.init_time_db()
 
 
 def _render(template: str, **ctx) -> HTMLResponse:

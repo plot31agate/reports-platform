@@ -14,6 +14,8 @@ import { Strategy } from './views/Strategy';
 import { Reminders } from './views/Reminders';
 import { Clients } from './views/Clients';
 import { ClientPage } from './views/ClientPage';
+import { Time } from './views/Time';
+import { timeApi } from './lib/time';
 import { Toaster, OfflineNote } from './components/ui';
 import dfLogo from './assets/df/logo-white.png';
 
@@ -29,6 +31,9 @@ const GROUPS: Group[] = [
   { name: 'Roster', rooms: [
     { id: 'clients', label: 'Clients' },
   ] },
+  { name: 'Team', rooms: [
+    { id: 'time', label: 'Time tracking' },
+  ] },
   { name: 'Automation', rooms: [
     { id: 'reminders', label: 'Reminders' },
   ] },
@@ -40,6 +45,7 @@ const TITLES: Record<string, { h: string; sub: string }> = {
   week: { h: 'This week', sub: 'Everything due across the whole roster — as a list or a calendar' },
   strategy: { h: 'Strategy plans', sub: 'Every client’s plan and how fresh it is — stale plans surface themselves' },
   clients: { h: 'Clients', sub: 'The roster itself — add clients and set their strategy plans' },
+  time: { h: 'Time tracking', sub: 'Who worked on what, for which client — timers, timesheets, budgets and exports. Internal only' },
   reminders: { h: 'Reminders', sub: 'The morning digest and the rules that generate the nudges' },
 };
 
@@ -64,7 +70,16 @@ export function App() {
   }, []);
   // Each route change starts at the top — matters most entering a client page.
   useEffect(() => { document.querySelector('.main')?.scrollTo(0, 0); }, [view]);
-  const reload = useCallback(() => loadSnapshot().then((s) => { setSnapshot(s); setLoaded(true); }), []);
+  // A team member (signed in via their Time join link, not the admin login)
+  // can't read the snapshot — they get the Time room and nothing else.
+  const [teamMode, setTeamMode] = useState(false);
+  const reload = useCallback(() => loadSnapshot().then(async (s) => {
+    setSnapshot(s);
+    if (!s) {
+      try { const b = await timeApi.boot(); setTeamMode(!b.me.admin); } catch { setTeamMode(false); }
+    }
+    setLoaded(true);
+  }), []);
   useEffect(() => { reload(); }, [reload]);
 
   // Online = the reporting core answered with a live snapshot; then the DB owns
@@ -105,6 +120,32 @@ export function App() {
   }, [clientSlug, clientState, loaded, snapshot]);
 
   const t = TITLES[view];
+
+  if (teamMode) {
+    return (
+      <div className="shell">
+        <Toaster />
+        <aside className="side">
+          <div className="brand">
+            <img src={dfLogo} alt="Digital Footprints" style={{ width: 138, display: 'block' }} />
+            <div className="eyebrow" style={{ marginTop: 10 }}>Agency HQ · Time</div>
+          </div>
+          <nav>
+            <div className="navgroup"><button className="navlink on">Time tracking</button></div>
+          </nav>
+        </aside>
+        <main className="main">
+          <div className="page">
+            <div className="pagehead">
+              <h1>{TITLES.time.h}</h1>
+              <div className="sub">Log your hours against clients — a timer or a quick entry, then check your week.</div>
+            </div>
+            <Time teamMode onSignOut={async () => { await timeApi.logout().catch(() => {}); window.location.reload(); }} />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="shell">
@@ -166,13 +207,14 @@ export function App() {
                   </span>
                 </div>
               )}
-              {loaded && !snapshot && !demoN && <div style={{ marginBottom: 16 }}><OfflineNote /></div>}
+              {loaded && !snapshot && !demoN && view !== 'time' && <div style={{ marginBottom: 16 }}><OfflineNote /></div>}
 
               {view === 'overview' && <Overview states={states} totals={totals} onOpen={openClient} go={go} />}
               {view === 'week' && <ThisWeek states={states} onOpen={openClient} />}
               {view === 'strategy' && <Strategy states={states} onOpen={openClient} />}
               {view === 'clients' && <Clients states={states} store={store} snapshot={snapshot} onOpen={openClient} />}
               {view === 'reminders' && <Reminders states={states} />}
+              {view === 'time' && <Time />}
             </>
           )}
         </div>

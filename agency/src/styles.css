@@ -719,3 +719,24 @@ select.inp.cell { padding: 4px 6px; min-width: 92px; }
 .ck-dot.done { background: rgba(30, 126, 78, 0.14); color: var(--pass); }
 .ck-dot.warn { background: rgba(150, 102, 10, 0.14); color: var(--warn); }
 .ck-dot.todo { background: transparent; border: 1.5px dashed var(--faint); }
+
+/* ============================================================
+   Time — tracking room (timer bar, entry editors, print report)
+   ============================================================ */
+.time-form { display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(180px, 2fr) auto 140px 80px auto; gap: 8px; align-items: center; }
+.time-form .inp { min-width: 0; }
+.time-bill { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--muted); }
+.time-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.time-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 12px; }
+@media (max-width: 1100px) { .time-form { grid-template-columns: 1fr 1fr; } .time-form .btn { grid-column: span 2; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.print-only { display: none; }
+@media print {
+  .side, .noprint, .pagehead .sub, .toast { display: none !important; }
+  .print-only { display: block; }
+  .shell { display: block; }
+  .main { overflow: visible; height: auto; }
+  html, body, #root { height: auto; }
+  body { background: #fff; }
+  .card { box-shadow: none; break-inside: avoid; }
+}
