@@ -12,10 +12,11 @@ import type { ReactNode } from 'react';
 import {
   timeApi, INTERNAL, parseDuration, hm, dec, liveClock, liveMinutes, money, entryValue,
   today, mondayOf, addDays, weekDays, dayLabel, rangeFor, RANGE_LABEL, spanWeeks, rollUp,
-  toCsv, download, MEMBER_COLORS,
+  toCsv, download, MEMBER_COLORS, ACTOR_KEY, TIME_CHANGED, notifyTimeChanged,
 } from '../lib/time';
 import type { Boot, Entry, Member, TimeClient, Category, RangeKey, EntryInput, Roll } from '../lib/time';
 import { toast, Empty, Stat } from '../components/ui';
+import { requestPopout } from '../components/FloatingTimer';
 
 type Tab = 'track' | 'sheet' | 'reports' | 'team' | 'clients' | 'settings';
 const TABS: { id: Tab; label: string; admin?: boolean }[] = [
@@ -27,7 +28,6 @@ const TABS: { id: Tab; label: string; admin?: boolean }[] = [
   { id: 'settings', label: 'Settings', admin: true },
 ];
 
-const ACTOR_KEY = 'df-time-actor';
 const readLs = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const writeLs = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
 
@@ -121,6 +121,12 @@ export function Time({ teamMode = false, onSignOut }: { teamMode?: boolean; onSi
     catch (e) { setErr((e as Error).message); }
   }, []);
   useEffect(() => { reload(); }, [reload]);
+  // Timer changes made from the floating mini-timer (or anywhere else) land here too.
+  useEffect(() => {
+    const on = () => { reload(); setVersion((v) => v + 1); };
+    window.addEventListener(TIME_CHANGED, on);
+    return () => window.removeEventListener(TIME_CHANGED, on);
+  }, [reload]);
 
   const ctx: Ctx | null = useMemo(() => {
     if (!boot) return null;
@@ -161,7 +167,7 @@ export function Time({ teamMode = false, onSignOut }: { teamMode?: boolean; onSi
   const actingId = !ctx.seesAll
     ? boot.me.member_id
     : (actor && ctx.memberById.get(actor)?.active ? actor : boot.me.member_id ?? activeMembers[0]?.id ?? null);
-  const setActing = (id: number) => { setActor(id); writeLs(ACTOR_KEY, String(id)); };
+  const setActing = (id: number) => { setActor(id); writeLs(ACTOR_KEY, String(id)); notifyTimeChanged(); };
 
   const tabs = TABS.filter((t) => !t.admin || ctx.admin);
 
@@ -287,6 +293,7 @@ function Track({ ctx, actingId }: { ctx: Ctx; actingId: number | null }) {
               <div className="small" style={{ color: 'var(--muted)' }}>{running.description || 'No description'}{!running.billable && ' · non-billable'}</div>
             </div>
             <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 26, fontWeight: 500, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{liveClock(running, now)}</div>
+            <button className="btn ghost" onClick={requestPopout} title="Float a mini timer above every window on your desktop">⧉ Pop out</button>
             <button className="btn" disabled={busy} onClick={stop} style={{ background: 'var(--fail)', borderColor: 'var(--fail)' }}>■ Stop</button>
           </div>
         ) : (

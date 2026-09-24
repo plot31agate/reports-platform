@@ -740,3 +740,41 @@ select.inp.cell { padding: 4px 6px; min-width: 92px; }
   body { background: #fff; }
   .card { box-shadow: none; break-inside: avoid; }
 }
+
+/* ---- Timer dock (sidebar) ---- */
+.timerdock { margin: 0 10px 10px; padding: 11px 13px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); font-size: 12px; }
+.td-link { background: none; border: none; color: rgba(255, 255, 255, 0.7); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+.td-link:hover { color: #fff; }
+.td-client { color: #fff; font-weight: 600; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-clock { font-family: "JetBrains Mono", monospace; font-size: 20px; color: #fff; margin: 2px 0 8px; font-variant-numeric: tabular-nums; }
+.td-clock.paused, .mini-clock.paused { opacity: 0.45; }
+.td-btn { flex: 1; background: rgba(255, 255, 255, 0.12); color: #fff; border: none; border-radius: 6px; padding: 5px 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.td-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.td-btn.stop { background: rgba(197, 58, 85, 0.85); }
+.td-btn.stop:hover { background: var(--fail); }
+.td-btn:disabled { opacity: 0.5; }
+
+/* ---- Mini timer (the floating always-on-top window) ---- */
+body.mini-body { margin: 0; background: var(--navy); color: #fff; height: 100vh; overflow: hidden; }
+.mini { padding: 12px 14px 8px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+.mini-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mini-dot { width: 8px; height: 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.3); flex: none; }
+.mini-dot.on { background: #3ecf8e; animation: pulse 1.6s infinite; }
+.mini-client { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-cat { font-size: 11px; color: rgba(255, 255, 255, 0.5); white-space: nowrap; }
+.mini-desc { font-size: 12px; color: rgba(255, 255, 255, 0.65); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-clock { font-family: "JetBrains Mono", monospace; font-size: 34px; font-weight: 500; letter-spacing: -0.02em; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
+.mini-actions { display: flex; gap: 6px; }
+.mini-btn { flex: 1; border: none; border-radius: 7px; padding: 8px 0; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; background: rgba(255, 255, 255, 0.14); color: #fff; }
+.mini-btn:hover { background: rgba(255, 255, 255, 0.24); }
+.mini-btn.go { background: #1e7e4e; }
+.mini-btn.stop { background: #c53a55; }
+.mini-btn.ghost { flex: 0 0 34px; background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); padding: 6px 0; }
+.mini-btn:disabled { opacity: 0.5; }
+.mini-recent { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; overflow-y: auto; }
+.mini-rec { display: flex; gap: 7px; align-items: baseline; text-align: left; background: rgba(255, 255, 255, 0.07); border: none; color: #fff; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px; cursor: pointer; min-width: 0; }
+.mini-rec:hover { background: rgba(255, 255, 255, 0.16); }
+.mini-rec span { color: #3ecf8e; font-size: 10px; }
+.mini-rec b { font-weight: 600; white-space: nowrap; }
+.mini-rec em { font-style: normal; color: rgba(255, 255, 255, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-foot { margin-top: auto; padding-top: 6px; font-size: 10.5px; color: rgba(255, 255, 255, 0.45); display: flex; gap: 6px; align-items: center; cursor: pointer; }

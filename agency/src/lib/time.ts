@@ -46,8 +46,17 @@ async function req<T>(path: string, method = 'GET', body?: unknown): Promise<T> 
     try { detail = (await res.json()).detail || detail; } catch { /* ignore */ }
     const e = new TimeApiError(detail); e.status = res.status; throw e;
   }
-  return (await res.json()) as T;
+  const out = (await res.json()) as T;
+  // Any write tells the rest of the app (Time room, floating timer, sidebar
+  // widget) to re-read — one signal instead of threading callbacks around.
+  if (method !== 'GET') notifyTimeChanged();
+  return out;
 }
+
+export const TIME_CHANGED = 'df-time-changed';
+export const notifyTimeChanged = () => window.dispatchEvent(new Event(TIME_CHANGED));
+/** Who the admin is "logging as" — shared by the Time room and the floating timer. */
+export const ACTOR_KEY = 'df-time-actor';
 
 export interface EntryInput {
   member_id?: number; client_slug?: string; category_id?: number | null; date?: string;

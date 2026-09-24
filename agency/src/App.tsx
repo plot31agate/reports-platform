@@ -17,6 +17,7 @@ import { ClientPage } from './views/ClientPage';
 import { Time } from './views/Time';
 import { timeApi } from './lib/time';
 import { Toaster, OfflineNote } from './components/ui';
+import { TimerDock } from './components/FloatingTimer';
 import dfLogo from './assets/df/logo-white.png';
 
 interface Room { id: string; label: string; }
@@ -133,6 +134,7 @@ export function App() {
           <nav>
             <div className="navgroup"><button className="navlink on">Time tracking</button></div>
           </nav>
+          <TimerDock />
         </aside>
         <main className="main">
           <div className="page">
@@ -171,6 +173,7 @@ export function App() {
             </div>
           ))}
         </nav>
+        <TimerDock />
         <div className="clientcard">
           <div className="eyebrow">Portfolio</div>
           <div style={{ fontWeight: 700, fontSize: 14, margin: '6px 0 2px', letterSpacing: '-0.01em' }}>{states.length} clients</div>

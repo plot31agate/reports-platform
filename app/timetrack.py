@@ -363,7 +363,8 @@ def _norm_category(conn, v) -> Optional[int]:
 
 def _running_minutes(started_at: str) -> int:
     start = datetime.fromisoformat(started_at.rstrip("Z"))
-    return max(0, int((datetime.utcnow() - start).total_seconds() // 60))
+    # Nearest minute, not floor — pausing shouldn't shave off up to 59s each time.
+    return max(0, int(round((datetime.utcnow() - start).total_seconds() / 60)))
 
 
 def _round(minutes: int, step: int) -> int:
