@@ -182,7 +182,9 @@ export function buildSpec(s: Snapshot, id: string): string {
     : `${nm(s, p === 'betting' ? 'consent_betting' : 'consent_casino')} is true for the channel used`;
   const c: string[] = [];
   switch (id) {
-    case 'X1': c.push(`Attribute ${nm(s, 'self_exclusion')} is true`, `OR attribute ${nm(s, 'sg_flags')} indicates an active time-out / self-exclusion`); break;
+    case 'X1': c.push(`Attribute ${nm(s, 'self_exclusion')} is true`, s.audit.sg_flags?.status === 'present'
+      ? `OR attribute ${nm(s, 'sg_flags')} indicates an active time-out / self-exclusion`
+      : `(add: OR time-out / cool-off flag active, once Swifty supplies it; build X1 on the GAMSTOP flag now)`); break;
     case 'X2': c.push(`Attribute ${nm(s, 'consent_betting')} is false or does not exist (one segment per channel: email / SMS / phone)`); break;
     case 'X3': c.push(`Attribute ${nm(s, 'consent_casino')} is false or does not exist (one segment per channel: email / SMS / phone)`); break;
     case 'X4': c.push(`Attribute ${nm(s, 'abuse_flag')} equals "high" (or "medium", per risk team) OR is true`); break;
@@ -249,6 +251,8 @@ export interface Opportunity {
   extraVerified: Num; extraDepositors: Num; extraRepeat: Num; extraReactivated: Num;
   lapsedPool: Num;
   revenue: { low: Num; mid: Num; high: Num; firstDepositValue: Num };
+  /** The extra monthly-active players the revenue is built from, by source. */
+  activeParts: { newDepositors: Num; activeRate: Num; repeat: Num; reactivated: Num; total: Num };
 }
 export function opportunity(s: Snapshot): Opportunity {
   const g = genuineFunnel(s);
@@ -265,11 +269,22 @@ export function opportunity(s: Snapshot): Opportunity {
   const lapsedPool = sub(g.ftd, g.active30);
   const extraReactivated = mul(lapsedPool, u('reactivation'));
   const ngr = s.money.ngrPerActive;
-  const activeGain = isNum(extraRepeat) && isNum(extraReactivated) ? extraRepeat + extraReactivated : isNum(extraRepeat) ? extraRepeat : isNum(extraReactivated) ? extraReactivated : null;
+  // Extra monthly-active players, from three sources that don't overlap:
+  //  - new depositors (from verify + FTD uplift), active at today's genuine
+  //    30-day active rate of depositors;
+  //  - existing depositors making a repeat deposit (second-deposit uplift on
+  //    today's base only; new depositors are already counted above);
+  //  - lapsed depositors reactivated.
+  const activeRate = isNum(r.active30) ? clamp01(r.active30) : null;
+  const fromNew = mul(extraDepositors, activeRate);
+  const repeat = isNum(r.second) ? mul(g.ftd, Math.min(u('second'), 1 - r.second)) : null;
+  const parts = [fromNew, repeat, extraReactivated].filter(isNum);
+  const activeGain = parts.length ? parts.reduce((p, x) => p + x, 0) : null;
   const mid = mul(activeGain, ngr);
   return {
     base: g, extraVerified, extraDepositors, extraRepeat, extraReactivated, lapsedPool,
     revenue: { low: mul(mid, 0.5), mid, high: mul(mid, 1.5), firstDepositValue: mul(extraDepositors, s.money.avgDeposit) },
+    activeParts: { newDepositors: fromNew, activeRate, repeat, reactivated: extraReactivated, total: activeGain },
   };
 }
 

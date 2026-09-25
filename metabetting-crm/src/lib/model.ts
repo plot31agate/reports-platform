@@ -110,7 +110,7 @@ export interface SegmentDef {
 }
 
 export const SEGMENTS: SegmentDef[] = [
-  { id: 'X1', kind: 'exclusion', name: 'Self-excluded / GAMSTOP / time-out', rule: 'flag = true. Never market', workflow: 'Global suppression on every campaign', quickWin: 'Build first', product: 'both', requiredFields: ['self_exclusion', 'sg_flags'], thresholds: [], offer: false, phase: 1, priority: 1 },
+  { id: 'X1', kind: 'exclusion', name: 'Self-excluded / GAMSTOP / time-out', rule: 'GAMSTOP / self-exclusion flag = true (time-out flags added when available). Never market', workflow: 'Global suppression on every campaign', quickWin: 'Build first', product: 'both', requiredFields: ['self_exclusion'], thresholds: [], offer: false, phase: 1, priority: 1 },
   { id: 'X2', kind: 'exclusion', name: 'No consent: betting', rule: 'Exclude from betting marketing, per channel', workflow: 'Channel filter on all betting campaigns', quickWin: 'Build first', product: 'betting', requiredFields: ['consent_betting'], thresholds: [], offer: false, phase: 1, priority: 2 },
   { id: 'X3', kind: 'exclusion', name: 'No consent: casino', rule: 'Exclude from casino marketing, per channel', workflow: 'Channel filter on all casino campaigns', quickWin: 'Build first', product: 'casino', requiredFields: ['consent_casino'], thresholds: [], offer: false, phase: 1, priority: 3 },
   { id: 'X4', kind: 'exclusion', name: 'Suspected bonus abuser', rule: 'Exclude from all offers; service and safer gambling messages OK', workflow: 'Offer suppression', quickWin: 'Build first', product: 'both', requiredFields: ['abuse_flag'], thresholds: [], offer: false, phase: 1, priority: 4 },

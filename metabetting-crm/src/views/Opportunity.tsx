@@ -38,7 +38,7 @@ export function Opportunity({ snap, update }: { snap: Snapshot; update: (fn: (s:
 
       <Section
         title="Estimated extra monthly revenue"
-        sub="(extra repeat depositors + extra reactivated) × avg monthly NGR per active player. Low = 50% of mid, high = 150%."
+        sub="Extra monthly-active players × avg monthly NGR per active player. Low = 50% of mid, high = 150%."
       >
         {isNum(o.revenue.mid) ? (
           <div className="grid g4">
@@ -48,6 +48,15 @@ export function Opportunity({ snap, update }: { snap: Snapshot; update: (fn: (s:
             <Stat n={fmtGBP(o.revenue.firstDepositValue)} l="One-off first-deposit value" hint="extra depositors × avg deposit" />
           </div>
         ) : <div className="fade">Fill the money inputs (client to confirm) to see a revenue range.</div>}
+        <table className="t compact" style={{ marginTop: 14, maxWidth: 640 }}>
+          <tbody>
+            <tr><td>New depositors who become monthly-active ({fmtN(o.extraDepositors)} × {fmtPct(o.activeParts.activeRate, 0)} active rate)</td><td style={{ textAlign: 'right' }} className="money">{fmtN(o.activeParts.newDepositors)}</td></tr>
+            <tr><td>Existing depositors making a repeat deposit</td><td style={{ textAlign: 'right' }} className="money">{fmtN(o.activeParts.repeat)}</td></tr>
+            <tr><td>Lapsed depositors reactivated</td><td style={{ textAlign: 'right' }} className="money">{fmtN(o.activeParts.reactivated)}</td></tr>
+            <tr><td><b>Extra monthly-active players</b></td><td style={{ textAlign: 'right' }} className="money"><b>{fmtN(o.activeParts.total)}</b></td></tr>
+          </tbody>
+        </table>
+        <div className="kpi-note">A line showing — has missing inputs and is left out of the total (e.g. repeat deposits need the 2+ deposits count).</div>
       </Section>
 
       <Section title="KPI targets" sub={`Agreed with the client. Current rates are ${hasG ? 'genuine players' : 'all players (no abuser figure yet)'}.`}>
