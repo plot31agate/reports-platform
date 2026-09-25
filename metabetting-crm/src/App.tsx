@@ -15,10 +15,17 @@ import { Abuse } from './views/Abuse';
 import { Opportunity } from './views/Opportunity';
 import { Roadmap } from './views/Roadmap';
 import { Summary } from './views/Summary';
+import { Start } from './views/Start';
+import { Journeys } from './views/Journeys';
+import { Guide } from './components/Guide';
+import { progress } from './lib/checklist';
 import dfLogo from './assets/df/logo-white.png';
 
 interface Room { id: string; label: string; glyph: string; }
 const GROUPS: { name: string; rooms: Room[] }[] = [
+  { name: 'Guide', rooms: [
+    { id: 'start', label: 'Start here', glyph: '→' },
+  ] },
   { name: 'Capture', rooms: [
     { id: 'audit', label: 'Data audit', glyph: '3.1' },
     { id: 'inputs', label: 'Funnel inputs', glyph: '3.2' },
@@ -26,6 +33,7 @@ const GROUPS: { name: string; rooms: Room[] }[] = [
   { name: 'Analyse', rooms: [
     { id: 'overview', label: 'Overview', glyph: '3.3' },
     { id: 'segments', label: 'Segments', glyph: '3.4' },
+    { id: 'journeys', label: 'Suggested journeys', glyph: '↳' },
     { id: 'abuse', label: 'Bonus abuse rules', glyph: '3.5' },
     { id: 'opportunity', label: 'Opportunity', glyph: '3.6' },
   ] },
@@ -36,6 +44,8 @@ const GROUPS: { name: string; rooms: Room[] }[] = [
 ];
 const ROOMS = GROUPS.flatMap((g) => g.rooms);
 const TITLES: Record<string, { h: string; sub: string }> = {
+  start: { h: 'Start here', sub: 'What this tool is for, what to do in what order, and what the words mean' },
+  journeys: { h: 'Suggested journeys', sub: 'A ready-made message journey for each segment: who gets it, when, on which channel, and why' },
   audit: { h: 'Data audit', sub: 'What exists in Customer.io today: status, the name it lives under, and notes. Drives readiness and the Swifty request list.' },
   inputs: { h: 'Funnel inputs', sub: 'Counts only. Leave anything blank you don’t have yet.' },
   overview: { h: 'Overview', sub: 'Conversion, the biggest drop-off, genuine players and who we can legally market to' },
@@ -46,13 +56,16 @@ const TITLES: Record<string, { h: string; sub: string }> = {
   summary: { h: 'Client summary', sub: 'One page to print or paste' },
 };
 
-const readHash = () => { const h = window.location.hash.replace('#', ''); return ROOMS.some((r) => r.id === h) ? h : 'audit'; };
+// #journeys/S3 opens a specific journey; everything else is a plain room id.
+const readHash = () => { const h = window.location.hash.replace('#', '').split('/')[0]; return ROOMS.some((r) => r.id === h) ? h : 'start'; };
+const readSub = () => window.location.hash.replace('#', '').split('/')[1] || '';
 
 export function App() {
   const { snap, update, replace, compare, setCompare } = useSnapshot();
   const [view, setView] = useState(readHash);
+  const [sub, setSub] = useState(readSub);
   useEffect(() => {
-    const on = () => setView(readHash());
+    const on = () => { setView(readHash()); setSub(readSub()); };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, []);
@@ -61,6 +74,7 @@ export function App() {
 
   const ready = SEGMENTS.filter((d) => readiness(snap, d).ready).length;
   const reqs = dataRequests(snap).length;
+  const prog = progress(snap);
   const t = TITLES[view];
 
   const doImport = () => pickJSON()
@@ -93,6 +107,7 @@ export function App() {
           <div className="eyebrow">This snapshot</div>
           <div style={{ fontWeight: 700, fontSize: 14, margin: '6px 0 2px' }}>{snap.meta.snapshotDate || 'Undated'}</div>
           <div className="small" style={{ opacity: 0.7 }}>{ready}/{SEGMENTS.length} segments ready · {reqs} data requests</div>
+          <button className="linky" style={{ color: '#fff', fontSize: 12, marginTop: 6 }} onClick={() => go('start')}>Checklist: {prog.done}/{prog.total} done</button>
           <div className="small" style={{ opacity: 0.5, marginTop: 6 }}>Stored in this browser only</div>
         </div>
       </aside>
@@ -111,7 +126,7 @@ export function App() {
               <input className="inp" style={{ flex: 1, minWidth: 160 }} placeholder="Notes (meeting, who was there…)" value={snap.meta.notes} onChange={(e) => update((s) => { s.meta.notes = e.target.value; return s; })} />
             </div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              <button className="btn sm" onClick={() => { download(exportName(snap), JSON.stringify(snap, null, 2)); toast('Snapshot exported'); }}>Export JSON</button>
+              <button className="btn sm" onClick={() => { const today = new Date().toISOString().slice(0, 10); const out = { ...snap, meta: { ...snap.meta, lastExported: today } }; download(exportName(out), JSON.stringify(out, null, 2)); update((s) => { s.meta.lastExported = today; return s; }); toast('Snapshot exported'); }}>Export JSON</button>
               <button className="btn ghost sm" onClick={doImport}>Import JSON</button>
               <button className="btn ghost sm" onClick={doExample}>Load example data (dummy)</button>
               <button className="btn ghost sm" onClick={doReset}>Reset</button>
@@ -123,10 +138,14 @@ export function App() {
             <div className="sub">{t.sub}</div>
           </div>
 
+          <Guide page={view} key={view} />
+
+          {view === 'start' && <Start snap={snap} update={update} go={go} />}
+          {view === 'journeys' && <Journeys snap={snap} selected={sub} select={(id) => go(`journeys/${id}`)} />}
           {view === 'audit' && <Audit snap={snap} update={update} />}
           {view === 'inputs' && <Inputs snap={snap} update={update} />}
           {view === 'overview' && <Overview snap={snap} />}
-          {view === 'segments' && <Segments snap={snap} update={update} />}
+          {view === 'segments' && <Segments snap={snap} update={update} openJourney={(id) => go(`journeys/${id}`)} />}
           {view === 'abuse' && <Abuse snap={snap} update={update} />}
           {view === 'opportunity' && <Opportunity snap={snap} update={update} />}
           {view === 'roadmap' && <Roadmap snap={snap} />}

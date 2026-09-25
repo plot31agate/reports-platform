@@ -155,7 +155,9 @@ export type KpiKey = 'verify' | 'ftd' | 'second' | 'third' | 'active30' | 'react
 
 export interface Snapshot {
   version: 1;
-  meta: { client: string; snapshotDate: string; notes: string; isExample: boolean };
+  meta: { client: string; snapshotDate: string; notes: string; isExample: boolean; lastExported: string };
+  /** Manual ticks on the Start-here checklist (auto steps are computed). */
+  checklist: Record<string, boolean>;
   audit: Record<string, AuditEntry>;
   funnel: Record<Scope, FunnelRow>;
   consent: Record<ConsentKey, Num>;
@@ -173,7 +175,8 @@ const emptyRow = (): FunnelRow => ({ registered: null, verified: null, ftd: null
 export function blankSnapshot(): Snapshot {
   return {
     version: 1,
-    meta: { client: 'Meta Betting', snapshotDate: new Date().toISOString().slice(0, 10), notes: '', isExample: false },
+    meta: { client: 'Meta Betting', snapshotDate: new Date().toISOString().slice(0, 10), notes: '', isExample: false, lastExported: '' },
+    checklist: {},
     audit: Object.fromEntries(AUDIT_ITEMS.map((i) => [i.id, { status: '', cioName: '', notes: '', ...(i.options ? { value: '' } : {}) }])),
     funnel: { total: emptyRow(), sportsbook: emptyRow(), casino: emptyRow() },
     consent: { betting_email: null, betting_sms: null, casino_email: null, casino_sms: null, push: null },
@@ -199,6 +202,7 @@ export function normalise(raw: unknown): Snapshot {
   const num = (v: unknown): Num => (typeof v === 'number' && isFinite(v) ? v : null);
   const out: Snapshot = { ...b };
   out.meta = { ...b.meta, ...(r.meta || {}) };
+  out.checklist = Object.fromEntries(Object.entries(r.checklist || {}).filter(([, v]) => typeof v === 'boolean'));
   out.audit = Object.fromEntries(AUDIT_ITEMS.map((i) => [i.id, { ...b.audit[i.id], ...((r.audit || {})[i.id] || {}) }]));
   for (const sc of SCOPES) {
     const src = (r.funnel || ({} as Snapshot['funnel']))[sc.key] || {};
@@ -236,7 +240,7 @@ export function normalise(raw: unknown): Snapshot {
 /** Dummy figures for demos. Clearly flagged via meta.isExample. */
 export function exampleSnapshot(): Snapshot {
   const s = blankSnapshot();
-  s.meta = { client: 'Meta Betting', snapshotDate: new Date().toISOString().slice(0, 10), notes: 'EXAMPLE DATA: dummy figures for demo only.', isExample: true };
+  s.meta = { client: 'Meta Betting', snapshotDate: new Date().toISOString().slice(0, 10), notes: 'EXAMPLE DATA: dummy figures for demo only.', isExample: true, lastExported: '' };
   const set = (id: string, status: AuditStatus, cioName = '', notes = '', value?: string) => { s.audit[id] = { status, cioName, notes, ...(value !== undefined ? { value } : {}) }; };
   set('signup_date', 'present', 'created_at');
   set('kyc_status', 'partial', 'kyc_status', 'Status present, no verified date');

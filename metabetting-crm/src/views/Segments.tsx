@@ -5,8 +5,9 @@ import { AUDIT_BY_ID, SEGMENTS } from '../lib/model';
 import type { SegStatus, Snapshot } from '../lib/model';
 import { buildSpec, fmtN, readiness, segmentSize } from '../lib/calc';
 import { CopyButton, NumInput, ReadyPill, Section } from '../components/ui';
+import { JOURNEY_BY_SEG } from '../lib/journeys';
 
-export function Segments({ snap, update }: { snap: Snapshot; update: (fn: (s: Snapshot) => Snapshot) => void }) {
+export function Segments({ snap, update, openJourney }: { snap: Snapshot; update: (fn: (s: Snapshot) => Snapshot) => void; openJourney: (id: string) => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const setSeg = (id: string, fn: (g: Snapshot['segments'][number]) => void) => update((s) => { const g = s.segments.find((x) => x.id === id)!; fn(g); return s; });
   const move = (id: string, dir: -1 | 1) => update((s) => {
@@ -96,7 +97,10 @@ export function Segments({ snap, update }: { snap: Snapshot; update: (fn: (s: Sn
                           <div>
                             <div className="spread" style={{ marginBottom: 6 }}>
                               <span className="eyebrow">Customer.io build spec</span>
-                              <CopyButton text={() => buildSpec(snap, def.id)} label="Copy spec" />
+                              <div className="row" style={{ gap: 6 }}>
+                                {JOURNEY_BY_SEG[def.id] && <button className="btn ghost sm" onClick={() => openJourney(def.id)}>Suggested journey →</button>}
+                                <CopyButton text={() => buildSpec(snap, def.id)} label="Copy spec" />
+                              </div>
                             </div>
                             <pre className="spec">{buildSpec(snap, def.id)}</pre>
                           </div>
