@@ -1,0 +1,5 @@
+node_modules
+dist
+# Snapshot exports can hold client figures - keep them out of git
+*.json.bak
+snapshots/

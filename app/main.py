@@ -903,6 +903,36 @@ def agency_root():
 if AGENCY_DIST.is_dir():
     app.mount("/agency", StaticFiles(directory=str(AGENCY_DIST), html=True), name="agency")
 
+
+# ------------------- META BETTING CRM SNAPSHOT -------------------
+# A built Vite app in the same shape as Agency HQ, served at /metabetting-crm.
+# v1 has no backend: every figure lives in the visitor's browser (localStorage
+# + JSON export), so the server only hands out static files — behind the admin
+# login, since it's client work.
+METABETTING_DIST = Path(__file__).parent.parent / "metabetting-crm" / "dist"
+
+
+class _AdminStaticFiles(StaticFiles):
+    """StaticFiles that bounces anyone without the admin session to the login."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            user = get_current_user(Request(scope))
+            if not user or user != settings.admin_username:
+                await RedirectResponse("/admin/login", status_code=302)(scope, receive, send)
+                return
+        await super().__call__(scope, receive, send)
+
+
+@app.get("/metabetting-crm")
+def metabetting_crm_root():
+    # Trailing slash so the SPA's absolute /metabetting-crm/ asset URLs resolve.
+    return RedirectResponse("/metabetting-crm/")
+
+
+if METABETTING_DIST.is_dir():
+    app.mount("/metabetting-crm", _AdminStaticFiles(directory=str(METABETTING_DIST), html=True), name="metabetting-crm")
+
 env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html"]),

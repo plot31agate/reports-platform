@@ -26,10 +26,20 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: agency/package-lock.json
+          cache-dependency-path: |
+            agency/package-lock.json
+            metabetting-crm/package-lock.json
 
       - name: Build Agency HQ
         working-directory: agency
+        run: |
+          npm ci
+          npm run build
+
+      # Meta Betting CRM Snapshot: same pattern as Agency HQ, served at
+      # /metabetting-crm (admin login). Only metabetting-crm/dist ships.
+      - name: Build Meta Betting CRM Snapshot
+        working-directory: metabetting-crm
         run: |
           npm ci
           npm run build
@@ -75,6 +85,17 @@ jobs:
             agency/vite.config.ts
             agency/vite-env.d.ts
             agency/.gitignore
+            # Meta Betting CRM Snapshot: ship ONLY the built dist.
+            metabetting-crm/node_modules/**
+            metabetting-crm/src/**
+            metabetting-crm/index.html
+            metabetting-crm/package.json
+            metabetting-crm/package-lock.json
+            metabetting-crm/tsconfig.json
+            metabetting-crm/vite.config.ts
+            metabetting-crm/vite-env.d.ts
+            metabetting-crm/.gitignore
+            metabetting-crm/README.md
 
       - name: Restart service via webhook
         run: |
